@@ -1,0 +1,10 @@
+{
+	"id": "obsidian-wordpresspublisher",
+	"name": "WordPress Publisher",
+	"version": "0.1.2",
+	"minAppVersion": "1.1.1",
+	"description": "A plugin for publishing Obsidian documents to WordPress.",
+	"author": "devbean",
+	"isDesktopOnly": false,
+	"fundingUrl": "https://www.buymeacoffee.com/devbean"
+}
