@@ -2,7 +2,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin: 16px 0;
+  margin: 4px 0 8px 0;
 }
 .modal-header h1 {
   margin: 0;
@@ -10,7 +10,7 @@
 
 /* WordPress Publish Modal V2 Styles */
 .wp-publish-modal-v2 {
-  padding: 20px;
+  padding: 12px 20px;
   width: 100%;
   min-width: 600px;
   max-width: 100%;
@@ -468,7 +468,7 @@
 .wp-publish-tabs {
   display: flex;
   gap: 4px;
-  margin-bottom: 20px;
+  margin-bottom: 12px;
   border-bottom: 2px solid var(--background-modifier-border);
   padding-bottom: 0;
 }
@@ -663,12 +663,23 @@
   box-sizing: border-box;
   border: none;
   padding: 0;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.wp-advanced-card .setting-item .setting-item-info {
+  display: none;
+}
+
+.wp-advanced-card .setting-item .setting-item-control {
+  width: 100%;
 }
 
 .wp-advanced-card .setting-item-control textarea {
   width: 100% !important;
   box-sizing: border-box;
-  min-height: 100px;
+  min-height: 120px;
+  display: block;
 }
 
 .wp-advanced-header {

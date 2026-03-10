@@ -29,6 +29,8 @@ export abstract class AbstractWordPressClient implements WordPressClient {
    */
   name = 'AbstractWordPressClient';
 
+  private categoriesList: Term[] = [];
+
   protected constructor(
     protected readonly plugin: WordpressPlugin,
     protected readonly profile: WpProfile
@@ -54,6 +56,11 @@ export abstract class AbstractWordPressClient implements WordPressClient {
   ): Promise<WordPressClientResult<boolean>>;
 
   abstract getTag(
+    name: string,
+    certificate: WordPressAuthParams
+  ): Promise<Term>;
+
+  abstract createCategory(
     name: string,
     certificate: WordPressAuthParams
   ): Promise<Term>;
@@ -98,7 +105,8 @@ export abstract class AbstractWordPressClient implements WordPressClient {
   }
 
   private async checkExistingProfile(matterData: MatterData) {
-    const { profileName } = matterData;
+    // Support both old profileName and new blogName
+    const profileName = matterData.blogName ?? matterData.profileName;
     const isProfileNameMismatch = profileName && profileName !== this.profile.name;
     if (isProfileNameMismatch) {
       const confirm = await openConfirmModal({
@@ -150,12 +158,62 @@ export abstract class AbstractWordPressClient implements WordPressClient {
         const file = this.plugin.app.workspace.getActiveFile();
         if (file) {
           await this.plugin.app.fileManager.processFrontMatter(file, fm => {
-            fm.profileName = this.profile.name;
-            fm.postId = postId;
-            fm.postType = postParams.postType;
-            if (postParams.postType === PostTypeConst.Post) {
-              fm.categories = postParams.categories;
+            // Check for duplicate keys before modification
+            const knownKeys = ['blogName', 'postId', 'postType', 'categories', 'slug', 'featurePicture', 'featuredImageId', 'tag'];
+            const existingKeys = Object.keys(fm);
+            const duplicates = existingKeys.filter((key, index) => existingKeys.indexOf(key) !== index);
+            if (duplicates.length > 0) {
+              new Notice(`⚠️ Frontmatter 中存在重复字段: ${duplicates.join(', ')}，请手动检查`);
             }
+
+            // Preserve existing non-plugin fields
+            const existingOtherFields: Record<string, any> = {};
+            for (const key of existingKeys) {
+              if (!knownKeys.includes(key) && key !== 'excerpt' && key !== 'content') {
+                existingOtherFields[key] = fm[key];
+              }
+            }
+
+            // Write fields in fixed order
+            // We rebuild the frontmatter to ensure correct ordering
+            // Obsidian's processFrontMatter preserves insertion order
+
+            // 1. blogName
+            fm.blogName = this.profile.name;
+            // 2. postId
+            fm.postId = postId;
+            // 3. postType
+            fm.postType = postParams.postType;
+            // 4. categories
+            if (postParams.postType === PostTypeConst.Post) {
+              // Write category names instead of IDs
+              const categoryNames = postParams.categories.map(catId => {
+                const term = this.categoriesList.find(t => String(t.id) === String(catId));
+                return term ? term.name : String(catId);
+              });
+              fm.categories = categoryNames;
+            }
+            // 5. slug
+            fm.slug = postParams.slug || '';
+            // 6. featurePicture (set by updateMatterData callback)
+            if (!fm.featurePicture) fm.featurePicture = '';
+            // 7. featuredImageId (set by updateMatterData callback)
+            if (!fm.featuredImageId) fm.featuredImageId = '';
+            // 8. tag (use 'tag' as field name per requirement)
+            if (postParams.tags && postParams.tags.length > 0) {
+              fm.tag = postParams.tags;
+            } else if (!fm.tag) {
+              fm.tag = '';
+            }
+
+            // Add excerpt below tag
+            if (postParams.excerpt) {
+              fm.excerpt = postParams.excerpt;
+            }
+
+            // Clean up content field from frontmatter (should not be stored there)
+            delete fm.content;
+
             if (isFunction(updateMatterData)) {
               updateMatterData(fm);
             }
@@ -272,10 +330,48 @@ export abstract class AbstractWordPressClient implements WordPressClient {
           postParams
         });
       } else {
-        const categories = await this.getCategories(auth);
-        const selectedCategories = matterData.categories as number[]
-          ?? this.profile.lastSelectedCategories
-          ?? [ 1 ];
+        let categories = await this.getCategories(auth);
+        this.categoriesList = categories;
+
+        // Handle frontmatter categories - may be names (new format) or IDs (old format)
+        let selectedCategories: number[];
+        const rawFmCats = matterData.categories as (string | number)[] | undefined;
+        if (rawFmCats && rawFmCats.length > 0 && typeof rawFmCats[0] === 'string') {
+          // New format: category names
+          const newCategoryNames: string[] = [];
+          selectedCategories = [];
+          for (const name of rawFmCats as string[]) {
+            const existing = categories.find(c => c.name === name);
+            if (existing) {
+              selectedCategories.push(Number(existing.id));
+            } else {
+              // Category not found in WordPress - mark for auto-creation
+              newCategoryNames.push(name);
+            }
+          }
+
+          // Auto-create new categories
+          for (const name of newCategoryNames) {
+            try {
+              const newTerm = await this.createCategory(name, auth);
+              categories.push(newTerm);
+              this.categoriesList = categories;
+              selectedCategories.push(Number(newTerm.id));
+              console.log(`[publishPost] Auto-created category: ${name} -> ID ${newTerm.id}`);
+            } catch (e) {
+              console.error(`[publishPost] Failed to create category: ${name}`, e);
+              new Notice(`无法自动创建分类 "${name}": ${e instanceof Error ? e.message : '未知错误'}`);
+            }
+          }
+
+          if (selectedCategories.length === 0) {
+            selectedCategories = this.profile.lastSelectedCategories ?? [1];
+          }
+        } else {
+          selectedCategories = (rawFmCats as number[] | undefined)
+            ?? this.profile.lastSelectedCategories
+            ?? [1];
+        }
         const postTypes = await this.getPostTypes(auth);
         if (postTypes.length === 0) {
           postTypes.push(PostTypeConst.Post);
@@ -288,8 +384,16 @@ export abstract class AbstractWordPressClient implements WordPressClient {
             { items: categories, selected: selectedCategories },
             { items: postTypes, selected: selectedPostType },
             async (postParams: WordPressPostParams, updateMatterData: (matter: MatterData) => void, featuredImage) => {
+              // Save edited content from modal before readFromFrontMatter overwrites it
+              const editedContent = postParams.content;
               postParams = this.readFromFrontMatter(title, matterData, postParams);
-              postParams.content = content;
+              // Use edited content from modal if available, otherwise use original file content
+              postParams.content = editedContent || content;
+
+              // Store featured image info for frontmatter update
+              let featuredImageUrl: string | undefined;
+              let featuredImageId: number | undefined;
+
               try {
                 // Handle featured image
                 if (featuredImage) {
@@ -303,16 +407,9 @@ export abstract class AbstractWordPressClient implements WordPressClient {
                   if (uploadResult.code === WordPressClientReturnCode.OK) {
                     // Get the media ID to use as featured image
                     postParams.featuredMedia = uploadResult.data.id;
+                    featuredImageUrl = uploadResult.data.url;
+                    featuredImageId = uploadResult.data.id;
                     console.log('[WpPublishModalV2] Featured image uploaded, media ID:', uploadResult.data.id);
-
-                    // Save featured image URL to frontmatter
-                    if (uploadResult.data.url) {
-                      updateMatterData({
-                        ...matterData,
-                        featuredImageUrl: uploadResult.data.url,
-                        featuredImageId: uploadResult.data.id
-                      });
-                    }
                   } else {
                     new Notice(this.plugin.i18n.t('error_mediaUploadFailed', {
                       name: featuredImage.fileName,
@@ -320,10 +417,23 @@ export abstract class AbstractWordPressClient implements WordPressClient {
                   }
                 }
 
+                // Wrap updateMatterData to also save featured image info
+                const wrappedUpdateMatterData = (fm: MatterData) => {
+                  if (featuredImageUrl) {
+                    fm.featurePicture = featuredImageUrl;
+                  }
+                  if (featuredImageId) {
+                    fm.featuredImageId = featuredImageId;
+                  }
+                  if (isFunction(updateMatterData)) {
+                    updateMatterData(fm);
+                  }
+                };
+
                 const r = await this.tryToPublish({
                   auth,
                   postParams,
-                  updateMatterData
+                  updateMatterData: wrappedUpdateMatterData
                 });
                 if (r.code === WordPressClientReturnCode.OK) {
                   publishModal.close();
@@ -384,7 +494,8 @@ export abstract class AbstractWordPressClient implements WordPressClient {
     if (matterData.postId) {
       postParams.postId = matterData.postId;
     }
-    postParams.profileName = matterData.profileName ?? WP_DEFAULT_PROFILE_NAME;
+    // Support both old profileName and new blogName
+    postParams.profileName = matterData.blogName ?? matterData.profileName ?? WP_DEFAULT_PROFILE_NAME;
     if (matterData.postType) {
       postParams.postType = matterData.postType;
     } else {
@@ -394,11 +505,38 @@ export abstract class AbstractWordPressClient implements WordPressClient {
     if (postParams.postType === PostTypeConst.Post) {
       // only 'post' supports categories and tags
       if (matterData.categories) {
-        postParams.categories = matterData.categories as number[] ?? this.profile.lastSelectedCategories;
+        // Handle both string names (new format) and number IDs (old format)
+        const rawCats = matterData.categories as (string | number)[];
+        if (rawCats && rawCats.length > 0) {
+          if (typeof rawCats[0] === 'string') {
+            // Convert category names to IDs
+            const catIds = rawCats.map(name => {
+              const term = this.categoriesList.find(t => t.name === String(name));
+              return term ? Number(term.id) : -1;
+            }).filter(id => id !== -1);
+            postParams.categories = catIds.length > 0 ? catIds : (this.profile.lastSelectedCategories ?? [1]);
+          } else {
+            postParams.categories = rawCats as number[];
+          }
+        } else {
+          postParams.categories = this.profile.lastSelectedCategories ?? [1];
+        }
       }
       if (matterData.tags) {
         postParams.tags = matterData.tags as string[];
       }
+    }
+    // Read excerpt from frontmatter if not already set
+    if (!postParams.excerpt && matterData.excerpt) {
+      postParams.excerpt = matterData.excerpt;
+    }
+    // Read slug from frontmatter if not already set
+    if (!postParams.slug && matterData.slug) {
+      postParams.slug = matterData.slug;
+    }
+    // Read featured image ID from frontmatter if not already set
+    if (!postParams.featuredMedia && matterData.featuredImageId) {
+      postParams.featuredMedia = matterData.featuredImageId;
     }
     return postParams;
   }

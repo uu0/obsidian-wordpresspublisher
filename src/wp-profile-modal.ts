@@ -14,7 +14,7 @@ export function openProfileModal(
   plugin: WordpressPlugin,
   profile: WpProfile = {
     name: '',
-    apiType: ApiType.XML_RPC,
+    apiType: ApiType.RestApi_ApplicationPasswords,
     endpoint: '',
     xmlRpcPath: '/xmlrpc.php',
     saveUsername: false,
@@ -49,7 +49,7 @@ class WpProfileModal extends AbstractModal {
     private readonly onSubmit: (profile: WpProfile, atIndex?: number) => void,
     private readonly profile: WpProfile = {
       name: '',
-      apiType: ApiType.XML_RPC,
+      apiType: ApiType.RestApi_ApplicationPasswords,
       endpoint: '',
       xmlRpcPath: '/xmlrpc.php',
       saveUsername: false,

@@ -110,6 +110,16 @@ export interface WordpressPluginSettings {
    * Custom prompt template for AI tags generation.
    */
   tagsPrompt?: string;
+
+  /**
+   * Image crop aspect ratio.
+   */
+  imageCropRatio: string;
+
+  /**
+   * Image crop width in pixels.
+   */
+  imageCropWidth: number;
 }
 
 export const DEFAULT_SETTINGS: WordpressPluginSettings = {
@@ -126,6 +136,8 @@ export const DEFAULT_SETTINGS: WordpressPluginSettings = {
   replaceMediaLinks: true,
   autoGenerateSlug: true,
   slugGenerationMode: 'pinyin',
+  imageCropRatio: '16:9',
+  imageCropWidth: 1200,
 }
 
 export async function upgradeSettings(

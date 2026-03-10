@@ -20,20 +20,32 @@ export class FeaturedImageModal extends Modal {
   private articleTitle: string;
   private articleContent: string;
 
-  // 目标图片宽度
-  private readonly TARGET_WIDTH = 1200;
+  // 目标图片宽度和比例 (from settings)
+  private get TARGET_WIDTH(): number {
+    return this.plugin.settings.imageCropWidth || 1200;
+  }
+
+  private get ASPECT_RATIO(): number {
+    const ratio = this.plugin.settings.imageCropRatio || '16:9';
+    const parts = ratio.split(':').map(Number);
+    return parts[1] / parts[0]; // height/width ratio
+  }
+
+  private initialSearchQuery: string;
 
   constructor(
     app: App,
     private plugin: WordpressPlugin,
     articleTitle: string,
     articleContent: string,
-    onSubmit: (result: FeaturedImageResult | null) => void
+    onSubmit: (result: FeaturedImageResult | null) => void,
+    initialSearchQuery: string = ''
   ) {
     super(app);
     this.onSubmit = onSubmit;
     this.articleTitle = articleTitle;
     this.articleContent = articleContent;
+    this.initialSearchQuery = initialSearchQuery;
 
     // 初始化服务
     if (plugin.settings.unsplashAccessKey) {
@@ -175,7 +187,8 @@ export class FeaturedImageModal extends Modal {
         };
 
         this.showPreview(image.urls.small);
-      }
+      },
+      this.initialSearchQuery  // Pass tags-based search query
     );
     modal.open();
   }
@@ -257,31 +270,45 @@ export class FeaturedImageModal extends Modal {
     }
   }
 
-  // 调整图片大小到目标宽度
+  // 调整图片大小到目标宽度，并按设定比例裁剪
   private async resizeImage(arrayBuffer: ArrayBuffer, mimeType: string): Promise<ArrayBuffer | null> {
     try {
       const blob = new Blob([arrayBuffer], { type: mimeType });
       const bitmap = await createImageBitmap(blob);
 
-      // 计算目标高度
-      const aspectRatio = bitmap.height / bitmap.width;
-      const targetHeight = Math.round(this.TARGET_WIDTH * aspectRatio);
+      const targetWidth = this.TARGET_WIDTH;
+      const targetHeight = Math.round(targetWidth * this.ASPECT_RATIO);
 
-      // 如果图片已经小于目标宽度，直接返回原图
-      if (bitmap.width <= this.TARGET_WIDTH) {
+      // 如果图片已经小于目标宽度且比例接近，直接返回原图
+      if (bitmap.width <= targetWidth) {
         bitmap.close();
         return null;
       }
 
-      // 创建 canvas 并调整大小
-      const canvas = new OffscreenCanvas(this.TARGET_WIDTH, targetHeight);
+      // 计算裁剪区域（居中裁剪）
+      const srcAspect = bitmap.width / bitmap.height;
+      const targetAspect = targetWidth / targetHeight;
+
+      let sx = 0, sy = 0, sw = bitmap.width, sh = bitmap.height;
+      if (srcAspect > targetAspect) {
+        // 源图更宽，裁掉左右
+        sw = Math.round(bitmap.height * targetAspect);
+        sx = Math.round((bitmap.width - sw) / 2);
+      } else {
+        // 源图更高，裁掉上下
+        sh = Math.round(bitmap.width / targetAspect);
+        sy = Math.round((bitmap.height - sh) / 2);
+      }
+
+      // 创建 canvas 并裁剪调整大小
+      const canvas = new OffscreenCanvas(targetWidth, targetHeight);
       const ctx = canvas.getContext('2d');
       if (!ctx) {
         bitmap.close();
         return null;
       }
 
-      ctx.drawImage(bitmap, 0, 0, this.TARGET_WIDTH, targetHeight);
+      ctx.drawImage(bitmap, sx, sy, sw, sh, 0, 0, targetWidth, targetHeight);
       bitmap.close();
 
       // 导出为指定格式
@@ -290,7 +317,8 @@ export class FeaturedImageModal extends Modal {
         quality: 0.92
       });
 
-      new Notice(`图片已调整为 ${this.TARGET_WIDTH}px 宽度`);
+      const ratio = this.plugin.settings.imageCropRatio || '16:9';
+      new Notice(`图片已裁剪为 ${targetWidth}x${targetHeight}px (${ratio})`);
       return await outputBlob.arrayBuffer();
     } catch (error) {
       console.error('Image resize failed:', error);
@@ -321,15 +349,19 @@ class UnsplashPickerModal extends Modal {
   private onSelect: (image: UnsplashImage, arrayBuffer: ArrayBuffer) => void;
   private unsplashService: UnsplashService;
 
+  private initialSearchQuery: string;
+
   constructor(
     app: App,
     private plugin: WordpressPlugin,
     unsplashService: UnsplashService,
-    onSelect: (image: UnsplashImage, arrayBuffer: ArrayBuffer) => void
+    onSelect: (image: UnsplashImage, arrayBuffer: ArrayBuffer) => void,
+    initialSearchQuery: string = ''
   ) {
     super(app);
     this.unsplashService = unsplashService;
     this.onSelect = onSelect;
+    this.initialSearchQuery = initialSearchQuery;
   }
 
   onOpen() {
@@ -346,6 +378,10 @@ class UnsplashPickerModal extends Modal {
       placeholder: '输入关键词搜索...'
     });
     searchInput.style.flex = '1';
+    // Pre-fill search input with tags
+    if (this.initialSearchQuery) {
+      searchInput.value = this.initialSearchQuery;
+    }
 
     const searchBtn = searchContainer.createEl('button', {
       text: '搜索',
@@ -408,8 +444,13 @@ class UnsplashPickerModal extends Modal {
     };
     randomBtn.onclick = loadRandom;
 
-    // 初始加载随机图片
-    loadRandom();
+    // If we have an initial search query (from tags), search with it
+    // Otherwise load random photos
+    if (this.initialSearchQuery) {
+      performSearch();
+    } else {
+      loadRandom();
+    }
   }
 
   private renderMasonry(container: HTMLElement): void {

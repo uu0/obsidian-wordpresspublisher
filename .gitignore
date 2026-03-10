@@ -110,7 +110,8 @@ dist
 dist/
 
 # They should be uploaded to GitHub releases instead.
-main.js
+/main.js
+!output/main.js
 
 # obsidian
 data.json

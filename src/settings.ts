@@ -241,6 +241,42 @@ export class WordpressSettingTab extends PluginSettingTab {
           });
       });
 
+    // 图片裁剪设置
+    containerEl.createEl('h3', { text: '图片裁剪设置' });
+
+    new Setting(containerEl)
+      .setName('裁剪比例')
+      .setDesc('特色图片的裁剪比例')
+      .addDropdown((dropdown) => {
+        dropdown
+          .addOption('16:9', '16:9（推荐）')
+          .addOption('4:3', '4:3')
+          .addOption('1:1', '1:1')
+          .addOption('3:2', '3:2')
+          .addOption('21:9', '21:9')
+          .setValue(this.plugin.settings.imageCropRatio || '16:9')
+          .onChange(async (value) => {
+            this.plugin.settings.imageCropRatio = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName('图片宽度')
+      .setDesc('特色图片和 AI 生图的宽度（像素）')
+      .addText(text => {
+        text
+          .setPlaceholder('1200')
+          .setValue(String(this.plugin.settings.imageCropWidth || 1200))
+          .onChange(async (value) => {
+            const num = parseInt(value);
+            if (!isNaN(num) && num > 0) {
+              this.plugin.settings.imageCropWidth = num;
+              await this.plugin.saveSettings();
+            }
+          });
+      });
+
     // Unsplash 配置
     containerEl.createEl('h3', { text: 'Unsplash 配置' });
 

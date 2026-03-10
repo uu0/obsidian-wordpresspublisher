@@ -175,6 +175,17 @@ export class WpRestClient extends AbstractWordPressClient {
     }
   }
 
+  async createCategory(name: string, certificate: WordPressAuthParams): Promise<Term> {
+    const resp = await this.client.httpPost(
+      getUrl(this.context.endpoints?.getCategories, 'wp-json/wp/v2/categories'),
+      { name },
+      {
+        headers: this.context.getHeaders(certificate)
+      });
+    console.log('WpRestClient createCategory response', resp);
+    return this.context.responseParser.toTerm(resp);
+  }
+
   async uploadMedia(media: Media, certificate: WordPressAuthParams): Promise<WordPressClientResult<WordPressMediaUploadResult>> {
     try {
       const formItems = new FormItems();
@@ -197,6 +208,38 @@ export class WpRestClient extends AbstractWordPressClient {
       };
     } catch (e: SafeAny) {
       console.error('uploadMedia', e);
+      return {
+        code: WordPressClientReturnCode.Error,
+        error: {
+          code: WordPressClientReturnCode.ServerInternalError,
+          message: e.toString()
+        },
+        response: undefined
+      };
+    }
+  }
+
+  async getMediaLibrary(certificate: WordPressAuthParams, params?: { search?: string, per_page?: number, page?: number }): Promise<WordPressClientResult<SafeAny[]>> {
+    try {
+      const queryParams = new URLSearchParams();
+      if (params?.search) queryParams.append('search', params.search);
+      queryParams.append('per_page', String(params?.per_page ?? 20));
+      queryParams.append('page', String(params?.page ?? 1));
+
+      const url = `wp-json/wp/v2/media?${queryParams.toString()}`;
+      const data = await this.client.httpGet(
+        getUrl(this.context.endpoints?.uploadFile, url),
+        {
+          headers: this.context.getHeaders(certificate)
+        });
+
+      return {
+        code: WordPressClientReturnCode.OK,
+        data: data as SafeAny[],
+        response: data
+      };
+    } catch (e: SafeAny) {
+      console.error('getMediaLibrary', e);
       return {
         code: WordPressClientReturnCode.Error,
         error: {

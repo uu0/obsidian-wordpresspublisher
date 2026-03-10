@@ -80,9 +80,10 @@ export class WpXmlRpcClient extends AbstractWordPressClient {
       };
     }
     if ((postParams as SafeAny).featuredMedia) {
+      const mediaId = Number((postParams as SafeAny).featuredMedia);
       publishContent = {
         ...publishContent,
-        featured_media: (postParams as SafeAny).featuredMedia
+        post_thumbnail: mediaId
       };
     }
     let publishPromise;
@@ -190,6 +191,11 @@ export class WpXmlRpcClient extends AbstractWordPressClient {
     });
   }
 
+  async createCategory(name: string, certificate: WordPressAuthParams): Promise<Term> {
+    // XML-RPC category creation - use wp.newCategory
+    throw new Error('Creating categories is not supported via XML-RPC. Please use REST API.');
+  }
+
   async uploadMedia(media: Media, certificate: WordPressAuthParams): Promise<WordPressClientResult<WordPressMediaUploadResult>> {
     const wpMedia = {
       name: media.fileName,
@@ -215,7 +221,8 @@ export class WpXmlRpcClient extends AbstractWordPressClient {
       return {
         code: WordPressClientReturnCode.OK,
         data: {
-          url: (response as SafeAny).url
+          url: (response as SafeAny).url,
+          id: Number((response as SafeAny).id ?? (response as SafeAny).attachment_id) || undefined
         },
         response
       };

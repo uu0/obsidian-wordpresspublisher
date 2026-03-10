@@ -1,6 +1,4 @@
-import { requestUrl } from 'obsidian';
-import OpenAI from 'openai';
-import Anthropic from '@anthropic-ai/sdk';
+import { requestUrl, RequestUrlParam } from 'obsidian';
 
 export interface AIConfig {
   provider: 'openai' | 'claude';
@@ -14,6 +12,53 @@ export interface AIServiceConfig {
   imageAI: AIConfig;
 }
 
+/**
+ * 通用 HTTP 请求辅助，使用 Obsidian requestUrl 绕过 CORS 限制
+ */
+async function apiRequest(
+  url: string,
+  headers: Record<string, string>,
+  body: unknown
+): Promise<any> {
+  const params: RequestUrlParam = {
+    url,
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...headers
+    },
+    body: JSON.stringify(body),
+    throw: false // 不自动抛异常，手动处理状态码
+  };
+
+  console.log('[AIService] Request:', url, 'model:', (body as any)?.model);
+  const response = await requestUrl(params);
+
+  if (response.status < 200 || response.status >= 300) {
+    // 尝试从响应体中提取错误信息
+    let errorDetail = '';
+    try {
+      const errorBody = response.json;
+      if (errorBody?.error?.message) {
+        errorDetail = errorBody.error.message;
+      } else if (errorBody?.error) {
+        errorDetail = typeof errorBody.error === 'string'
+          ? errorBody.error
+          : JSON.stringify(errorBody.error);
+      } else if (errorBody?.message) {
+        errorDetail = errorBody.message;
+      } else {
+        errorDetail = JSON.stringify(errorBody);
+      }
+    } catch {
+      errorDetail = response.text || '(empty response body)';
+    }
+    throw new Error(`HTTP ${response.status}: ${errorDetail}`);
+  }
+
+  return response.json;
+}
+
 export class AIService {
   constructor(private config: AIServiceConfig) {}
 
@@ -23,28 +68,32 @@ export class AIService {
   async validateConfig(config: AIConfig): Promise<{ valid: boolean; error?: string }> {
     try {
       if (config.provider === 'openai') {
-        const client = new OpenAI({
-          apiKey: config.apiKey,
-          baseURL: config.baseURL,
-          dangerouslyAllowBrowser: true
-        });
-
-        // 简单的测试请求
-        await client.models.list();
+        // 用一个最小请求验证
+        const baseURL = config.baseURL.replace(/\/+$/, '');
+        await apiRequest(
+          `${baseURL}/chat/completions`,
+          { 'Authorization': `Bearer ${config.apiKey}` },
+          {
+            model: config.model,
+            messages: [{ role: 'user', content: 'test' }],
+            max_tokens: 5
+          }
+        );
         return { valid: true };
       } else if (config.provider === 'claude') {
-        const client = new Anthropic({
-          apiKey: config.apiKey,
-          baseURL: config.baseURL,
-          dangerouslyAllowBrowser: true
-        });
-
-        // 测试请求
-        await client.messages.create({
-          model: config.model,
-          max_tokens: 10,
-          messages: [{ role: 'user', content: 'test' }]
-        });
+        const baseURL = config.baseURL.replace(/\/+$/, '');
+        await apiRequest(
+          `${baseURL}/messages`,
+          {
+            'x-api-key': config.apiKey,
+            'anthropic-version': '2023-06-01'
+          },
+          {
+            model: config.model,
+            max_tokens: 10,
+            messages: [{ role: 'user', content: 'test' }]
+          }
+        );
         return { valid: true };
       }
       return { valid: false, error: 'Unsupported provider' };
@@ -58,62 +107,45 @@ export class AIService {
 
   /**
    * 生成文本内容（如摘要、SEO描述等）
+   * 使用 Obsidian requestUrl 直接调用，兼容 SiliconFlow / DeepSeek 等第三方 OpenAI 兼容 API
    */
   async generateText(prompt: string): Promise<string> {
     const config = this.config.textAI;
+    const baseURL = config.baseURL.replace(/\/+$/, '');
 
     try {
       if (config.provider === 'openai') {
-        const client = new OpenAI({
-          apiKey: config.apiKey,
-          baseURL: config.baseURL,
-          dangerouslyAllowBrowser: true
-        });
+        const data = await apiRequest(
+          `${baseURL}/chat/completions`,
+          { 'Authorization': `Bearer ${config.apiKey}` },
+          {
+            model: config.model,
+            messages: [{ role: 'user', content: prompt }],
+            max_tokens: 500
+          }
+        );
 
-        const response = await client.chat.completions.create({
-          model: config.model,
-          messages: [{ role: 'user', content: prompt }],
-          max_tokens: 500
-        });
-
-        return response.choices[0]?.message?.content || '';
+        return data?.choices?.[0]?.message?.content || '';
       } else if (config.provider === 'claude') {
-        const client = new Anthropic({
-          apiKey: config.apiKey,
-          baseURL: config.baseURL,
-          dangerouslyAllowBrowser: true
-        });
+        const data = await apiRequest(
+          `${baseURL}/messages`,
+          {
+            'x-api-key': config.apiKey,
+            'anthropic-version': '2023-06-01'
+          },
+          {
+            model: config.model,
+            max_tokens: 500,
+            messages: [{ role: 'user', content: prompt }]
+          }
+        );
 
-        const response = await client.messages.create({
-          model: config.model,
-          max_tokens: 500,
-          messages: [{ role: 'user', content: prompt }]
-        });
-
-        const textContent = response.content.find(c => c.type === 'text');
-        return textContent && 'text' in textContent ? textContent.text : '';
+        const textContent = data?.content?.find((c: any) => c.type === 'text');
+        return textContent?.text || '';
       }
       throw new Error('Unsupported provider');
     } catch (error) {
-      // 改进错误信息，包含更多调试信息
-      let errorMsg = 'Unknown error';
-      if (error instanceof Error) {
-        errorMsg = error.message;
-        // 尝试提取更详细的错误信息
-        if ('status' in error) {
-          errorMsg += ` (status: ${(error as any).status})`;
-        }
-        if ('response' in error) {
-          try {
-            const responseData = (error as any).response;
-            if (responseData) {
-              errorMsg += ` - ${JSON.stringify(responseData)}`;
-            }
-          } catch (e) {
-            // 忽略 JSON 序列化错误
-          }
-        }
-      }
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
       throw new Error(`AI text generation failed: ${errorMsg}`);
     }
   }
@@ -123,50 +155,31 @@ export class AIService {
    */
   async generateImage(prompt: string): Promise<string> {
     const config = this.config.imageAI;
+    const baseURL = config.baseURL.replace(/\/+$/, '');
 
     try {
       if (config.provider === 'openai') {
-        const client = new OpenAI({
-          apiKey: config.apiKey,
-          baseURL: config.baseURL,
-          dangerouslyAllowBrowser: true
-        });
+        const data = await apiRequest(
+          `${baseURL}/images/generations`,
+          { 'Authorization': `Bearer ${config.apiKey}` },
+          {
+            model: config.model,
+            prompt: prompt,
+            n: 1,
+            size: '1024x1024'
+          }
+        );
 
-        const response = await client.images.generate({
-          model: config.model,
-          prompt: prompt,
-          n: 1,
-          size: '1024x1024'
-        });
-
-        if (!response.data || response.data.length === 0) {
+        if (!data?.data || data.data.length === 0) {
           throw new Error('No image generated');
         }
 
-        return response.data[0]?.url || '';
+        return data.data[0]?.url || '';
       } else {
-        // Claude 不直接支持图片生成，需要通过其他方式
         throw new Error('Claude does not support direct image generation');
       }
     } catch (error) {
-      // 改进错误信息
-      let errorMsg = 'Unknown error';
-      if (error instanceof Error) {
-        errorMsg = error.message;
-        if ('status' in error) {
-          errorMsg += ` (status: ${(error as any).status})`;
-        }
-        if ('response' in error) {
-          try {
-            const responseData = (error as any).response;
-            if (responseData) {
-              errorMsg += ` - ${JSON.stringify(responseData)}`;
-            }
-          } catch (e) {
-            // 忽略 JSON 序列化错误
-          }
-        }
-      }
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
       throw new Error(`AI image generation failed: ${errorMsg}`);
     }
   }

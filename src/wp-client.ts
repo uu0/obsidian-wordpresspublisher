@@ -103,6 +103,18 @@ export interface WordPressMediaUploadResult {
   id?: number;
 }
 
+export interface WordPressMediaItem {
+  id: number;
+  title: string;
+  url: string;
+  thumbnail?: string;
+  alt?: string;
+  caption?: string;
+  description?: string;
+  mime_type?: string;
+  date?: string;
+}
+
 export interface WordPressClient {
 
   /**
