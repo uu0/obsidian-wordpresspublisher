@@ -11,6 +11,67 @@ export interface FeaturedImageResult {
   height?: number;
 }
 
+// 导出工具函数：调整图片大小
+export async function resizeFeaturedImage(
+  arrayBuffer: ArrayBuffer,
+  mimeType: string,
+  targetWidth: number,
+  aspectRatio: string
+): Promise<ArrayBuffer | null> {
+  try {
+    const blob = new Blob([arrayBuffer], { type: mimeType });
+    const bitmap = await createImageBitmap(blob);
+
+    const ratioParts = aspectRatio.split(':').map(Number);
+    const ratio = ratioParts[1] / ratioParts[0]; // height/width
+    const targetHeight = Math.round(targetWidth * ratio);
+
+    // 如果图片已经小于目标宽度，直接返回原图
+    if (bitmap.width <= targetWidth) {
+      bitmap.close();
+      return null;
+    }
+
+    // 计算裁剪区域（居中裁剪）
+    const srcAspect = bitmap.width / bitmap.height;
+    const targetAspect = targetWidth / targetHeight;
+
+    let sx = 0, sy = 0, sw = bitmap.width, sh = bitmap.height;
+    if (srcAspect > targetAspect) {
+      // 源图更宽，裁掉左右
+      sw = Math.round(bitmap.height * targetAspect);
+      sx = Math.round((bitmap.width - sw) / 2);
+    } else {
+      // 源图更高，裁掉上下
+      sh = Math.round(bitmap.width / targetAspect);
+      sy = Math.round((bitmap.height - sh) / 2);
+    }
+
+    // 创建 canvas 并裁剪调整大小
+    const canvas = new OffscreenCanvas(targetWidth, targetHeight);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      bitmap.close();
+      return null;
+    }
+
+    ctx.drawImage(bitmap, sx, sy, sw, sh, 0, 0, targetWidth, targetHeight);
+    bitmap.close();
+
+    // 导出为指定格式
+    const outputBlob = await canvas.convertToBlob({
+      type: mimeType,
+      quality: 0.92
+    });
+
+    new Notice(`图片已裁剪为 ${targetWidth}x${targetHeight}px (${aspectRatio})`);
+    return await outputBlob.arrayBuffer();
+  } catch (error) {
+    console.error('Image resize failed:', error);
+    return null;
+  }
+}
+
 export class FeaturedImageModal extends Modal {
   private result: FeaturedImageResult | null = null;
   private onSubmit: (result: FeaturedImageResult | null) => void;
@@ -341,7 +402,7 @@ export class FeaturedImageModal extends Modal {
 /**
  * Unsplash 图片选择器 - 瀑布流布局
  */
-class UnsplashPickerModal extends Modal {
+export class UnsplashPickerModal extends Modal {
   private images: UnsplashImage[] = [];
   private hasMore = true;
   private page = 1;
@@ -395,17 +456,26 @@ class UnsplashPickerModal extends Modal {
 
     const resultsContainer = contentEl.createDiv('unsplash-results');
 
-    // 加载随机图片
-    const loadRandom = async () => {
-      resultsContainer.empty();
-      resultsContainer.createEl('p', { text: '加载中...' });
+    // 创建加载覆盖层（避免闪烁）
+    const loadingOverlay = resultsContainer.createDiv('unsplash-loading-overlay');
+    loadingOverlay.style.cssText = 'position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,0.8);display:flex;justify-content:center;align-items:center;z-index:10;';
+    loadingOverlay.createEl('span', { text: '加载中...', cls: 'unsplash-loading-text' });
+    loadingOverlay.style.display = 'none';
 
+    // 显示/隐藏加载覆盖层
+    const showLoading = () => { loadingOverlay.style.display = 'flex'; };
+    const hideLoading = () => { loadingOverlay.style.display = 'none'; };
+
+    // 加载随机图片（无闪烁）
+    const loadRandom = async () => {
+      showLoading();
       try {
         this.images = await this.unsplashService.getRandomPhotos(30);
         this.hasMore = false;
         this.currentQuery = '';
-        this.renderMasonry(resultsContainer);
+        this.renderMasonry(resultsContainer, hideLoading);
       } catch (error) {
+        hideLoading();
         resultsContainer.createEl('p', {
           text: `加载失败: ${error instanceof Error ? error.message : '未知错误'}`
         });
@@ -422,14 +492,14 @@ class UnsplashPickerModal extends Modal {
 
       this.currentQuery = query;
       this.page = 1;
-      resultsContainer.empty();
-      resultsContainer.createEl('p', { text: '搜索中...' });
+      showLoading();
 
       try {
         this.images = await this.unsplashService.searchPhotos(query);
         this.hasMore = false;
-        this.renderMasonry(resultsContainer);
+        this.renderMasonry(resultsContainer, hideLoading);
       } catch (error) {
+        hideLoading();
         resultsContainer.createEl('p', {
           text: `搜索失败: ${error instanceof Error ? error.message : '未知错误'}`
         });
@@ -453,17 +523,28 @@ class UnsplashPickerModal extends Modal {
     }
   }
 
-  private renderMasonry(container: HTMLElement): void {
+  private renderMasonry(container: HTMLElement, onComplete?: () => void): void {
     container.empty();
 
     if (this.images.length === 0) {
       container.createEl('p', { text: '未找到相关图片' });
+      onComplete?.();
       return;
     }
 
     const grid = container.createDiv('unsplash-masonry');
     grid.style.columnCount = '3';
     grid.style.columnGap = '8px';
+
+    // 等待所有图片加载完成后隐藏加载层
+    let loadedCount = 0;
+    const totalImages = this.images.length;
+    const checkAllLoaded = () => {
+      loadedCount++;
+      if (loadedCount >= totalImages) {
+        onComplete?.();
+      }
+    };
 
     this.images.forEach(image => {
       const item = grid.createDiv('unsplash-item');
@@ -477,6 +558,10 @@ class UnsplashPickerModal extends Modal {
       img.style.display = 'block';
       img.style.borderRadius = '4px';
       img.style.cursor = 'pointer';
+
+      // 监听图片加载完成/失败
+      img.onload = checkAllLoaded;
+      img.onerror = checkAllLoaded;
 
       item.onclick = async () => {
         container.createEl('p', { text: '下载中...' });

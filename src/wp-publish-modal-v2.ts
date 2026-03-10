@@ -10,7 +10,8 @@ import IMask, { DynamicMaskType, InputMask } from 'imask';
 import { SafeAny } from './utils';
 import { format, parse } from 'date-fns';
 import { SlugGenerator } from './slug-generator';
-import { FeaturedImageModal, FeaturedImageResult, VaultImagePickerModal } from './featured-image-modal';
+import { FeaturedImageModal, FeaturedImageResult, VaultImagePickerModal, UnsplashPickerModal, resizeFeaturedImage } from './featured-image-modal';
+import { UnsplashService, UnsplashImage } from './unsplash-service';
 import { AIService } from './ai-service';
 import { AppState } from './app-state';
 
@@ -28,6 +29,7 @@ export class WpPublishModalV2 extends AbstractModal {
   private dateInputMask: InputMask<DynamicMaskType> | null = null;
   private featuredImage: FeaturedImageResult | null = null;
   private aiService: AIService | null = null;
+  private unsplashService: UnsplashService | null = null;
   private slugInput: HTMLInputElement | null = null;
   private titleInput: HTMLInputElement | null = null;
   private currentTab: 'settings' | 'preview' | 'advanced' = 'settings';
@@ -74,6 +76,10 @@ export class WpPublishModalV2 extends AbstractModal {
 
     if (plugin.settings.aiConfig) {
       this.aiService = new AIService(plugin.settings.aiConfig);
+    }
+
+    if (plugin.settings.unsplashAccessKey) {
+      this.unsplashService = new UnsplashService(plugin.settings.unsplashAccessKey);
     }
 
     // 检查 frontmatter 中是否已有特色图片链接
@@ -373,6 +379,11 @@ export class WpPublishModalV2 extends AbstractModal {
   }
 
   private selectUnsplashImage(params: WordPressPostParams): void {
+    if (!this.unsplashService) {
+      new Notice('请先在插件设置中配置 Unsplash Access Key');
+      return;
+    }
+
     // Read from frontmatter tag field (matterData.tag)
     // Use first tag for initial Unsplash search
     let tagsQuery = '';
@@ -388,19 +399,27 @@ export class WpPublishModalV2 extends AbstractModal {
       tagsQuery = String(params.tags[0]);
     }
 
-    const modal = new FeaturedImageModal(
+    const targetWidth = this.plugin.settings.imageCropWidth || 1200;
+    const ratio = this.plugin.settings.imageCropRatio || '16:9';
+
+    const modal = new UnsplashPickerModal(
       this.app,
       this.plugin,
-      params.title || this.noteTitle,
-      this.articleContent,
-      (result) => {
-        if (result) {
-          this.featuredImage = result;
-          this.display(params);
-          new Notice('图片已选择');
-        }
+      this.unsplashService,
+      async (image: UnsplashImage, arrayBuffer: ArrayBuffer) => {
+        // 处理图片裁剪
+        const processed = await resizeFeaturedImage(arrayBuffer, 'image/jpeg', targetWidth, ratio);
+
+        this.featuredImage = {
+          fileName: `unsplash-${image.id}.jpg`,
+          mimeType: 'image/jpeg',
+          content: processed || arrayBuffer,
+          width: targetWidth
+        };
+        this.display(params);
+        new Notice('图片已选择');
       },
-      tagsQuery  // Pass tags as initial search query
+      tagsQuery
     );
     modal.open();
   }
