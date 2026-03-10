@@ -133,6 +133,32 @@ export abstract class AbstractWordPressClient implements WordPressClient {
     const { postParams, auth, updateMatterData } = params;
     const tagTerms = await this.getTags(postParams.tags, auth);
     postParams.tags = tagTerms.map(term => term.id);
+
+    // Create any local-only categories (negative IDs) on the remote before publishing
+    const resolvedCategories: number[] = [];
+    for (const catId of postParams.categories) {
+      if (catId < 0) {
+        // This is a local-only category, create it on the remote now
+        const term = this.categoriesList.find(t => String(t.id) === String(catId));
+        if (term) {
+          try {
+            const newTerm = await this.createCategory(term.name, auth);
+            // Update the categories list with the real term
+            const idx = this.categoriesList.indexOf(term);
+            if (idx >= 0) this.categoriesList[idx] = newTerm;
+            resolvedCategories.push(Number(newTerm.id));
+            console.log(`[tryToPublish] Created remote category: ${term.name} -> ID ${newTerm.id}`);
+          } catch (e) {
+            console.error(`[tryToPublish] Failed to create category: ${term.name}`, e);
+            new Notice(`无法创建分类 "${term.name}": ${e instanceof Error ? e.message : '未知错误'}`);
+          }
+        }
+      } else {
+        resolvedCategories.push(catId);
+      }
+    }
+    postParams.categories = resolvedCategories;
+
     await this.updatePostImages({
       auth,
       postParams
@@ -345,32 +371,38 @@ export abstract class AbstractWordPressClient implements WordPressClient {
             if (existing) {
               selectedCategories.push(Number(existing.id));
             } else {
-              // Category not found in WordPress - mark for auto-creation
+              // Category not found in remote - add it as a local-only category for the UI
+              // It will be created on the remote only when user clicks publish
               newCategoryNames.push(name);
             }
           }
 
-          // Auto-create new categories
+          // Add missing categories as local-only entries to the UI list
+          // They will be created on the remote during actual publish
           for (const name of newCategoryNames) {
-            try {
-              const newTerm = await this.createCategory(name, auth);
-              categories.push(newTerm);
-              this.categoriesList = categories;
-              selectedCategories.push(Number(newTerm.id));
-              console.log(`[publishPost] Auto-created category: ${name} -> ID ${newTerm.id}`);
-            } catch (e) {
-              console.error(`[publishPost] Failed to create category: ${name}`, e);
-              new Notice(`无法自动创建分类 "${name}": ${e instanceof Error ? e.message : '未知错误'}`);
-            }
+            const tempId = -(categories.length + 1); // negative ID = local-only
+            const tempTerm: Term = {
+              id: String(tempId),
+              name: name,
+              slug: name.toLowerCase().replace(/\s+/g, '-'),
+              taxonomy: 'category',
+              description: '',
+              count: 0
+            };
+            categories.push(tempTerm);
+            this.categoriesList = categories;
+            selectedCategories.push(tempId);
+            console.log(`[publishPost] Added local-only category: ${name} (temp ID ${tempId})`);
           }
 
           if (selectedCategories.length === 0) {
             selectedCategories = this.profile.lastSelectedCategories ?? [1];
           }
+        } else if (rawFmCats && rawFmCats.length > 0 && typeof rawFmCats[0] === 'number') {
+          // Old format: numeric IDs - convert to names for consistency
+          selectedCategories = rawFmCats as number[];
         } else {
-          selectedCategories = (rawFmCats as number[] | undefined)
-            ?? this.profile.lastSelectedCategories
-            ?? [1];
+          selectedCategories = this.profile.lastSelectedCategories ?? [1];
         }
         const postTypes = await this.getPostTypes(auth);
         if (postTypes.length === 0) {
@@ -509,11 +541,33 @@ export abstract class AbstractWordPressClient implements WordPressClient {
         const rawCats = matterData.categories as (string | number)[];
         if (rawCats && rawCats.length > 0) {
           if (typeof rawCats[0] === 'string') {
+            // Keep track of local-only categories (those not found on remote)
+            const localCategoryIdMap: Map<string, number> = new Map();
+            let nextNegativeId = -1;
+
             // Convert category names to IDs
-            const catIds = rawCats.map(name => {
+            const catIds: number[] = [];
+            for (const name of rawCats) {
               const term = this.categoriesList.find(t => t.name === String(name));
-              return term ? Number(term.id) : -1;
-            }).filter(id => id !== -1);
+              if (term) {
+                catIds.push(Number(term.id));
+              } else {
+                // This is a local-only category, assign a negative ID
+                const localId = nextNegativeId--;
+                catIds.push(localId);
+                localCategoryIdMap.set(String(name), localId);
+
+                // Add to categoriesList with negative ID for later creation
+                this.categoriesList.push({
+                  id: String(localId),
+                  name: String(name),
+                  slug: String(name).toLowerCase().replace(/\s+/g, '-'),
+                  taxonomy: 'category',
+                  description: '',
+                  count: 0
+                });
+              }
+            }
             postParams.categories = catIds.length > 0 ? catIds : (this.profile.lastSelectedCategories ?? [1]);
           } else {
             postParams.categories = rawCats as number[];
