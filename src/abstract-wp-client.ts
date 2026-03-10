@@ -131,6 +131,8 @@ export abstract class AbstractWordPressClient implements WordPressClient {
     updateMatterData?: (matter: MatterData) => void,
   }): Promise<WordPressClientResult<WordPressPublishResult>> {
     const { postParams, auth, updateMatterData } = params;
+    // Save original tag names before converting to IDs
+    const tagNames = [...postParams.tags] as string[];
     const tagTerms = await this.getTags(postParams.tags, auth);
     postParams.tags = tagTerms.map(term => term.id);
 
@@ -185,7 +187,7 @@ export abstract class AbstractWordPressClient implements WordPressClient {
         if (file) {
           await this.plugin.app.fileManager.processFrontMatter(file, fm => {
             // Check for duplicate keys before modification
-            const knownKeys = ['blogName', 'postId', 'postType', 'categories', 'slug', 'featurePicture', 'featuredImageId', 'tag'];
+            const knownKeys = ['blogName', 'postId', 'postType', 'categories', 'slug', 'featurePicture', 'featuredImageId', 'tags'];
             const existingKeys = Object.keys(fm);
             const duplicates = existingKeys.filter((key, index) => existingKeys.indexOf(key) !== index);
             if (duplicates.length > 0) {
@@ -210,14 +212,15 @@ export abstract class AbstractWordPressClient implements WordPressClient {
             fm.postId = postId;
             // 3. postType
             fm.postType = postParams.postType;
-            // 4. categories
+            // 4. categories (single string, not array)
             if (postParams.postType === PostTypeConst.Post) {
               // Write category names instead of IDs
               const categoryNames = postParams.categories.map(catId => {
                 const term = this.categoriesList.find(t => String(t.id) === String(catId));
                 return term ? term.name : String(catId);
               });
-              fm.categories = categoryNames;
+              // Use first category as single string
+              fm.categories = categoryNames[0] || '';
             }
             // 5. slug
             fm.slug = postParams.slug || '';
@@ -225,11 +228,13 @@ export abstract class AbstractWordPressClient implements WordPressClient {
             if (!fm.featurePicture) fm.featurePicture = '';
             // 7. featuredImageId (set by updateMatterData callback)
             if (!fm.featuredImageId) fm.featuredImageId = '';
-            // 8. tag (use 'tag' as field name per requirement)
-            if (postParams.tags && postParams.tags.length > 0) {
-              fm.tag = postParams.tags;
-            } else if (!fm.tag) {
-              fm.tag = '';
+            // 8. tags (comma-separated tag names, not IDs)
+            // Remove old 'tag' field if it exists (legacy cleanup)
+            delete fm.tag;
+            if (tagNames && tagNames.length > 0) {
+              fm.tags = tagNames.join(', ');
+            } else if (!fm.tags) {
+              fm.tags = '';
             }
 
             // Add excerpt below tag
