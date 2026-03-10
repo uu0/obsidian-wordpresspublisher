@@ -705,14 +705,59 @@ export class VaultImagePickerModal extends Modal {
 
       imageFiles.slice(0, 50).forEach(file => {
         const item = imageList.createDiv('vault-image-item');
-        item.style.padding = '8px';
-        item.style.border = '1px solid var(--border-color)';
-        item.style.borderRadius = '4px';
+        item.style.padding = '4px';
+        item.style.border = '2px solid transparent';
+        item.style.borderRadius = '8px';
         item.style.cursor = 'pointer';
-        item.style.textAlign = 'center';
-        item.style.fontSize = '12px';
+        item.style.overflow = 'hidden';
+        item.style.transition = 'all 0.2s';
 
-        item.createSpan({ text: file.name });
+        // 图片预览容器
+        const imgContainer = item.createDiv();
+        imgContainer.style.width = '100%';
+        imgContainer.style.height = '120px';
+        imgContainer.style.display = 'flex';
+        imgContainer.style.alignItems = 'center';
+        imgContainer.style.justifyContent = 'center';
+        imgContainer.style.backgroundColor = 'var(--background-secondary)';
+        imgContainer.style.borderRadius = '4px';
+        imgContainer.style.overflow = 'hidden';
+        imgContainer.style.marginBottom = '4px';
+
+        const img = imgContainer.createEl('img');
+        img.style.maxWidth = '100%';
+        img.style.maxHeight = '100%';
+        img.style.objectFit = 'cover';
+        img.style.width = '100%';
+        img.style.height = '100%';
+
+        // 异步加载图片预览
+        this.app.vault.readBinary(file).then(arrayBuffer => {
+          const blob = new Blob([arrayBuffer]);
+          const url = URL.createObjectURL(blob);
+          img.src = url;
+          img.onload = () => URL.revokeObjectURL(url);
+        }).catch(() => {
+          imgContainer.createEl('span', { text: '⚠️ 加载失败' });
+        });
+
+        // 文件名
+        const nameDiv = item.createDiv();
+        nameDiv.style.fontSize = '11px';
+        nameDiv.style.textAlign = 'center';
+        nameDiv.style.wordBreak = 'break-word';
+        nameDiv.style.padding = '4px';
+        nameDiv.textContent = file.name;
+
+        // 悬停效果
+        item.onmouseenter = () => {
+          item.style.borderColor = 'var(--interactive-accent)';
+          item.style.backgroundColor = 'var(--background-secondary)';
+        };
+        item.onmouseleave = () => {
+          item.style.borderColor = 'transparent';
+          item.style.backgroundColor = 'transparent';
+        };
 
         item.onclick = async () => {
           try {

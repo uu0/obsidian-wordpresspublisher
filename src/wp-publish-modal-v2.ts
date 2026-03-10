@@ -69,6 +69,12 @@ export class WpPublishModalV2 extends AbstractModal {
       this.aiService = new AIService(plugin.settings.aiConfig);
     }
 
+    // 检查 frontmatter 中是否已有特色图片链接
+    if (matterData.featuredImageUrl) {
+      console.log('[WpPublishModalV2] Found featured image in frontmatter:', matterData.featuredImageUrl);
+      // 如果有，可以在预览中显示（但不会重新上传）
+    }
+
     // 自动检测文章第一张图片作为特色图片
     this.detectFirstImage();
   }
@@ -356,7 +362,20 @@ export class WpPublishModalV2 extends AbstractModal {
   }
 
   private selectUnsplashImage(params: WordPressPostParams): void {
-    new Notice('请在插件设置中配置 Unsplash API Key');
+    const modal = new FeaturedImageModal(
+      this.app,
+      this.plugin,
+      params.title || this.noteTitle,
+      this.articleContent,
+      (result) => {
+        if (result) {
+          this.featuredImage = result;
+          this.display(params);
+          new Notice('图片已选择');
+        }
+      }
+    );
+    modal.open();
   }
 
   private generateAImage(params: WordPressPostParams): void {
@@ -364,7 +383,21 @@ export class WpPublishModalV2 extends AbstractModal {
       new Notice('请先在插件设置中配置 AI 服务');
       return;
     }
-    new Notice('AI 生成功能需要从特色图片选择器中使用');
+
+    const modal = new FeaturedImageModal(
+      this.app,
+      this.plugin,
+      params.title || this.noteTitle,
+      this.articleContent,
+      (result) => {
+        if (result) {
+          this.featuredImage = result;
+          this.display(params);
+          new Notice('图片已选择');
+        }
+      }
+    );
+    modal.open();
   }
 
   private selectVaultImage(params: WordPressPostParams): void {
@@ -399,7 +432,8 @@ export class WpPublishModalV2 extends AbstractModal {
           .setValue(params.title || '')
           .onChange(value => {
             params.title = value;
-            if (this.plugin.settings.autoGenerateSlug && this.slugInput && !this.slugInput.value) {
+            // 标题变化时自动生成 slug
+            if (this.plugin.settings.autoGenerateSlug && this.slugInput) {
               this.generateDefaultSlug(value);
             }
           });
@@ -593,7 +627,65 @@ export class WpPublishModalV2 extends AbstractModal {
         this.editableContent = textarea.value;
       };
     } else {
-      // 预览模式
+      // 预览模式 - 显示特色图片和渲染内容
+
+      // 特色图片预览
+      if (this.featuredImage) {
+        const featuredImageSection = card.createDiv('wp-preview-featured-image');
+        featuredImageSection.style.marginBottom = '20px';
+        featuredImageSection.style.textAlign = 'center';
+
+        const label = featuredImageSection.createEl('div', { text: '特色图片' });
+        label.style.fontSize = '12px';
+        label.style.color = 'var(--text-muted)';
+        label.style.marginBottom = '8px';
+
+        const imgContainer = featuredImageSection.createDiv();
+        imgContainer.style.maxWidth = '100%';
+        imgContainer.style.borderRadius = '8px';
+        imgContainer.style.overflow = 'hidden';
+        imgContainer.style.border = '1px solid var(--background-modifier-border)';
+
+        const blob = new Blob([this.featuredImage.content], { type: this.featuredImage.mimeType });
+        const url = URL.createObjectURL(blob);
+        const img = imgContainer.createEl('img', { attr: { src: url } });
+        img.style.maxWidth = '100%';
+        img.style.height = 'auto';
+        img.style.display = 'block';
+      } else if (this.matterData.featuredImageUrl) {
+        // 如果没有选择新图片，但 frontmatter 中有已上传的图片链接
+        const featuredImageSection = card.createDiv('wp-preview-featured-image');
+        featuredImageSection.style.marginBottom = '20px';
+        featuredImageSection.style.textAlign = 'center';
+
+        const label = featuredImageSection.createEl('div', { text: '特色图片（已上传到 WordPress）' });
+        label.style.fontSize = '12px';
+        label.style.color = 'var(--text-muted)';
+        label.style.marginBottom = '8px';
+
+        const imgContainer = featuredImageSection.createDiv();
+        imgContainer.style.maxWidth = '100%';
+        imgContainer.style.borderRadius = '8px';
+        imgContainer.style.overflow = 'hidden';
+        imgContainer.style.border = '1px solid var(--background-modifier-border)';
+
+        const img = imgContainer.createEl('img', { attr: { src: this.matterData.featuredImageUrl } });
+        img.style.maxWidth = '100%';
+        img.style.height = 'auto';
+        img.style.display = 'block';
+
+        // 添加说明
+        const note = featuredImageSection.createDiv();
+        note.style.fontSize = '11px';
+        note.style.color = 'var(--text-muted)';
+        note.style.marginTop = '8px';
+        note.style.padding = '8px';
+        note.style.backgroundColor = 'var(--background-secondary)';
+        note.style.borderRadius = '4px';
+        note.innerHTML = '💡 此图片链接保存在笔记的 frontmatter 中（featuredImageUrl 字段），不会在预览和发布时显示，仅用于记录已上传的特色图片。';
+      }
+
+      // 文章内容预览
       const previewContent = card.createDiv('wp-preview-rendered');
       const html = AppState.markdownParser.render(this.editableContent);
       previewContent.innerHTML = html;
@@ -626,38 +718,22 @@ export class WpPublishModalV2 extends AbstractModal {
 
     // 标题和说明
     const header = card.createDiv('wp-advanced-header');
-    header.createEl('h3', { text: 'AI 提示词设置', cls: 'wp-advanced-card-title' });
+    header.createEl('h3', { text: '自定义提示词', cls: 'wp-advanced-card-title' });
 
     const notice = header.createDiv('wp-advanced-notice');
-    notice.createEl('strong', { text: '⚠️ 重要：' });
-    notice.createSpan({ text: '提示词模板用于控制 AI 生成内容的方式。使用占位符 ' });
-    notice.createEl('code', { text: '{title}' });
-    notice.createSpan({ text: ' 和 ' });
-    notice.createEl('code', { text: '{content}' });
-    notice.createSpan({ text: ' 来引用文章标题和内容。' });
-
-    // 生图提示词
-    const imageSection = card.createDiv('wp-advanced-section');
-    imageSection.createEl('h4', { text: '📷 生图提示词', cls: 'wp-advanced-section-title' });
-    new Setting(imageSection)
-      .setDesc('AI 生成特色图片时使用的提示词模板')
-      .addTextArea(text => {
-        text.setPlaceholder(this.imageGenerationPrompt)
-          .setValue(this.plugin.settings.imageGenerationPrompt || '')
-          .onChange(value => {
-            (this.plugin.settings as SafeAny).imageGenerationPrompt = value;
-          });
-        text.inputEl.rows = 4;
-        text.inputEl.style.width = '100%';
-      });
+    notice.style.padding = '12px';
+    notice.style.backgroundColor = 'var(--background-secondary)';
+    notice.style.borderRadius = '6px';
+    notice.style.marginBottom = '20px';
+    notice.createEl('p', { text: '在这里自定义 AI 生成内容时使用的提示词。留空则使用默认提示词。' });
 
     // 摘要提示词
     const summarySection = card.createDiv('wp-advanced-section');
-    summarySection.createEl('h4', { text: '📝 摘要提示词', cls: 'wp-advanced-section-title' });
+    summarySection.createEl('h4', { text: '📝 摘要生成提示词', cls: 'wp-advanced-section-title' });
     new Setting(summarySection)
-      .setDesc('AI 生成摘要时使用的提示词模板')
+      .setDesc('自定义 AI 生成摘要时使用的提示词')
       .addTextArea(text => {
-        text.setPlaceholder(this.summaryPrompt)
+        text.setPlaceholder('例如：请用专业的语气生成一个简洁的摘要...')
           .setValue(this.plugin.settings.summaryPrompt || '')
           .onChange(value => {
             (this.plugin.settings as SafeAny).summaryPrompt = value;
@@ -668,14 +744,29 @@ export class WpPublishModalV2 extends AbstractModal {
 
     // 标签提示词
     const tagsSection = card.createDiv('wp-advanced-section');
-    tagsSection.createEl('h4', { text: '🏷️ 标签提示词', cls: 'wp-advanced-section-title' });
+    tagsSection.createEl('h4', { text: '🏷️ 标签生成提示词', cls: 'wp-advanced-section-title' });
     new Setting(tagsSection)
-      .setDesc('AI 生成标签时使用的提示词模板')
+      .setDesc('自定义 AI 生成标签时使用的提示词')
       .addTextArea(text => {
-        text.setPlaceholder(this.tagsPrompt)
+        text.setPlaceholder('例如：请生成3-5个相关标签...')
           .setValue(this.plugin.settings.tagsPrompt || '')
           .onChange(value => {
             (this.plugin.settings as SafeAny).tagsPrompt = value;
+          });
+        text.inputEl.rows = 4;
+        text.inputEl.style.width = '100%';
+      });
+
+    // 图片描述提示词
+    const imageSection = card.createDiv('wp-advanced-section');
+    imageSection.createEl('h4', { text: '🎨 图片描述提示词', cls: 'wp-advanced-section-title' });
+    new Setting(imageSection)
+      .setDesc('自定义 AI 生成图片描述时使用的提示词')
+      .addTextArea(text => {
+        text.setPlaceholder('例如：生成一个专业的博客封面图描述...')
+          .setValue(this.plugin.settings.imageGenerationPrompt || '')
+          .onChange(value => {
+            (this.plugin.settings as SafeAny).imageGenerationPrompt = value;
           });
         text.inputEl.rows = 4;
         text.inputEl.style.width = '100%';
@@ -685,7 +776,7 @@ export class WpPublishModalV2 extends AbstractModal {
     const saveSection = card.createDiv('wp-advanced-save');
     new Setting(saveSection)
       .addButton(btn => {
-        btn.setButtonText('💾 保存高级设置')
+        btn.setButtonText('💾 保存设置')
           .setCta()
           .onClick(async () => {
             await this.plugin.saveSettings();

@@ -304,6 +304,15 @@ export abstract class AbstractWordPressClient implements WordPressClient {
                     // Get the media ID to use as featured image
                     postParams.featuredMedia = uploadResult.data.id;
                     console.log('[WpPublishModalV2] Featured image uploaded, media ID:', uploadResult.data.id);
+
+                    // Save featured image URL to frontmatter
+                    if (uploadResult.data.url) {
+                      updateMatterData({
+                        ...matterData,
+                        featuredImageUrl: uploadResult.data.url,
+                        featuredImageId: uploadResult.data.id
+                      });
+                    }
                   } else {
                     new Notice(this.plugin.i18n.t('error_mediaUploadFailed', {
                       name: featuredImage.fileName,
