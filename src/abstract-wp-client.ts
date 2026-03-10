@@ -366,12 +366,16 @@ export abstract class AbstractWordPressClient implements WordPressClient {
 
         // Handle frontmatter categories - may be names (new format) or IDs (old format)
         let selectedCategories: number[];
-        const rawFmCats = matterData.categories as (string | number)[] | undefined;
-        if (rawFmCats && rawFmCats.length > 0 && typeof rawFmCats[0] === 'string') {
+        const rawFmCats = matterData.categories;
+        // Normalize to array: handle string (single category) or array (multiple categories)
+        const fmCatArray: (string | number)[] = typeof rawFmCats === 'string'
+          ? [rawFmCats]
+          : (Array.isArray(rawFmCats) ? rawFmCats : []);
+        if (fmCatArray.length > 0 && typeof fmCatArray[0] === 'string') {
           // New format: category names
           const newCategoryNames: string[] = [];
           selectedCategories = [];
-          for (const name of rawFmCats as string[]) {
+          for (const name of fmCatArray as string[]) {
             const existing = categories.find(c => c.name === name);
             if (existing) {
               selectedCategories.push(Number(existing.id));
@@ -403,9 +407,9 @@ export abstract class AbstractWordPressClient implements WordPressClient {
           if (selectedCategories.length === 0) {
             selectedCategories = this.profile.lastSelectedCategories ?? [1];
           }
-        } else if (rawFmCats && rawFmCats.length > 0 && typeof rawFmCats[0] === 'number') {
+        } else if (fmCatArray.length > 0 && typeof fmCatArray[0] === 'number') {
           // Old format: numeric IDs - convert to names for consistency
-          selectedCategories = rawFmCats as number[];
+          selectedCategories = fmCatArray as number[];
         } else {
           selectedCategories = this.profile.lastSelectedCategories ?? [1];
         }
@@ -543,16 +547,20 @@ export abstract class AbstractWordPressClient implements WordPressClient {
       // only 'post' supports categories and tags
       if (matterData.categories) {
         // Handle both string names (new format) and number IDs (old format)
-        const rawCats = matterData.categories as (string | number)[];
-        if (rawCats && rawCats.length > 0) {
-          if (typeof rawCats[0] === 'string') {
+        // Also handle string (single category) vs array (multiple categories)
+        const rawCats = matterData.categories;
+        const catArray: (string | number)[] = typeof rawCats === 'string'
+          ? [rawCats]
+          : (Array.isArray(rawCats) ? rawCats : []);
+        if (catArray.length > 0) {
+          if (typeof catArray[0] === 'string') {
             // Keep track of local-only categories (those not found on remote)
             const localCategoryIdMap: Map<string, number> = new Map();
             let nextNegativeId = -1;
 
             // Convert category names to IDs
             const catIds: number[] = [];
-            for (const name of rawCats) {
+            for (const name of catArray) {
               const term = this.categoriesList.find(t => t.name === String(name));
               if (term) {
                 catIds.push(Number(term.id));
@@ -575,7 +583,7 @@ export abstract class AbstractWordPressClient implements WordPressClient {
             }
             postParams.categories = catIds.length > 0 ? catIds : (this.profile.lastSelectedCategories ?? [1]);
           } else {
-            postParams.categories = rawCats as number[];
+            postParams.categories = catArray as number[];
           }
         } else {
           postParams.categories = this.profile.lastSelectedCategories ?? [1];
