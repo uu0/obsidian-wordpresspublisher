@@ -10,7 +10,7 @@ import IMask, { DynamicMaskType, InputMask } from 'imask';
 import { SafeAny } from './utils';
 import { format, parse } from 'date-fns';
 import { SlugGenerator } from './slug-generator';
-import { FeaturedImageModal, FeaturedImageResult } from './featured-image-modal';
+import { FeaturedImageModal, FeaturedImageResult, VaultImagePickerModal } from './featured-image-modal';
 import { AIService } from './ai-service';
 import { AppState } from './app-state';
 
@@ -32,15 +32,15 @@ export class WpPublishModalV2 extends AbstractModal {
 
   // Prompt templates from settings
   private get imageGenerationPrompt(): string {
-    return this.plugin.settings.imageGenerationPrompt || '根据以下内容生成一个适合作为封面图片的英文描述：{title} - {content}';
+    return this.plugin.settings.imageGenerationPrompt || 'Generate a professional blog cover image description in English based on: {title}. Return ONLY the image description.';
   }
 
   private get summaryPrompt(): string {
-    return this.plugin.settings.summaryPrompt || '请为以下文章生成一个简洁的摘要，不超过200字：{content}';
+    return this.plugin.settings.summaryPrompt || 'Please generate a concise summary for the following article, no more than 200 characters. Return ONLY the summary text, nothing else:\n\n{content}';
   }
 
   private get tagsPrompt(): string {
-    return this.plugin.settings.tagsPrompt || '请为以下文章生成3-5个标签，用逗号分隔：{content}';
+    return this.plugin.settings.tagsPrompt || 'Please generate 3-5 tags for the following article, separated by commas. Return ONLY the comma-separated tags, nothing else:\n\n{content}';
   }
 
   constructor(
@@ -222,11 +222,11 @@ export class WpPublishModalV2 extends AbstractModal {
   private updateModalWidth(): void {
     const modalEl = this.modalEl;
     if (modalEl) {
-      // 自适应窗口，最大800px，最小600px
-      const viewportWidth = window.innerWidth;
-      const targetWidth = Math.min(800, Math.max(600, viewportWidth * 0.8));
-      modalEl.style.width = `${targetWidth}px`;
-      modalEl.style.maxWidth = '90vw';
+      // 自适应窗口宽度，最小400px
+      modalEl.style.width = '90vw';
+      modalEl.style.maxWidth = '800px';
+      modalEl.style.minWidth = '400px';
+      modalEl.style.boxSizing = 'border-box';
     }
   }
 
@@ -305,20 +305,22 @@ export class WpPublishModalV2 extends AbstractModal {
     const localBtn = btnRow.createEl('button', { text: '📁 本地', cls: 'feature-btn' });
     localBtn.onclick = () => this.selectLocalImage(params);
 
-    // 在线按钮 (Unsplash)
+    // 在线按钮 (Unsplash) - 始终可点击
     const onlineBtn = btnRow.createEl('button', { text: '🌐 在线', cls: 'feature-btn' });
-    if (!this.plugin.settings.unsplashAccessKey) {
-      onlineBtn.addClass('disabled');
-      onlineBtn.title = '请先在插件设置中配置 Unsplash API Key';
-    } else {
-      onlineBtn.onclick = () => this.selectUnsplashImage(params);
-    }
+    onlineBtn.onclick = () => {
+      if (!this.plugin.settings.unsplashAccessKey) {
+        new Notice('请先在插件设置中配置 Unsplash API Key');
+      } else {
+        this.selectUnsplashImage(params);
+      }
+    };
 
-    // AI生成按钮
+    // AI生成按钮 - 始终可点击
     const aiBtn = btnRow.createEl('button', { text: '🎨 AI生成', cls: 'feature-btn' });
     if (!this.plugin.settings.aiConfig) {
-      aiBtn.addClass('disabled');
-      aiBtn.title = '请先在插件设置中配置 AI 服务';
+      aiBtn.onclick = () => {
+        new Notice('请先在插件设置中配置 AI 服务（图片生成 AI）');
+      };
     } else {
       aiBtn.onclick = () => this.generateAImage(params);
     }
@@ -366,29 +368,21 @@ export class WpPublishModalV2 extends AbstractModal {
   }
 
   private selectVaultImage(params: WordPressPostParams): void {
-    const imageFiles = this.app.vault.getFiles().filter(file =>
-      file.extension.match(/^(jpg|jpeg|png|gif|webp)$/i)
+    // 打开图库选择器模态框
+    const modal = new VaultImagePickerModal(
+      this.app,
+      async (file, arrayBuffer, mimeType) => {
+        this.featuredImage = {
+          fileName: file.name,
+          mimeType: mimeType,
+          content: arrayBuffer,
+          width: 1200
+        };
+        this.display(params);
+        new Notice('已从图库选择: ' + file.name);
+      }
     );
-
-    if (imageFiles.length === 0) {
-      new Notice('笔记库中没有图片文件');
-      return;
-    }
-
-    // 简单处理：使用第一张图片
-    const file = imageFiles[0];
-    this.app.vault.readBinary(file).then(content => {
-      this.featuredImage = {
-        fileName: file.name,
-        mimeType: this.getMimeType(file.extension),
-        content: content,
-        width: 1200
-      };
-      this.display(params);
-      new Notice('已从图库选择: ' + file.name);
-    }).catch(error => {
-      new Notice(`读取图片失败: ${error instanceof Error ? error.message : '未知错误'}`);
-    });
+    modal.open();
   }
 
   private renderBasicSettings(container: HTMLElement, params: WordPressPostParams): void {
@@ -585,7 +579,7 @@ export class WpPublishModalV2 extends AbstractModal {
     card.createEl('h3', { text: '文章预览', cls: 'wp-preview-card-title' });
 
     if (this.isEditingPreview) {
-      // 编辑模式
+      // 编辑模式 - 只显示编辑区，保存按钮在底部栏
       const editorArea = card.createDiv('wp-preview-editor-area');
       const textarea = editorArea.createEl('textarea', {
         cls: 'wp-preview-textarea',
@@ -597,18 +591,6 @@ export class WpPublishModalV2 extends AbstractModal {
       textarea.style.fontFamily = 'var(--font-mono)';
       textarea.oninput = () => {
         this.editableContent = textarea.value;
-      };
-
-      // 保存按钮
-      const saveBtnContainer = card.createDiv('wp-preview-save-container');
-      const saveBtn = saveBtnContainer.createEl('button', {
-        text: '💾 保存',
-        cls: 'mod-cta'
-      });
-      saveBtn.onclick = () => {
-        this.isEditingPreview = false;
-        this.display(params);
-        new Notice('内容已保存');
       };
     } else {
       // 预览模式
@@ -641,71 +623,75 @@ export class WpPublishModalV2 extends AbstractModal {
   // ==================== 高级设置标签 ====================
   private renderAdvancedTab(container: HTMLElement, params: WordPressPostParams): void {
     const card = container.createDiv('wp-advanced-card');
-    card.createEl('h3', { text: 'AI 提示词设置', cls: 'wp-advanced-card-title' });
+
+    // 标题和说明
+    const header = card.createDiv('wp-advanced-header');
+    header.createEl('h3', { text: 'AI 提示词设置', cls: 'wp-advanced-card-title' });
+
+    const notice = header.createDiv('wp-advanced-notice');
+    notice.createEl('strong', { text: '⚠️ 重要：' });
+    notice.createSpan({ text: '提示词模板用于控制 AI 生成内容的方式。使用占位符 ' });
+    notice.createEl('code', { text: '{title}' });
+    notice.createSpan({ text: ' 和 ' });
+    notice.createEl('code', { text: '{content}' });
+    notice.createSpan({ text: ' 来引用文章标题和内容。' });
 
     // 生图提示词
-    new Setting(card)
-      .setName('生图提示词')
-      .setDesc('AI 生成特色图片时使用的提示词模板，使用 {title} 和 {content} 作为占位符')
+    const imageSection = card.createDiv('wp-advanced-section');
+    imageSection.createEl('h4', { text: '📷 生图提示词', cls: 'wp-advanced-section-title' });
+    new Setting(imageSection)
+      .setDesc('AI 生成特色图片时使用的提示词模板')
       .addTextArea(text => {
         text.setPlaceholder(this.imageGenerationPrompt)
           .setValue(this.plugin.settings.imageGenerationPrompt || '')
           .onChange(value => {
             (this.plugin.settings as SafeAny).imageGenerationPrompt = value;
           });
-        text.inputEl.rows = 3;
+        text.inputEl.rows = 4;
         text.inputEl.style.width = '100%';
       });
 
     // 摘要提示词
-    new Setting(card)
-      .setName('摘要提示词')
-      .setDesc('AI 生成摘要时使用的提示词模板，使用 {content} 作为占位符')
+    const summarySection = card.createDiv('wp-advanced-section');
+    summarySection.createEl('h4', { text: '📝 摘要提示词', cls: 'wp-advanced-section-title' });
+    new Setting(summarySection)
+      .setDesc('AI 生成摘要时使用的提示词模板')
       .addTextArea(text => {
         text.setPlaceholder(this.summaryPrompt)
           .setValue(this.plugin.settings.summaryPrompt || '')
           .onChange(value => {
             (this.plugin.settings as SafeAny).summaryPrompt = value;
           });
-        text.inputEl.rows = 3;
+        text.inputEl.rows = 4;
         text.inputEl.style.width = '100%';
       });
 
     // 标签提示词
-    new Setting(card)
-      .setName('标签提示词')
-      .setDesc('AI 生成标签时使用的提示词模板，使用 {content} 作为占位符')
+    const tagsSection = card.createDiv('wp-advanced-section');
+    tagsSection.createEl('h4', { text: '🏷️ 标签提示词', cls: 'wp-advanced-section-title' });
+    new Setting(tagsSection)
+      .setDesc('AI 生成标签时使用的提示词模板')
       .addTextArea(text => {
         text.setPlaceholder(this.tagsPrompt)
           .setValue(this.plugin.settings.tagsPrompt || '')
           .onChange(value => {
             (this.plugin.settings as SafeAny).tagsPrompt = value;
           });
-        text.inputEl.rows = 3;
+        text.inputEl.rows = 4;
         text.inputEl.style.width = '100%';
       });
 
     // 保存设置按钮
-    new Setting(card)
+    const saveSection = card.createDiv('wp-advanced-save');
+    new Setting(saveSection)
       .addButton(btn => {
-        btn.setButtonText('保存高级设置')
+        btn.setButtonText('💾 保存高级设置')
+          .setCta()
           .onClick(async () => {
             await this.plugin.saveSettings();
             new Notice('设置已保存');
           });
       });
-
-    // 帮助信息
-    const helpText = card.createDiv('wp-advanced-help');
-    helpText.createEl('p', {
-      text: '提示词模板中的占位符：',
-      cls: 'help-title'
-    });
-    helpText.createEl('code', { text: '{title}' });
-    helpText.createSpan({ text: ' - 文章标题' });
-    helpText.createEl('br');
-    helpText.createEl('code', { text: '{content}' });
-    helpText.createSpan({ text: ' - 文章内容（摘要取前2000字）' });
   }
 
   // ==================== 底部操作栏 ====================
@@ -728,19 +714,29 @@ export class WpPublishModalV2 extends AbstractModal {
         this.display(params);
       };
 
-      // 生成摘要按钮
-      if (this.aiService) {
-        const summaryBtn = bottomContainer.createEl('button', {
-          text: '📝 生成摘要'
-        });
+      // 生成摘要按钮 - 始终显示
+      const summaryBtn = bottomContainer.createEl('button', {
+        text: '📝 生成摘要'
+      });
+      if (!this.aiService) {
+        summaryBtn.addClass('disabled');
+        summaryBtn.onclick = () => {
+          new Notice('请先在插件设置中配置 AI 服务（文字处理 AI）');
+        };
+      } else {
         summaryBtn.onclick = () => this.generateSummary(params);
       }
 
-      // 生成标签按钮
-      if (this.aiService) {
-        const tagsBtn = bottomContainer.createEl('button', {
-          text: '🏷️ 生成标签'
-        });
+      // 生成标签按钮 - 始终显示
+      const tagsBtn = bottomContainer.createEl('button', {
+        text: '🏷️ 生成标签'
+      });
+      if (!this.aiService) {
+        tagsBtn.addClass('disabled');
+        tagsBtn.onclick = () => {
+          new Notice('请先在插件设置中配置 AI 服务（文字处理 AI）');
+        };
+      } else {
         tagsBtn.onclick = () => this.generateTags(params);
       }
 
@@ -760,25 +756,44 @@ export class WpPublishModalV2 extends AbstractModal {
     }
   }
 
+  private sanitizeContentForAI(content: string, maxLen: number = 1500): string {
+    // Strip markdown images, links, frontmatter, code blocks for cleaner AI input
+    let cleaned = content
+      .replace(/^---[\s\S]*?---\n?/m, '') // frontmatter
+      .replace(/```[\s\S]*?```/g, '')     // code blocks
+      .replace(/!\[.*?\]\(.*?\)/g, '')    // md images
+      .replace(/!\[\[.*?\]\]/g, '')       // wiki images
+      .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1') // md links -> text only
+      .replace(/\[\[([^\]|]*)\|?([^\]]*)\]\]/g, '$2$1') // wiki links
+      .replace(/#{1,6}\s*/g, '')          // headers
+      .replace(/[*_~`]+/g, '')            // emphasis
+      .replace(/\n{3,}/g, '\n\n')         // multiple newlines
+      .trim();
+    return cleaned.substring(0, maxLen);
+  }
+
   private async generateSummary(params: WordPressPostParams): Promise<void> {
     if (!this.aiService) {
       new Notice('请先在插件设置中配置 AI 服务');
       return;
     }
 
-    if (!this.articleContent) {
+    if (!this.editableContent && !this.articleContent) {
       new Notice('文章内容为空');
       return;
     }
 
     try {
-      const prompt = this.summaryPrompt.replace('{content}', this.articleContent.substring(0, 2000));
+      new Notice('正在生成摘要...');
+      const cleanContent = this.sanitizeContentForAI(this.editableContent || this.articleContent);
+      const prompt = this.summaryPrompt.replace('{content}', cleanContent);
       const summary = await this.aiService.generateText(prompt);
-      params.excerpt = summary;
-      new Notice('摘要已生成');
+      params.excerpt = summary.trim();
+      new Notice('摘要已生成: ' + params.excerpt.substring(0, 50) + '...');
       this.display(params);
     } catch (error) {
-      new Notice(`生成失败: ${error instanceof Error ? error.message : '未知错误'}`);
+      console.error('[WpPublishModalV2] Generate summary error:', error);
+      new Notice(`生成摘要失败: ${error instanceof Error ? error.message : '未知错误'}`);
     }
   }
 
@@ -788,19 +803,22 @@ export class WpPublishModalV2 extends AbstractModal {
       return;
     }
 
-    if (!this.articleContent) {
+    if (!this.editableContent && !this.articleContent) {
       new Notice('文章内容为空');
       return;
     }
 
     try {
-      const prompt = this.tagsPrompt.replace('{content}', this.articleContent.substring(0, 2000));
+      new Notice('正在生成标签...');
+      const cleanContent = this.sanitizeContentForAI(this.editableContent || this.articleContent);
+      const prompt = this.tagsPrompt.replace('{content}', cleanContent);
       const tags = await this.aiService.generateText(prompt);
-      params.tags = tags.split(',').map(t => t.trim()).filter(t => t).slice(0, 5);
-      new Notice('标签已生成');
+      params.tags = tags.split(/[,，]/).map(t => t.trim()).filter(t => t).slice(0, 5);
+      new Notice('标签已生成: ' + params.tags.join(', '));
       this.display(params);
     } catch (error) {
-      new Notice(`生成失败: ${error instanceof Error ? error.message : '未知错误'}`);
+      console.error('[WpPublishModalV2] Generate tags error:', error);
+      new Notice(`生成标签失败: ${error instanceof Error ? error.message : '未知错误'}`);
     }
   }
 

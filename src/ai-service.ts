@@ -95,7 +95,26 @@ export class AIService {
       }
       throw new Error('Unsupported provider');
     } catch (error) {
-      throw new Error(`AI text generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      // 改进错误信息，包含更多调试信息
+      let errorMsg = 'Unknown error';
+      if (error instanceof Error) {
+        errorMsg = error.message;
+        // 尝试提取更详细的错误信息
+        if ('status' in error) {
+          errorMsg += ` (status: ${(error as any).status})`;
+        }
+        if ('response' in error) {
+          try {
+            const responseData = (error as any).response;
+            if (responseData) {
+              errorMsg += ` - ${JSON.stringify(responseData)}`;
+            }
+          } catch (e) {
+            // 忽略 JSON 序列化错误
+          }
+        }
+      }
+      throw new Error(`AI text generation failed: ${errorMsg}`);
     }
   }
 
@@ -130,7 +149,25 @@ export class AIService {
         throw new Error('Claude does not support direct image generation');
       }
     } catch (error) {
-      throw new Error(`AI image generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      // 改进错误信息
+      let errorMsg = 'Unknown error';
+      if (error instanceof Error) {
+        errorMsg = error.message;
+        if ('status' in error) {
+          errorMsg += ` (status: ${(error as any).status})`;
+        }
+        if ('response' in error) {
+          try {
+            const responseData = (error as any).response;
+            if (responseData) {
+              errorMsg += ` - ${JSON.stringify(responseData)}`;
+            }
+          } catch (e) {
+            // 忽略 JSON 序列化错误
+          }
+        }
+      }
+      throw new Error(`AI image generation failed: ${errorMsg}`);
     }
   }
 

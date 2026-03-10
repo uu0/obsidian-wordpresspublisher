@@ -78,12 +78,13 @@ export class FeaturedImageModal extends Modal {
       text: '🎨 AI 生成',
       cls: 'feature-btn'
     });
-    if (this.aiService) {
-      aiBtn.onclick = () => this.openAIPicker();
-    } else {
-      aiBtn.addClass('disabled');
-      aiBtn.title = '请先在设置中配置 AI 服务';
-    }
+    aiBtn.onclick = () => {
+      if (!this.aiService) {
+        new Notice('请先在设置中配置 AI 服务（图片生成 AI）');
+      } else {
+        this.openAIPicker();
+      }
+    };
 
     // 笔记库选择按钮
     const vaultBtn = buttonRow.createEl('button', {
@@ -657,7 +658,7 @@ class AIGenerateModal extends Modal {
 /**
  * 笔记库图片选择器
  */
-class VaultImagePickerModal extends Modal {
+export class VaultImagePickerModal extends Modal {
   private onSelect: (file: TFile, arrayBuffer: ArrayBuffer, mimeType: string) => void;
 
   constructor(app: App, onSelect: (file: TFile, arrayBuffer: ArrayBuffer, mimeType: string) => void) {

@@ -70,6 +70,9 @@ export class WpRestClient extends AbstractWordPressClient {
     if (postParams.status === PostStatus.Future) {
       extra.date = formatISO(postParams.datetime ?? new Date());
     }
+    // Pass slug and excerpt to WordPress API
+    const slug = postParams.slug || '';
+    const excerpt = postParams.excerpt || '';
     const resp: SafeAny = await this.client.httpPost(
       url,
       {
@@ -80,6 +83,8 @@ export class WpRestClient extends AbstractWordPressClient {
         categories: postParams.categories,
         tags: postParams.tags ?? [],
         featured_media: (postParams as SafeAny).featuredMedia,
+        ...(slug ? { slug } : {}),
+        ...(excerpt ? { excerpt } : {}),
         ...extra
       },
       {
