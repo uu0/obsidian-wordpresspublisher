@@ -64,21 +64,37 @@ export class AIService {
 
   /**
    * 验证 AI 配置是否有效
+   * @param config AI 配置
+   * @param isImageModel 是否为图片生成模型（使用 /images/generations 验证而非 /chat/completions）
    */
-  async validateConfig(config: AIConfig): Promise<{ valid: boolean; error?: string }> {
+  async validateConfig(config: AIConfig, isImageModel: boolean = false): Promise<{ valid: boolean; error?: string }> {
     try {
       if (config.provider === 'openai') {
-        // 用一个最小请求验证
         const baseURL = config.baseURL.replace(/\/+$/, '');
-        await apiRequest(
-          `${baseURL}/chat/completions`,
-          { 'Authorization': `Bearer ${config.apiKey}` },
-          {
-            model: config.model,
-            messages: [{ role: 'user', content: 'test' }],
-            max_tokens: 5
-          }
-        );
+        if (isImageModel) {
+          // 图片模型使用 /images/generations 端点验证
+          await apiRequest(
+            `${baseURL}/images/generations`,
+            { 'Authorization': `Bearer ${config.apiKey}` },
+            {
+              model: config.model,
+              prompt: 'test',
+              n: 1,
+              size: '1024x1024'
+            }
+          );
+        } else {
+          // 文字模型使用 /chat/completions 端点验证
+          await apiRequest(
+            `${baseURL}/chat/completions`,
+            { 'Authorization': `Bearer ${config.apiKey}` },
+            {
+              model: config.model,
+              messages: [{ role: 'user', content: 'test' }],
+              max_tokens: 5
+            }
+          );
+        }
         return { valid: true };
       } else if (config.provider === 'claude') {
         const baseURL = config.baseURL.replace(/\/+$/, '');

@@ -543,7 +543,7 @@ export class WordpressSettingTab extends PluginSettingTab {
 
             try {
               const service = new AIService(this.plugin.settings.aiConfig);
-              const result = await service.validateConfig(this.plugin.settings.aiConfig.imageAI);
+              const result = await service.validateConfig(this.plugin.settings.aiConfig.imageAI, true);
 
               if (result.valid) {
                 new Notice('✓ 图片生成 AI 配置验证成功');
