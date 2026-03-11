@@ -18,3 +18,6 @@ global.console = {
 
 // Set test timeout
 jest.setTimeout(10000);
+
+// Mock process.env for testing
+process.env.NODE_ENV = 'test';
