@@ -683,13 +683,14 @@ export class WpPublishModalV2 extends AbstractModal {
     }
 
     // 分类（仅Post类型）
-    if (params.postType === PostTypeConst.Post && this.categories.items.length > 0) {
+    // 先过滤掉空值的分类项
+    const validCategories = this.categories.items.filter(it => it.name && it.name.trim());
+
+    if (params.postType === PostTypeConst.Post && validCategories.length > 0) {
       new Setting(card)
         .setName('分类')
         .setDesc('选择文章分类')
         .addDropdown((dropdown) => {
-          // 过滤掉空值的分类项
-          const validCategories = this.categories.items.filter(it => it.name && it.name.trim());
 
           // 查找"未分类"
           const uncategorized = validCategories.find(it => it.name === '未分类');
