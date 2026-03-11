@@ -12,6 +12,7 @@ import { DEFAULT_SETTINGS, SettingsVersion, upgradeSettings, WordpressPluginSett
 import { PassCrypto } from './pass-crypto';
 import { doClientPublish, setupMarkdownParser, showError } from './utils';
 import { cloneDeep } from 'lodash-es';
+import { ImageCacheManager } from './image-cache-manager';
 
 /**
  * Main plugin class for WordPress Publisher
@@ -100,6 +101,24 @@ export default class WordpressPlugin extends Plugin {
 
     // Add settings tab
     this.addSettingTab(new WordpressSettingTab(this));
+
+    // Clean up orphan image caches (notes that no longer exist)
+    this.cleanupOrphanCaches();
+  }
+
+  /**
+   * Clean up orphan image caches in background
+   */
+  private async cleanupOrphanCaches(): Promise<void> {
+    try {
+      const cacheManager = new ImageCacheManager(this.app);
+      const cleanedCount = await cacheManager.cleanupOrphanCaches();
+      if (cleanedCount > 0) {
+        console.log('[WordpressPlugin] Cleaned up', cleanedCount, 'orphan image caches');
+      }
+    } catch (error) {
+      console.error('[WordpressPlugin] Failed to cleanup orphan caches:', error);
+    }
   }
 
   /**

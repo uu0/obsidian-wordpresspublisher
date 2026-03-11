@@ -15,6 +15,7 @@ import { FeaturedImageResult, VaultImagePickerModal, UnsplashPickerModal, resize
 import { UnsplashService, UnsplashImage } from './unsplash-service';
 import { AIService } from './ai-service';
 import { AppState } from './app-state';
+import { ImageCacheManager, CachedFeaturedImage } from './image-cache-manager';
 
 // Default prompt templates - used as both defaults and placeholders
 const DEFAULT_SUMMARY_PROMPT = '请根据以下文章内容，生成一段100-200字的简洁摘要。\n要求：\n1. 概括文章核心内容和主要观点\n2. 语言流畅自然\n3. 只返回摘要文本，不要添加任何前缀或说明\n\n文章内容：\n{content}';
@@ -43,6 +44,9 @@ export class WpPublishModalV2 extends AbstractModal {
   private lastPublishParams: WordPressPostParams | null = null;
   private publishBtn: HTMLButtonElement | null = null;
   private featurePictureUrl: string | null = null; // 已上传到 WordPress 的特色图片 URL
+  private imageCacheManager: ImageCacheManager; // 图片缓存管理器
+  private notePath: string; // 当前笔记路径，用于缓存关联
+  private imageSource: 'local' | 'unsplash' | 'ai' | 'vault' | 'cached' | 'auto' = 'auto'; // 图片来源类型
 
   // Prompt templates from settings, with proper defaults
   private get imageGenerationPrompt(): string {
@@ -74,10 +78,15 @@ export class WpPublishModalV2 extends AbstractModal {
     ) => void,
     private readonly matterData: MatterData,
     private readonly articleContent: string = '',
-    private readonly noteTitle: string = ''
+    private readonly noteTitle: string = '',
+    notePath: string = ''
   ) {
     super(plugin);
     console.log('[WpPublishModalV2] Constructor called');
+
+    // 初始化图片缓存管理器
+    this.imageCacheManager = new ImageCacheManager(plugin.app);
+    this.notePath = notePath;
 
     if (plugin.settings.aiConfig) {
       this.aiService = new AIService(plugin.settings.aiConfig);
@@ -94,8 +103,8 @@ export class WpPublishModalV2 extends AbstractModal {
       // 加载已有的特色图片
       this.loadFeaturePictureFromUrl(matterData.featurePicture as string);
     } else {
-      // 自动检测文章第一张图片作为特色图片
-      this.detectFirstImage();
+      // 尝试从缓存恢复图片
+      this.loadCachedImage();
     }
   }
 
@@ -125,8 +134,81 @@ export class WpPublishModalV2 extends AbstractModal {
       console.log('[WpPublishModalV2] Successfully loaded featured image:', fileName);
     } catch (e) {
       console.log('[WpPublishModalV2] Failed to load featured image from URL:', e);
-      // 加载失败，尝试检测文章第一张图片
-      this.detectFirstImage();
+      // 加载失败，尝试从缓存恢复
+      await this.loadCachedImage();
+    }
+  }
+
+  /**
+   * 从缓存加载图片，如果没有缓存则检测文章第一张图片
+   */
+  private async loadCachedImage(): Promise<void> {
+    if (!this.notePath) {
+      // 没有笔记路径，直接检测第一张图片
+      await this.detectFirstImage();
+      return;
+    }
+
+    try {
+      const cachedImage = await this.imageCacheManager.loadImage(this.notePath);
+      if (cachedImage) {
+        console.log('[WpPublishModalV2] Restored featured image from cache:', cachedImage.fileName);
+        this.featuredImage = {
+          fileName: cachedImage.fileName,
+          mimeType: cachedImage.mimeType,
+          content: cachedImage.content,
+          width: cachedImage.width
+        };
+        this.imageSource = 'cached';
+      } else {
+        // 没有缓存，自动检测文章第一张图片
+        await this.detectFirstImage();
+      }
+    } catch (e) {
+      console.log('[WpPublishModalV2] Failed to load cached image:', e);
+      await this.detectFirstImage();
+    }
+  }
+
+  /**
+   * 保存图片到缓存
+   */
+  private async saveImageToCache(
+    imageData: ArrayBuffer,
+    fileName: string,
+    mimeType: string,
+    sourceType: 'local' | 'unsplash' | 'ai' | 'vault'
+  ): Promise<void> {
+    if (!this.notePath) {
+      console.log('[WpPublishModalV2] No note path, skipping cache save');
+      return;
+    }
+
+    try {
+      await this.imageCacheManager.saveImage(
+        this.notePath,
+        imageData,
+        fileName,
+        mimeType,
+        sourceType
+      );
+      console.log('[WpPublishModalV2] Image saved to cache:', fileName);
+    } catch (e) {
+      console.error('[WpPublishModalV2] Failed to save image to cache:', e);
+    }
+  }
+
+  /**
+   * 清除当前笔记的图片缓存
+   */
+  async clearImageCache(): Promise<void> {
+    if (!this.notePath) return;
+    
+    try {
+      await this.imageCacheManager.clearCache(this.notePath);
+      console.log('[WpPublishModalV2] Image cache cleared for:', this.notePath);
+    } catch (e) {
+      console.error('[WpPublishModalV2] Failed to clear image cache:', e);
     }
   }
 
@@ -446,6 +528,9 @@ export class WpPublishModalV2 extends AbstractModal {
             content: arrayBuffer,
             width: 1200
           };
+          this.imageSource = 'local';
+          // 保存到缓存
+          await this.saveImageToCache(arrayBuffer, file.name, file.type, 'local');
           this.display(params);
           new Notice('图片已选择');
         } catch (error) {
@@ -472,12 +557,17 @@ export class WpPublishModalV2 extends AbstractModal {
       this.unsplashService,
       async (image: UnsplashImage, arrayBuffer: ArrayBuffer) => {
         const processed = await resizeFeaturedImage(arrayBuffer, 'image/jpeg', targetWidth, ratio);
+        const finalBuffer = processed || arrayBuffer;
+        const fileName = `unsplash-${image.id}.jpg`;
         this.featuredImage = {
-          fileName: `unsplash-${image.id}.jpg`,
+          fileName,
           mimeType: 'image/jpeg',
-          content: processed || arrayBuffer,
+          content: finalBuffer,
           width: targetWidth
         };
+        this.imageSource = 'unsplash';
+        // 保存到缓存
+        await this.saveImageToCache(finalBuffer, fileName, 'image/jpeg', 'unsplash');
         this.display(params);
         new Notice('图片已选择');
       },
@@ -515,12 +605,16 @@ export class WpPublishModalV2 extends AbstractModal {
       const response = await fetch(imageUrl);
       const arrayBuffer = await response.arrayBuffer();
 
+      const fileName = `ai-generated-${Date.now()}.png`;
       this.featuredImage = {
-        fileName: `ai-generated-${Date.now()}.png`,
+        fileName,
         mimeType: 'image/png',
         content: arrayBuffer,
         width: 1200
       };
+      this.imageSource = 'ai';
+      // 保存到缓存
+      await this.saveImageToCache(arrayBuffer, fileName, 'image/png', 'ai');
 
       this.display(params);
       new Notice('AI 图片已生成');
@@ -578,6 +672,9 @@ export class WpPublishModalV2 extends AbstractModal {
           content: arrayBuffer,
           width: 1200
         };
+        this.imageSource = 'vault';
+        // 保存到缓存
+        await this.saveImageToCache(arrayBuffer, file.name, mimeType, 'vault');
         this.display(params);
         new Notice('已从图库选择: ' + file.name);
       }

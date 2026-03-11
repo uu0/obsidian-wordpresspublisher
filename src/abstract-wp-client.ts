@@ -571,6 +571,8 @@ export abstract class AbstractWordPressClient implements WordPressClient {
                   updateMatterData: wrappedUpdateMatterData
                 });
                 if (r.code === WordPressClientReturnCode.OK) {
+                  // 发布成功，清理图片缓存
+                  await publishModal.clearImageCache();
                   publishModal.close();
                   resolve(r);
                 }
@@ -584,7 +586,8 @@ export abstract class AbstractWordPressClient implements WordPressClient {
             },
             matterData,
             content,
-            title);
+            title,
+            file.path);  // 传递笔记路径用于缓存关联
           console.log('[WpPublishModalV2] Calling publishModal.open()...');
           publishModal.open();
           console.log('[WpPublishModalV2] publishModal.open() called');
