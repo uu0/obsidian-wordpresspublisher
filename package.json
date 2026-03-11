@@ -1,7 +1,7 @@
 {
-	"name": "obsidian-wordpress",
-	"version": "0.1.6",
-	"description": "A plugin for publishing Obsidian documents to WordPress.",
+	"name": "obsidian-wordpresspublisher",
+	"version": "1.0.0",
+	"description": "一键将 Obsidian 笔记发布到 WordPress，支持文章/页面发布、智能 Slug 生成、特色图片选择和 AI 功能集成。",
 	"main": "main.js",
 	"scripts": {
 		"dev": "node esbuild.config.mjs",
@@ -21,10 +21,14 @@
 		"wp",
 		"wordpress",
 		"obsidian",
-		"plugin"
+		"plugin",
+		"publisher",
+		"ai",
+		"slug",
+		"featured-image"
 	],
-	"author": "devbean",
-	"license": "Apache-2.0",
+	"author": "uu0",
+	"license": "MIT",
 	"devDependencies": {
 		"@types/js-yaml": "4.0.9",
 		"@types/lodash-es": "4.17.12",
