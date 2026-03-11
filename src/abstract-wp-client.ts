@@ -21,6 +21,8 @@ import { MatterData, Media } from './types';
 import { openPostPublishedModal } from './post-published-modal';
 import { openLoginModal } from './wp-login-modal';
 import { isFunction } from 'lodash-es';
+import { FrontmatterManager, RemotePostData } from './frontmatter-manager';
+import { openConflictModal } from './frontmatter-conflict-modal';
 
 export abstract class AbstractWordPressClient implements WordPressClient {
 
@@ -30,11 +32,14 @@ export abstract class AbstractWordPressClient implements WordPressClient {
   name = 'AbstractWordPressClient';
 
   private categoriesList: Term[] = [];
+  private frontmatterManager: FrontmatterManager;
 
   protected constructor(
     protected readonly plugin: WordpressPlugin,
     protected readonly profile: WpProfile
-  ) { }
+  ) {
+    this.frontmatterManager = new FrontmatterManager(plugin.app);
+  }
 
   abstract publish(
     title: string,
@@ -70,8 +75,61 @@ export abstract class AbstractWordPressClient implements WordPressClient {
     certificate: WordPressAuthParams
   ): Promise<WordPressClientResult<WordPressMediaUploadResult>>;
 
+  abstract getPost(
+    postId: string | number,
+    certificate: WordPressAuthParams
+  ): Promise<SafeAny | null>;
+
   protected needLogin(): boolean {
     return true;
+  }
+
+  /**
+   * Fetch remote post data for conflict detection
+   * @param postId - Post ID to fetch
+   * @param auth - Authentication parameters
+   * @returns Remote post data or null if not found
+   */
+  protected async fetchRemotePostData(
+    postId: string | number,
+    auth: WordPressAuthParams
+  ): Promise<RemotePostData | null> {
+    try {
+      const post = await this.getPost(postId, auth);
+      if (!post) return null;
+
+      // Extract relevant fields for conflict detection
+      return {
+        postId: post.id || postId,
+        postType: post.type || 'post',
+        categories: this.extractCategoryNames(post.categories || []),
+        slug: post.slug || '',
+        tags: this.extractTagNames(post.tags || []),
+        excerpt: post.excerpt?.rendered || post.excerpt || ''
+      };
+    } catch (error) {
+      console.error('[fetchRemotePostData] Error fetching remote post:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Extract category names from category IDs
+   */
+  private extractCategoryNames(categoryIds: number[]): string[] {
+    return categoryIds.map(id => {
+      const term = this.categoriesList.find(t => String(t.id) === String(id));
+      return term ? term.name : String(id);
+    });
+  }
+
+  /**
+   * Extract tag names from tag IDs
+   */
+  private extractTagNames(tagIds: number[]): string[] {
+    // Note: This is a simplified version. In a real implementation,
+    // you might need to fetch tag data from the API
+    return tagIds.map(id => String(id));
   }
 
   private async getAuth(): Promise<WordPressAuthParams> {
@@ -339,13 +397,49 @@ export abstract class AbstractWordPressClient implements WordPressClient {
         throw new Error(this.plugin.i18n.t('error_noActiveFile'));
       }
 
+      // Step 1: Initialize/normalize frontmatter fields
+      await this.frontmatterManager.initializeFrontmatter(file);
+
       // get auth info
       const auth = await this.getAuth();
 
       // read note title, content and matter data
       const title = file.basename;
       const { content, matter: matterData } = await processFile(file, this.plugin.app);
-      
+
+      // Step 2: Check for conflicts with remote data (if postId exists)
+      if (matterData.postId) {
+        const remoteData = await this.fetchRemotePostData(matterData.postId, auth);
+        if (remoteData) {
+          const conflicts = this.frontmatterManager.detectConflicts(matterData, remoteData);
+          if (conflicts.length > 0) {
+            const resolution = await openConflictModal(this.plugin.app, conflicts);
+
+            if (resolution === 'cancel') {
+              new Notice('❌ 发布已取消');
+              return {
+                code: WordPressClientReturnCode.Error,
+                error: {
+                  code: WordPressClientReturnCode.Error,
+                  message: '用户取消发布'
+                }
+              };
+            } else if (resolution === 'remote') {
+              // Update local frontmatter with remote values
+              const updates: Partial<MatterData> = {};
+              for (const conflict of conflicts) {
+                updates[conflict.field] = conflict.remoteValue;
+              }
+              await this.frontmatterManager.updateFrontmatter(file, updates);
+              // Re-read frontmatter after update
+              const { matter: updatedMatter } = await processFile(file, this.plugin.app);
+              Object.assign(matterData, updatedMatter);
+            }
+            // If resolution === 'local', continue with local values (no action needed)
+          }
+        }
+      }
+
       // check if profile selected is matched to the one in note property,
       // if not, ask whether to update or not
       await this.checkExistingProfile(matterData);

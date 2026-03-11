@@ -251,6 +251,21 @@ export class WpRestClient extends AbstractWordPressClient {
     }
   }
 
+  async getPost(postId: string | number, certificate: WordPressAuthParams): Promise<SafeAny | null> {
+    try {
+      const url = getUrl(this.context.endpoints?.editPost, 'wp-json/wp/v2/posts/<%= postId %>', {
+        postId: String(postId)
+      });
+      const data = await this.client.httpGet(url, {
+        headers: this.context.getHeaders(certificate)
+      });
+      return data;
+    } catch (e: SafeAny) {
+      console.error('getPost', e);
+      return null;
+    }
+  }
+
 }
 
 type UrlGetter = () => string;
