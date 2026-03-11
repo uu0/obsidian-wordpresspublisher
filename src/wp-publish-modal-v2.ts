@@ -1,16 +1,17 @@
 import { Setting, Notice, TFile } from 'obsidian';
+import { toNumber } from 'lodash-es';
+import { format, parse } from 'date-fns';
+import IMask, { DynamicMaskType, InputMask } from 'imask';
+
 import WordpressPlugin from './main';
 import { WordPressPostParams } from './wp-client';
 import { CommentStatus, PostStatus, PostType, PostTypeConst, Term } from './wp-api';
-import { toNumber } from 'lodash-es';
 import { MatterData } from './types';
 import { ConfirmCode, openConfirmModal } from './confirm-modal';
 import { AbstractModal } from './abstract-modal';
-import IMask, { DynamicMaskType, InputMask } from 'imask';
 import { SafeAny } from './utils';
-import { format, parse } from 'date-fns';
 import { SlugGenerator } from './slug-generator';
-import { FeaturedImageModal, FeaturedImageResult, VaultImagePickerModal, UnsplashPickerModal, resizeFeaturedImage } from './featured-image-modal';
+import { FeaturedImageResult, VaultImagePickerModal, UnsplashPickerModal, resizeFeaturedImage } from './featured-image-modal';
 import { UnsplashService, UnsplashImage } from './unsplash-service';
 import { AIService } from './ai-service';
 import { AppState } from './app-state';
@@ -109,29 +110,15 @@ export class WpPublishModalV2 extends AbstractModal {
       const arrayBuffer = await response.arrayBuffer();
 
       // 从 URL 或 Content-Type 获取 MIME 类型
-      let mimeType = 'image/jpeg';
       const contentType = response.headers.get('content-type');
-      if (contentType && contentType.startsWith('image/')) {
-        mimeType = contentType.split(';')[0];
-      } else {
-        // 从 URL 扩展名推断
-        const ext = url.split('.').pop()?.toLowerCase()?.split('?')[0];
-        if (ext === 'png') mimeType = 'image/png';
-        else if (ext === 'gif') mimeType = 'image/gif';
-        else if (ext === 'webp') mimeType = 'image/webp';
-      }
+      const mimeType = this.getMimeTypeFromResponse(contentType, url);
 
       // 从 URL 提取文件名
-      let fileName = 'featured-image.jpg';
-      const urlParts = url.split('/');
-      const lastPart = urlParts[urlParts.length - 1]?.split('?')[0];
-      if (lastPart && lastPart.includes('.')) {
-        fileName = lastPart;
-      }
+      const fileName = this.extractFileName(url);
 
       this.autoFeaturedImage = {
-        fileName: fileName,
-        mimeType: mimeType,
+        fileName,
+        mimeType,
         content: arrayBuffer,
         width: 1200
       };
@@ -143,54 +130,75 @@ export class WpPublishModalV2 extends AbstractModal {
     }
   }
 
+  private getMimeTypeFromResponse(contentType: string | null, url: string): string {
+    if (contentType?.startsWith('image/')) {
+      return contentType.split(';')[0];
+    }
+
+    // 从 URL 扩展名推断
+    const ext = url.split('.').pop()?.toLowerCase()?.split('?')[0];
+    return this.getMimeType(ext || 'jpg');
+  }
+
+  private extractFileName(url: string): string {
+    const urlParts = url.split('/');
+    const lastPart = urlParts[urlParts.length - 1]?.split('?')[0];
+    return (lastPart && lastPart.includes('.')) ? lastPart : 'featured-image.jpg';
+  }
+
   // 检测文章第一张图片
   private async detectFirstImage(): Promise<void> {
     try {
-      const content = this.articleContent || '';
-      const imageRegex = /!\[.*?\]\((.*?)\)|!\[\[(.*?)(?:\|.*?)?\]\]/g;
-      const match = imageRegex.exec(content);
+      const imagePath = this.extractFirstImagePath();
+      if (!imagePath) {
+        await this.loadEmptyImage();
+        return;
+      }
 
-      if (match) {
-        const imagePath = match[1] || match[2];
-        if (imagePath && !imagePath.startsWith('http')) {
-          // 本地图片，尝试获取
-          const file = this.app.metadataCache.getFirstLinkpathDest(imagePath, this.noteTitle);
-          if (file instanceof TFile) {
-            const binaryContent = await this.app.vault.readBinary(file);
-            const ext = file.extension.toLowerCase();
-            const mimeType = this.getMimeType(ext);
-
-            this.autoFeaturedImage = {
-              fileName: file.name,
-              mimeType: mimeType,
-              content: binaryContent,
-              width: 1200
-            };
-            console.log('[WpPublishModalV2] Auto-detected first image:', file.name);
-          }
-        } else if (imagePath && imagePath.startsWith('http')) {
-          // 在线图片，需要下载
-          try {
-            const response = await fetch(imagePath);
-            const arrayBuffer = await response.arrayBuffer();
-            this.autoFeaturedImage = {
-              fileName: 'featured-' + Date.now() + '.jpg',
-              mimeType: 'image/jpeg',
-              content: arrayBuffer,
-              width: 1200
-            };
-          } catch (e) {
-            console.log('[WpPublishModalV2] Failed to download online image:', e);
-          }
-        }
+      if (imagePath.startsWith('http')) {
+        await this.loadOnlineImage(imagePath);
+      } else {
+        await this.loadLocalImage(imagePath);
       }
     } catch (e) {
       console.log('[WpPublishModalV2] Error detecting first image:', e);
+      await this.loadEmptyImage();
     }
+  }
 
-    // 如果没有检测到图片，使用empty.png作为默认
-    if (!this.autoFeaturedImage) {
-      this.loadEmptyImage();
+  private extractFirstImagePath(): string | null {
+    const content = this.articleContent || '';
+    const imageRegex = /!\[.*?\]\((.*?)\)|!\[\[(.*?)(?:\|.*?)?\]\]/g;
+    const match = imageRegex.exec(content);
+    return match ? (match[1] || match[2]) : null;
+  }
+
+  private async loadLocalImage(imagePath: string): Promise<void> {
+    const file = this.app.metadataCache.getFirstLinkpathDest(imagePath, this.noteTitle);
+    if (file instanceof TFile) {
+      const binaryContent = await this.app.vault.readBinary(file);
+      this.autoFeaturedImage = {
+        fileName: file.name,
+        mimeType: this.getMimeType(file.extension.toLowerCase()),
+        content: binaryContent,
+        width: 1200
+      };
+      console.log('[WpPublishModalV2] Auto-detected first image:', file.name);
+    }
+  }
+
+  private async loadOnlineImage(imagePath: string): Promise<void> {
+    try {
+      const response = await fetch(imagePath);
+      const arrayBuffer = await response.arrayBuffer();
+      this.autoFeaturedImage = {
+        fileName: `featured-${Date.now()}.jpg`,
+        mimeType: 'image/jpeg',
+        content: arrayBuffer,
+        width: 1200
+      };
+    } catch (e) {
+      console.log('[WpPublishModalV2] Failed to download online image:', e);
     }
   }
 
@@ -454,21 +462,7 @@ export class WpPublishModalV2 extends AbstractModal {
       return;
     }
 
-    // Read from frontmatter tag field (matterData.tag)
-    // Use first tag for initial Unsplash search
-    let tagsQuery = '';
-    const frontmatterTag = this.matterData.tag;
-    if (frontmatterTag && Array.isArray(frontmatterTag) && frontmatterTag.length > 0) {
-      tagsQuery = String(frontmatterTag[0]); // Use first tag from frontmatter
-    } else if (typeof frontmatterTag === 'string' && frontmatterTag) {
-      tagsQuery = frontmatterTag;
-    }
-
-    // If no tag in frontmatter, fallback to params.tags
-    if (!tagsQuery && params.tags && params.tags.length > 0) {
-      tagsQuery = String(params.tags[0]);
-    }
-
+    const tagsQuery = this.getSearchQuery(params);
     const targetWidth = this.plugin.settings.imageCropWidth || 1200;
     const ratio = this.plugin.settings.imageCropRatio || '16:9';
 
@@ -477,9 +471,7 @@ export class WpPublishModalV2 extends AbstractModal {
       this.plugin,
       this.unsplashService,
       async (image: UnsplashImage, arrayBuffer: ArrayBuffer) => {
-        // 处理图片裁剪
         const processed = await resizeFeaturedImage(arrayBuffer, 'image/jpeg', targetWidth, ratio);
-
         this.featuredImage = {
           fileName: `unsplash-${image.id}.jpg`,
           mimeType: 'image/jpeg',
@@ -494,63 +486,35 @@ export class WpPublishModalV2 extends AbstractModal {
     modal.open();
   }
 
+  private getSearchQuery(params: WordPressPostParams): string {
+    const frontmatterTag = this.matterData.tag;
+
+    if (Array.isArray(frontmatterTag) && frontmatterTag.length > 0) {
+      return String(frontmatterTag[0]);
+    }
+
+    if (typeof frontmatterTag === 'string' && frontmatterTag) {
+      return frontmatterTag;
+    }
+
+    return params.tags?.[0] ? String(params.tags[0]) : '';
+  }
+
   private async generateAImage(params: WordPressPostParams): Promise<void> {
-    if (!this.plugin.settings.aiConfig) {
+    if (!this.plugin.settings.aiConfig || !this.aiService) {
       new Notice('请先在插件设置中配置 AI 服务');
       return;
     }
 
-    // AI image generation priority: excerpt > tags > generate summary first
-    let imagePromptContent = '';
-
-    if (params.excerpt) {
-      // 1. Use excerpt if available
-      imagePromptContent = params.excerpt;
-    } else if (params.tags && params.tags.length > 0) {
-      // 2. Use tags if available
-      imagePromptContent = params.tags.join(', ');
-    } else {
-      // 3. No excerpt and no tags: generate summary first
-      if (!this.aiService) {
-        new Notice('请先在插件设置中配置 AI 服务（文字处理 AI）');
-        return;
-      }
-
-      const contentToUse = this.editableContent || this.articleContent;
-      if (!contentToUse) {
-        new Notice('文章内容为空，无法生成摘要');
-        return;
-      }
-
-      try {
-        new Notice('正在生成摘要...');
-        const cleanContent = this.sanitizeContentForAI(contentToUse, 2000);
-        const prompt = this.summaryPrompt.replace('{content}', cleanContent);
-        const summary = await this.aiService.generateText(prompt);
-        params.excerpt = summary.trim();
-        imagePromptContent = params.excerpt;
-        new Notice('摘要已生成，正在生成图片...');
-        // Refresh display to show the new excerpt
-        this.display(params);
-      } catch (error) {
-        console.error('[WpPublishModalV2] Generate summary for image error:', error);
-        new Notice(`生成摘要失败: ${error instanceof Error ? error.message : '未知错误'}`);
-        return;
-      }
-    }
-
-    // Directly generate image and put into featured image preview (skip selector modal)
     try {
+      const imagePromptContent = await this.getImagePromptContent(params);
+      if (!imagePromptContent) return;
+
       new Notice('AI 正在生成图片，请稍候...');
-
-      // Generate image using AI
-      const imageUrl = await this.aiService!.generateImage(imagePromptContent);
-
-      // Download the generated image
+      const imageUrl = await this.aiService.generateImage(imagePromptContent);
       const response = await fetch(imageUrl);
       const arrayBuffer = await response.arrayBuffer();
 
-      // Create featured image result
       this.featuredImage = {
         fileName: `ai-generated-${Date.now()}.png`,
         mimeType: 'image/png',
@@ -563,6 +527,44 @@ export class WpPublishModalV2 extends AbstractModal {
     } catch (error) {
       console.error('[WpPublishModalV2] AI image generation error:', error);
       new Notice(`生成图片失败: ${error instanceof Error ? error.message : '未知错误'}`);
+    }
+  }
+
+  private async getImagePromptContent(params: WordPressPostParams): Promise<string | null> {
+    // Priority: excerpt > tags > generate summary
+    if (params.excerpt) {
+      return params.excerpt;
+    }
+
+    if (params.tags?.length) {
+      return params.tags.join(', ');
+    }
+
+    // Generate summary first
+    if (!this.aiService) {
+      new Notice('请先在插件设置中配置 AI 服务（文字处理 AI）');
+      return null;
+    }
+
+    const contentToUse = this.editableContent || this.articleContent;
+    if (!contentToUse) {
+      new Notice('文章内容为空，无法生成摘要');
+      return null;
+    }
+
+    try {
+      new Notice('正在生成摘要...');
+      const cleanContent = this.sanitizeContentForAI(contentToUse, 2000);
+      const prompt = this.summaryPrompt.replace('{content}', cleanContent);
+      const summary = await this.aiService.generateText(prompt);
+      params.excerpt = summary.trim();
+      new Notice('摘要已生成，正在生成图片...');
+      this.display(params);
+      return params.excerpt;
+    } catch (error) {
+      console.error('[WpPublishModalV2] Generate summary for image error:', error);
+      new Notice(`生成摘要失败: ${error instanceof Error ? error.message : '未知错误'}`);
+      return null;
     }
   }
 
@@ -799,129 +801,157 @@ export class WpPublishModalV2 extends AbstractModal {
     card.createEl('h3', { text: '文章预览', cls: 'wp-preview-card-title' });
 
     if (this.isEditingPreview) {
-      const editorArea = card.createDiv('wp-preview-editor-area');
-      const textarea = editorArea.createEl('textarea', {
-        cls: 'wp-preview-textarea',
-        attr: { placeholder: '在此编辑 Markdown 内容...' }
-      });
-      textarea.value = this.editableContent;
-      textarea.style.width = '100%';
-      textarea.style.minHeight = '300px';
-      textarea.style.fontFamily = 'var(--font-mono)';
-      textarea.oninput = () => {
-        this.editableContent = textarea.value;
-      };
+      this.renderPreviewEditor(card);
     } else {
-      // 预览模式 - 特色图片 constrained height
-      if (this.featuredImage) {
-        const featuredImageSection = card.createDiv('wp-preview-featured-image');
-        featuredImageSection.style.marginBottom = '16px';
-        featuredImageSection.style.textAlign = 'center';
-
-        const label = featuredImageSection.createEl('div', { text: '特色图片' });
-        label.style.fontSize = '12px';
-        label.style.color = 'var(--text-muted)';
-        label.style.marginBottom = '8px';
-
-        const imgContainer = featuredImageSection.createDiv();
-        imgContainer.style.maxWidth = '100%';
-        imgContainer.style.borderRadius = '8px';
-        imgContainer.style.overflow = 'hidden';
-        imgContainer.style.border = '1px solid var(--background-modifier-border)';
-
-        const blob = new Blob([this.featuredImage.content], { type: this.featuredImage.mimeType });
-        const url = URL.createObjectURL(blob);
-        const img = imgContainer.createEl('img', { attr: { src: url } });
-        img.style.maxWidth = '100%';
-        img.style.maxHeight = '180px';
-        img.style.objectFit = 'cover';
-        img.style.display = 'block';
-        img.style.width = '100%';
-      } else if (this.matterData.featurePicture) {
-        const featuredImageSection = card.createDiv('wp-preview-featured-image');
-        featuredImageSection.style.marginBottom = '16px';
-        featuredImageSection.style.textAlign = 'center';
-
-        const label = featuredImageSection.createEl('div', { text: '特色图片（已上传到 WordPress）' });
-        label.style.fontSize = '12px';
-        label.style.color = 'var(--text-muted)';
-        label.style.marginBottom = '8px';
-
-        const imgContainer = featuredImageSection.createDiv();
-        imgContainer.style.maxWidth = '100%';
-        imgContainer.style.borderRadius = '8px';
-        imgContainer.style.overflow = 'hidden';
-        imgContainer.style.border = '1px solid var(--background-modifier-border)';
-
-        const img = imgContainer.createEl('img', { attr: { src: this.matterData.featurePicture } });
-        img.style.maxWidth = '100%';
-        img.style.maxHeight = '180px';
-        img.style.objectFit = 'cover';
-        img.style.display = 'block';
-        img.style.width = '100%';
-      }
-
-      // 摘要显示
-      if (params.excerpt) {
-        const excerptSection = card.createDiv('wp-preview-excerpt');
-        excerptSection.style.padding = '10px 14px';
-        excerptSection.style.backgroundColor = 'var(--background-secondary)';
-        excerptSection.style.borderRadius = '6px';
-        excerptSection.style.marginBottom = '16px';
-        excerptSection.style.fontSize = '13px';
-        excerptSection.style.color = 'var(--text-muted)';
-        excerptSection.style.borderLeft = '3px solid var(--interactive-accent)';
-        excerptSection.createEl('strong', { text: '摘要: ' });
-        excerptSection.createSpan({ text: params.excerpt });
-      }
-
-      // 标签显示
-      if (params.tags && params.tags.length > 0) {
-        const tagsSection = card.createDiv('wp-preview-tags');
-        tagsSection.style.marginBottom = '16px';
-        tagsSection.style.display = 'flex';
-        tagsSection.style.flexWrap = 'wrap';
-        tagsSection.style.gap = '6px';
-        tagsSection.style.alignItems = 'center';
-
-        const label = tagsSection.createEl('span', { text: '标签: ' });
-        label.style.fontSize = '12px';
-        label.style.color = 'var(--text-muted)';
-
-        params.tags.forEach(tag => {
-          const tagEl = tagsSection.createEl('span', { text: tag });
-          tagEl.style.padding = '2px 8px';
-          tagEl.style.backgroundColor = 'var(--interactive-accent)';
-          tagEl.style.color = 'var(--text-on-accent)';
-          tagEl.style.borderRadius = '10px';
-          tagEl.style.fontSize = '11px';
-        });
-      }
-
-      // 文章内容预览
-      const previewContent = card.createDiv('wp-preview-rendered');
-      const html = AppState.markdownParser.render(this.editableContent);
-      previewContent.innerHTML = html;
-
-      const style = document.createElement('style');
-      style.textContent = `
-        .wp-preview-rendered h1, .wp-preview-rendered h2, .wp-preview-rendered h3 {
-          margin-top: 1em; margin-bottom: 0.5em; font-weight: 600;
-        }
-        .wp-preview-rendered p { margin-bottom: 1em; line-height: 1.6; }
-        .wp-preview-rendered img { max-width: 100%; max-height: 300px; object-fit: contain; height: auto; }
-        .wp-preview-rendered code {
-          background: var(--background-secondary); padding: 2px 4px; border-radius: 3px;
-        }
-        .wp-preview-rendered pre {
-          background: var(--background-secondary); padding: 12px; border-radius: 5px; overflow-x: auto;
-        }
-        .wp-preview-rendered blockquote {
-          border-left: 3px solid var(--text-accent); padding-left: 12px; color: var(--text-muted);
-        }
-      `;
-      previewContent.appendChild(style);
+      this.renderPreviewContent(card, params);
     }
+  }
+
+  private renderPreviewEditor(card: HTMLElement): void {
+    const editorArea = card.createDiv('wp-preview-editor-area');
+    const textarea = editorArea.createEl('textarea', {
+      cls: 'wp-preview-textarea',
+      attr: { placeholder: '在此编辑 Markdown 内容...' }
+    });
+    textarea.value = this.editableContent;
+    textarea.style.width = '100%';
+    textarea.style.minHeight = '300px';
+    textarea.style.fontFamily = 'var(--font-mono)';
+    textarea.oninput = () => {
+      this.editableContent = textarea.value;
+    };
+  }
+
+  private renderPreviewContent(card: HTMLElement, params: WordPressPostParams): void {
+    // 特色图片
+    if (this.featuredImage) {
+      this.renderFeaturedImagePreview(card, this.featuredImage);
+    } else if (this.matterData.featurePicture) {
+      this.renderUploadedImagePreview(card, this.matterData.featurePicture as string);
+    }
+
+    // 摘要
+    if (params.excerpt) {
+      this.renderExcerptPreview(card, params.excerpt);
+    }
+
+    // 标签
+    if (params.tags?.length) {
+      this.renderTagsPreview(card, params.tags);
+    }
+
+    // 文章内容
+    this.renderArticlePreview(card);
+  }
+
+  private renderFeaturedImagePreview(card: HTMLElement, image: FeaturedImageResult): void {
+    const section = this.createImageSection(card, '特色图片');
+    const blob = new Blob([image.content], { type: image.mimeType });
+    const url = URL.createObjectURL(blob);
+    this.createPreviewImage(section, url);
+  }
+
+  private renderUploadedImagePreview(card: HTMLElement, imageUrl: string): void {
+    const section = this.createImageSection(card, '特色图片（已上传到 WordPress）');
+    this.createPreviewImage(section, imageUrl);
+  }
+
+  private createImageSection(card: HTMLElement, labelText: string): HTMLElement {
+    const section = card.createDiv('wp-preview-featured-image');
+    section.style.marginBottom = '16px';
+    section.style.textAlign = 'center';
+
+    const label = section.createEl('div', { text: labelText });
+    label.style.fontSize = '12px';
+    label.style.color = 'var(--text-muted)';
+    label.style.marginBottom = '8px';
+
+    return section;
+  }
+
+  private createPreviewImage(section: HTMLElement, src: string): void {
+    const imgContainer = section.createDiv();
+    Object.assign(imgContainer.style, {
+      maxWidth: '100%',
+      borderRadius: '8px',
+      overflow: 'hidden',
+      border: '1px solid var(--background-modifier-border)'
+    });
+
+    const img = imgContainer.createEl('img', { attr: { src } });
+    Object.assign(img.style, {
+      maxWidth: '100%',
+      maxHeight: '180px',
+      objectFit: 'cover',
+      display: 'block',
+      width: '100%'
+    });
+  }
+
+  private renderExcerptPreview(card: HTMLElement, excerpt: string): void {
+    const section = card.createDiv('wp-preview-excerpt');
+    Object.assign(section.style, {
+      padding: '10px 14px',
+      backgroundColor: 'var(--background-secondary)',
+      borderRadius: '6px',
+      marginBottom: '16px',
+      fontSize: '13px',
+      color: 'var(--text-muted)',
+      borderLeft: '3px solid var(--interactive-accent)'
+    });
+    section.createEl('strong', { text: '摘要: ' });
+    section.createSpan({ text: excerpt });
+  }
+
+  private renderTagsPreview(card: HTMLElement, tags: string[]): void {
+    const section = card.createDiv('wp-preview-tags');
+    Object.assign(section.style, {
+      marginBottom: '16px',
+      display: 'flex',
+      flexWrap: 'wrap',
+      gap: '6px',
+      alignItems: 'center'
+    });
+
+    const label = section.createEl('span', { text: '标签: ' });
+    label.style.fontSize = '12px';
+    label.style.color = 'var(--text-muted)';
+
+    tags.forEach(tag => {
+      const tagEl = section.createEl('span', { text: tag });
+      Object.assign(tagEl.style, {
+        padding: '2px 8px',
+        backgroundColor: 'var(--interactive-accent)',
+        color: 'var(--text-on-accent)',
+        borderRadius: '10px',
+        fontSize: '11px'
+      });
+    });
+  }
+
+  private renderArticlePreview(card: HTMLElement): void {
+    const previewContent = card.createDiv('wp-preview-rendered');
+    const html = AppState.markdownParser.render(this.editableContent);
+    previewContent.innerHTML = html;
+
+    const style = document.createElement('style');
+    style.textContent = `
+      .wp-preview-rendered h1, .wp-preview-rendered h2, .wp-preview-rendered h3 {
+        margin-top: 1em; margin-bottom: 0.5em; font-weight: 600;
+      }
+      .wp-preview-rendered p { margin-bottom: 1em; line-height: 1.6; }
+      .wp-preview-rendered img { max-width: 100%; max-height: 300px; object-fit: contain; height: auto; }
+      .wp-preview-rendered code {
+        background: var(--background-secondary); padding: 2px 4px; border-radius: 3px;
+      }
+      .wp-preview-rendered pre {
+        background: var(--background-secondary); padding: 12px; border-radius: 5px; overflow-x: auto;
+      }
+      .wp-preview-rendered blockquote {
+        border-left: 3px solid var(--text-accent); padding-left: 12px; color: var(--text-muted);
+      }
+    `;
+    previewContent.appendChild(style);
   }
 
   // ==================== 高级设置标签 ====================
