@@ -140,7 +140,7 @@ export class FrontmatterManager {
 
     // Check categories (normalize to array for comparison)
     const localCats = this.normalizeToArray(localMatter.categories);
-    const remoteCats = remoteData.categories;
+    const remoteCats = this.normalizeToArray(remoteData.categories);
     if (localCats.length > 0 && !this.arraysEqual(localCats, remoteCats)) {
       conflicts.push({
         field: 'categories',
@@ -160,7 +160,7 @@ export class FrontmatterManager {
 
     // Check tags (normalize to array for comparison)
     const localTags = this.normalizeToArray(localMatter.tags);
-    const remoteTags = remoteData.tags;
+    const remoteTags = this.normalizeToArray(remoteData.tags);
     if (localTags.length > 0 && !this.arraysEqual(localTags, remoteTags)) {
       conflicts.push({
         field: 'tags',
