@@ -688,14 +688,31 @@ export class WpPublishModalV2 extends AbstractModal {
         .setName('分类')
         .setDesc('选择文章分类')
         .addDropdown((dropdown) => {
-          this.categories.items.forEach(it => {
+          // 过滤掉空值的分类项
+          const validCategories = this.categories.items.filter(it => it.name && it.name.trim());
+
+          // 查找"未分类"
+          const uncategorized = validCategories.find(it => it.name === '未分类');
+
+          validCategories.forEach(it => {
             dropdown.addOption(String(it.id), it.name);
           });
+
+          // 如果没有选中分类，默认选择"未分类"
+          const selectedCategory = params.categories[0]
+            ? String(params.categories[0])
+            : (uncategorized ? String(uncategorized.id) : String(validCategories[0]?.id || ''));
+
           dropdown
-            .setValue(String(params.categories[0]))
+            .setValue(selectedCategory)
             .onChange((value) => {
               params.categories = [toNumber(value)];
             });
+
+          // 更新 params.categories 为默认值
+          if (!params.categories[0] && uncategorized) {
+            params.categories = [toNumber(uncategorized.id)];
+          }
         });
     }
 
