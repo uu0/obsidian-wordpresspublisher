@@ -66,7 +66,7 @@ export class FrontmatterManager {
       // Case 1: Empty frontmatter - add all standard fields with empty values
       if (existingKeys.length === 0) {
         for (const field of STANDARD_FRONTMATTER_FIELDS) {
-          fm[field] = '';
+          fm[field] = field === 'categories' ? '未分类' : '';
         }
         frontmatter = { ...fm };
         return;
@@ -102,7 +102,7 @@ export class FrontmatterManager {
 
       // 2. Standard fields in fixed order
       for (const field of STANDARD_FRONTMATTER_FIELDS) {
-        fm[field] = existingValues[field] ?? '';
+        fm[field] = existingValues[field] ?? (field === 'categories' ? '未分类' : '');
       }
 
       frontmatter = { ...fm };
