@@ -688,6 +688,9 @@ export abstract class AbstractWordPressClient implements WordPressClient {
       }
       if (matterData.tags) {
         postParams.tags = matterData.tags as string[];
+      } else if (params.tags && params.tags.length > 0) {
+        // Preserve tags generated in modal if not in frontmatter
+        postParams.tags = params.tags;
       }
     }
     // Read excerpt from frontmatter if not already set
