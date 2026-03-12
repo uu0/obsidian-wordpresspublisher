@@ -50,6 +50,7 @@ export class WpPublishModalV2 extends AbstractModal {
   private imageCacheManager: ImageCacheManager; // 图片缓存管理器
   private notePath: string; // 当前笔记路径，用于缓存关联
   private imageSource: 'local' | 'unsplash' | 'ai' | 'vault' | 'cached' | 'auto' = 'auto'; // 图片来源类型
+  private currentParams: WordPressPostParams | null = null; // 当前的发布参数，用于在关闭时保存生成的内容
 
   // Prompt templates from settings, with proper defaults
   private get imageGenerationPrompt(): string {
@@ -353,16 +354,66 @@ export class WpPublishModalV2 extends AbstractModal {
     this.display(params);
   }
 
-  onClose() {
+  async onClose() {
     const { contentEl } = this;
+
+    // 在关闭前保存生成的内容到 frontmatter
+    await this.saveGeneratedContentToFrontmatter();
+
     contentEl.empty();
     if (this.dateInputMask) {
       this.dateInputMask.destroy();
     }
   }
 
+  /**
+   * 保存生成的内容（标签、摘要等）到 frontmatter
+   * 当用户生成内容后关闭窗口时，确保内容不会丢失
+   */
+  private async saveGeneratedContentToFrontmatter(): Promise<void> {
+    if (!this.currentParams || !this.notePath) {
+      return;
+    }
+
+    const file = this.plugin.app.vault.getAbstractFileByPath(this.notePath);
+    if (!file || !(file instanceof TFile)) {
+      return;
+    }
+
+    try {
+      // 检查是否有需要保存的生成内容
+      const hasGeneratedTags = this.currentParams.tags &&
+                               this.currentParams.tags.length > 0 &&
+                               JSON.stringify(this.currentParams.tags) !== JSON.stringify(this.matterData.tags);
+
+      const hasGeneratedExcerpt = this.currentParams.excerpt &&
+                                  this.currentParams.excerpt !== this.matterData.excerpt;
+
+      if (!hasGeneratedTags && !hasGeneratedExcerpt) {
+        return; // 没有需要保存的内容
+      }
+
+      // 使用 processFrontMatter 更新 frontmatter
+      await this.plugin.app.fileManager.processFrontMatter(file, (fm) => {
+        if (hasGeneratedTags) {
+          fm.tags = this.currentParams!.tags;
+          log.info('Saved generated tags to frontmatter:', this.currentParams!.tags);
+        }
+        if (hasGeneratedExcerpt) {
+          fm.excerpt = this.currentParams!.excerpt;
+          log.info('Saved generated excerpt to frontmatter');
+        }
+      });
+    } catch (error) {
+      log.error('Failed to save generated content to frontmatter:', error);
+    }
+  }
+
   private display(params: WordPressPostParams): void {
     const { contentEl } = this;
+
+    // 保存当前参数，用于在关闭时保存生成的内容
+    this.currentParams = params;
 
     contentEl.empty();
     contentEl.addClass('wp-publish-modal-v2');
