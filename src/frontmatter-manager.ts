@@ -2,6 +2,7 @@ import { App, Notice, TFile } from 'obsidian';
 import { MatterData } from './types';
 import { SafeAny } from './utils';
 import type WordpressPlugin from './main';
+import { TagFormatter } from './tag-formatter';
 
 /**
  * Standard frontmatter fields in fixed order
@@ -61,7 +62,10 @@ export class FrontmatterManager {
       case 'categories':
         return this.plugin.t('frontmatter_defaultCategory');
       case 'tags':
-        return [];
+        // 根据设置选择默认格式
+        return this.plugin.settings.tagFormat === 'inline'
+          ? ''   // 行内标签默认空字符串
+          : [];  // YAML 标签默认空数组
       default:
         return '';
     }
@@ -197,6 +201,31 @@ export class FrontmatterManager {
       for (const [key, value] of Object.entries(updates)) {
         fm[key] = value;
       }
+    });
+  }
+
+  /**
+   * Get tags from frontmatter (always returns array)
+   * @param frontmatter - Frontmatter data
+   * @returns Array of tag strings
+   */
+  getTags(frontmatter: MatterData): string[] {
+    return TagFormatter.parseToArray(frontmatter.tags);
+  }
+
+  /**
+   * Set tags to frontmatter with user preferred format
+   * @param file - File to update
+   * @param tags - Array of tag strings
+   */
+  async setTags(file: TFile, tags: string[]): Promise<void> {
+    const formattedTags = TagFormatter.formatTags(
+      tags,
+      this.plugin.settings.tagFormat
+    );
+
+    await this.app.fileManager.processFrontMatter(file, (fm) => {
+      fm.tags = formattedTags;
     });
   }
 

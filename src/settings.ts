@@ -3,7 +3,7 @@ import WordpressPlugin from './main';
 import { CommentStatus, PostStatus } from './wp-api';
 import { TranslateKey } from './i18n';
 import { WpProfileManageModal } from './wp-profile-manage-modal';
-import { CommentConvertMode, MathJaxOutputType } from './plugin-settings';
+import { CommentConvertMode, MathJaxOutputType, TagFormat } from './plugin-settings';
 import { WpProfile } from './wp-profile';
 import { setupMarkdownParser } from './utils';
 import { AppState } from './app-state';
@@ -270,6 +270,23 @@ export class WordpressSettingTab extends PluginSettingTab {
             }
 
             this.plugin.settings.slugGenerationMode = newMode;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    // 标签格式设置
+    containerEl.createEl('h3', { text: t('settings_tagFormat') });
+
+    new Setting(containerEl)
+      .setName(t('settings_tagFormat'))
+      .setDesc(t('settings_tagFormatDesc'))
+      .addDropdown((dropdown) => {
+        dropdown
+          .addOption(TagFormat.Inline, t('settings_tagFormatInline'))
+          .addOption(TagFormat.YAML, t('settings_tagFormatYAML'))
+          .setValue(this.plugin.settings.tagFormat || TagFormat.Inline)
+          .onChange(async (value) => {
+            this.plugin.settings.tagFormat = value as TagFormat;
             await this.plugin.saveSettings();
           });
       });

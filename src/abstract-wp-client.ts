@@ -23,6 +23,7 @@ import { openLoginModal } from './wp-login-modal';
 import { isFunction } from 'lodash-es';
 import { FrontmatterManager, RemotePostData } from './frontmatter-manager';
 import { openConflictModal } from './frontmatter-conflict-modal';
+import { TagFormatter } from './tag-formatter';
 
 export abstract class AbstractWordPressClient implements WordPressClient {
 
@@ -289,13 +290,18 @@ export abstract class AbstractWordPressClient implements WordPressClient {
             if (!fm.featurePicture) fm.featurePicture = '';
             // 7. featuredImageId (set by updateMatterData callback)
             if (!fm.featuredImageId) fm.featuredImageId = '';
-            // 8. tags (comma-separated tag names, not IDs)
+            // 8. tags (formatted according to user preference)
             // Remove old 'tag' field if it exists (legacy cleanup)
             delete fm.tag;
             if (tagNames && tagNames.length > 0) {
-              fm.tags = tagNames.join(', ');
+              // Format tags according to user preference (YAML array or inline)
+              fm.tags = TagFormatter.formatTags(
+                tagNames,
+                this.plugin.settings.tagFormat
+              );
             } else if (!fm.tags) {
-              fm.tags = '';
+              // Default empty value based on format preference
+              fm.tags = this.plugin.settings.tagFormat === 'inline' ? '' : [];
             }
 
             // Add excerpt below tag

@@ -29,6 +29,11 @@ export const enum CommentConvertMode {
   HTML = 'html'
 }
 
+export const enum TagFormat {
+  YAML = 'yaml',
+  Inline = 'inline'
+}
+
 export interface WordpressPluginSettings {
 
   version?: SettingsVersion;
@@ -120,6 +125,11 @@ export interface WordpressPluginSettings {
    * Image crop width in pixels.
    */
   imageCropWidth: number;
+
+  /**
+   * Tag format preference: YAML array or inline tags (#tag).
+   */
+  tagFormat: TagFormat;
 }
 
 export const DEFAULT_SETTINGS: WordpressPluginSettings = {
@@ -138,6 +148,7 @@ export const DEFAULT_SETTINGS: WordpressPluginSettings = {
   slugGenerationMode: 'pinyin',
   imageCropRatio: '16:9',
   imageCropWidth: 1200,
+  tagFormat: TagFormat.Inline,
 }
 
 export async function upgradeSettings(

@@ -17,6 +17,7 @@ import { AIService } from './ai-service';
 import { AppState } from './app-state';
 import { ImageCacheManager, CachedFeaturedImage } from './image-cache-manager';
 import { createModuleLogger } from './utils/logger';
+import { TagFormatter } from './tag-formatter';
 
 const log = createModuleLogger('WpPublishModalV2');
 
@@ -446,8 +447,11 @@ export class WpPublishModalV2 extends AbstractModal {
       // 使用 processFrontMatter 更新 frontmatter
       await this.plugin.app.fileManager.processFrontMatter(file, (fm) => {
         if (hasGeneratedTags) {
-          // 保存为数组格式，统一 frontmatter 标签格式
-          fm.tags = this.currentParams!.tags;
+          // 根据用户设置格式化标签
+          fm.tags = TagFormatter.formatTags(
+            this.currentParams!.tags,
+            this.plugin.settings.tagFormat
+          );
           log.info('Saved generated tags to frontmatter:', this.currentParams!.tags);
         }
         if (hasGeneratedExcerpt) {
@@ -1469,8 +1473,11 @@ export class WpPublishModalV2 extends AbstractModal {
                 fm.excerpt = params.excerpt;
               }
               if (params.tags && params.tags.length > 0) {
-                // 保存为数组格式，统一 frontmatter 标签格式
-                fm.tags = params.tags;
+                // 根据用户设置格式化标签
+                fm.tags = TagFormatter.formatTags(
+                  params.tags,
+                  this.plugin.settings.tagFormat
+                );
               }
             }, this.featuredImage || undefined);
             resolve();
@@ -1663,21 +1670,10 @@ export class WpPublishModalV2 extends AbstractModal {
 
   /**
    * Normalize tags from frontmatter to string array
-   * Handles both YAML array format and comma-separated string format
+   * Handles YAML array, inline tags (#tag), and comma-separated string formats
    */
   private normalizeTags(tags: any): string[] {
-    if (!tags) return [];
-
-    // If it's already an array, return it
-    if (Array.isArray(tags)) {
-      return tags.map(t => String(t).trim()).filter(t => t);
-    }
-
-    // If it's a string, split by comma
-    if (typeof tags === 'string') {
-      return tags.split(/[,，]/).map(t => t.trim()).filter(t => t);
-    }
-
-    return [];
+    // Use TagFormatter to parse tags (supports YAML array, inline tags, and comma-separated)
+    return TagFormatter.parseToArray(tags);
   }
 }
