@@ -323,7 +323,7 @@ export class WpPublishModalV2 extends AbstractModal {
       commentStatus: this.plugin.settings.defaultCommentStatus,
       postType: this.postTypes.selected,
       categories: this.categories.selected,
-      tags: this.matterData.tags as string[] || [],
+      tags: this.normalizeTags(this.matterData.tags),
       title: this.noteTitle || '',
       content: '',
       slug: this.matterData.slug || '',
@@ -396,7 +396,8 @@ export class WpPublishModalV2 extends AbstractModal {
       // 使用 processFrontMatter 更新 frontmatter
       await this.plugin.app.fileManager.processFrontMatter(file, (fm) => {
         if (hasGeneratedTags) {
-          fm.tags = this.currentParams!.tags;
+          // 保存为逗号分隔的字符串格式，与 WordPress 发布后的格式一致
+          fm.tags = this.currentParams!.tags.join(', ');
           log.info('Saved generated tags to frontmatter:', this.currentParams!.tags);
         }
         if (hasGeneratedExcerpt) {
@@ -1372,7 +1373,8 @@ export class WpPublishModalV2 extends AbstractModal {
                 fm.excerpt = params.excerpt;
               }
               if (params.tags && params.tags.length > 0) {
-                fm.tags = params.tags;
+                // 保存为逗号分隔的字符串格式
+                fm.tags = params.tags.join(', ');
               }
             }, this.featuredImage || undefined);
             resolve();
@@ -1561,5 +1563,25 @@ export class WpPublishModalV2 extends AbstractModal {
     } catch (error) {
       log.error('Slug generation failed:', error);
     }
+  }
+
+  /**
+   * Normalize tags from frontmatter to string array
+   * Handles both YAML array format and comma-separated string format
+   */
+  private normalizeTags(tags: any): string[] {
+    if (!tags) return [];
+
+    // If it's already an array, return it
+    if (Array.isArray(tags)) {
+      return tags.map(t => String(t).trim()).filter(t => t);
+    }
+
+    // If it's a string, split by comma
+    if (typeof tags === 'string') {
+      return tags.split(/[,，]/).map(t => t.trim()).filter(t => t);
+    }
+
+    return [];
   }
 }

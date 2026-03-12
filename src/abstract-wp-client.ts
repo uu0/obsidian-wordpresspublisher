@@ -461,10 +461,14 @@ export abstract class AbstractWordPressClient implements WordPressClient {
         // Handle frontmatter categories - may be names (new format) or IDs (old format)
         let selectedCategories: number[];
         const rawFmCats = matterData.categories;
-        // Normalize to array: handle string (single category) or array (multiple categories)
-        const fmCatArray: (string | number)[] = typeof rawFmCats === 'string'
-          ? [rawFmCats]
-          : (Array.isArray(rawFmCats) ? rawFmCats : []);
+        // Normalize to array: handle string (single/comma-separated) or array (multiple categories)
+        let fmCatArray: (string | number)[] = [];
+        if (typeof rawFmCats === 'string') {
+          // Split by comma to support "分类1, 分类2" format
+          fmCatArray = rawFmCats.split(/[,，]/).map(s => s.trim()).filter(s => s);
+        } else if (Array.isArray(rawFmCats)) {
+          fmCatArray = rawFmCats;
+        }
         if (fmCatArray.length > 0 && typeof fmCatArray[0] === 'string') {
           // New format: category names
           const newCategoryNames: string[] = [];
@@ -644,11 +648,15 @@ export abstract class AbstractWordPressClient implements WordPressClient {
       // only 'post' supports categories and tags
       if (matterData.categories) {
         // Handle both string names (new format) and number IDs (old format)
-        // Also handle string (single category) vs array (multiple categories)
+        // Also handle string (single/comma-separated) vs array (multiple categories)
         const rawCats = matterData.categories;
-        const catArray: (string | number)[] = typeof rawCats === 'string'
-          ? [rawCats]
-          : (Array.isArray(rawCats) ? rawCats : []);
+        let catArray: (string | number)[] = [];
+        if (typeof rawCats === 'string') {
+          // Split by comma to support "分类1, 分类2" format
+          catArray = rawCats.split(/[,，]/).map(s => s.trim()).filter(s => s);
+        } else if (Array.isArray(rawCats)) {
+          catArray = rawCats;
+        }
         if (catArray.length > 0) {
           if (typeof catArray[0] === 'string') {
             // Keep track of local-only categories (those not found on remote)
