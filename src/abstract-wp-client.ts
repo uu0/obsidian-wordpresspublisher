@@ -590,8 +590,15 @@ export abstract class AbstractWordPressClient implements WordPressClient {
               const userSelectedCategories = postParams.categories;
               const userSelectedTags = postParams.tags;
               const editedContent = postParams.content;
+              const publishAsNew = postParams.publishAsNew; // Save publishAsNew flag
               
               postParams = this.readFromFrontMatter(title, matterData, postParams);
+              
+              // Handle "publish as new" option - remove postId to create new post instead of updating
+              if (publishAsNew) {
+                console.log('[WpPublishModalV2] Publish as new post requested, removing postId');
+                delete postParams.postId;
+              }
               
               // Restore user-selected values from modal (they take priority over frontmatter)
               if (userSelectedCategories && userSelectedCategories.length > 0) {

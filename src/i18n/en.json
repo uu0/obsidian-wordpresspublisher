@@ -311,6 +311,8 @@
   "publishModal_commentClosed": "Closed",
   "publishModal_formatHTML": "HTML (Rendered)",
   "publishModal_formatMarkdown": "Markdown (Raw)",
+  "publishModal_publishAsNewName": "Publish as New Post",
+  "publishModal_publishAsNewDesc": "Create a new post instead of updating existing one, allowing the same content to be published as different posts",
   "publishModal_uncategorized": "Uncategorized",
   "publishModal_settingsTab": "⚙️ Settings",
   "publishModal_previewTab": "👁️ Preview",

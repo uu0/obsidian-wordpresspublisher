@@ -1102,6 +1102,20 @@ export class WpPublishModalV2 extends AbstractModal {
             (params as SafeAny).contentFormat = value;
           });
       });
+
+    // 发布为新文章选项（仅当已有关联文章时显示）
+    if (this.matterData.postId) {
+      new Setting(card)
+        .setName(this.t('publishModal_publishAsNewName'))
+        .setDesc(this.t('publishModal_publishAsNewDesc'))
+        .addToggle((toggle) => {
+          toggle
+            .setValue(params.publishAsNew || false)
+            .onChange((value) => {
+              params.publishAsNew = value;
+            });
+        });
+    }
   }
 
   private setupDateMask(inputEl: HTMLInputElement, params: WordPressPostParams): void {

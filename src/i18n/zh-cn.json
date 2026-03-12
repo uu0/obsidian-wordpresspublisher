@@ -311,6 +311,8 @@
   "publishModal_commentClosed": "关闭",
   "publishModal_formatHTML": "HTML (渲染后)",
   "publishModal_formatMarkdown": "Markdown (原始)",
+  "publishModal_publishAsNewName": "发布为新文章",
+  "publishModal_publishAsNewDesc": "创建新文章而非更新现有文章，允许将相同内容发布为不同文章",
   "publishModal_uncategorized": "未分类",
   "publishModal_settingsTab": "⚙️ 设置",
   "publishModal_previewTab": "👁️ 预览",
