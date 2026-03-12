@@ -211,13 +211,33 @@ export class WordpressSettingTab extends PluginSettingTab {
           }),
       );
 
+    // 语言设置
+    new Setting(containerEl)
+      .setName(t('settings_language'))
+      .setDesc(t('settings_languageDesc'))
+      .addDropdown((dropdown) => {
+        dropdown
+          .addOption('auto', t('settings_languageAuto'))
+          .addOption('en', t('settings_languageEn'))
+          .addOption('zh_cn', t('settings_languageZhCn'))
+          .setValue(this.plugin.settings.lang)
+          .onChange(async (value) => {
+            this.plugin.settings.lang = value as 'auto' | 'en' | 'zh_cn';
+            await this.plugin.saveSettings();
+            // 重新渲染设置界面以应用新语言
+            this.display();
+          });
+      });
+
     // AI 配置部分
-    containerEl.createEl('h2', { text: 'AI 配置' });
+    containerEl.createEl('h2', { text: t('settings_aiConfig') });
 
     // Slug 生成设置
+    containerEl.createEl('h3', { text: t('settings_slugGeneration') });
+
     new Setting(containerEl)
-      .setName('自动生成 Slug')
-      .setDesc('发布时自动从标题生成 URL 别名')
+      .setName(t('settings_autoGenerateSlug'))
+      .setDesc(t('settings_autoGenerateSlugDesc'))
       .addToggle((toggle) =>
         toggle
           .setValue(this.plugin.settings.autoGenerateSlug)
@@ -228,28 +248,41 @@ export class WordpressSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName('Slug 生成模式')
-      .setDesc('选择如何生成 Slug：拼音转换或 AI 翻译')
+      .setName(t('settings_slugGenerationMode'))
+      .setDesc(t('settings_slugGenerationModeDesc'))
       .addDropdown((dropdown) => {
         dropdown
-          .addOption('pinyin', '拼音转换（中文→拼音）')
-          .addOption('ai-translate', 'AI 翻译（中文→英文）')
+          .addOption('pinyin', t('settings_slugGenerationModePinyin'))
+          .addOption('ai-translate', t('settings_slugGenerationModeAI'))
           .setValue(this.plugin.settings.slugGenerationMode)
           .onChange(async (value) => {
-            this.plugin.settings.slugGenerationMode = value as 'pinyin' | 'ai-translate';
+            const newMode = value as 'pinyin' | 'ai-translate';
+
+            // 如果选择 AI 翻译模式，检查是否配置了文字处理 AI
+            if (newMode === 'ai-translate') {
+              if (!this.plugin.settings.aiConfig?.textAI?.apiKey) {
+                new Notice(t('notice_slugModeRequiresAI'));
+                dropdown.setValue('pinyin');
+                this.plugin.settings.slugGenerationMode = 'pinyin';
+                await this.plugin.saveSettings();
+                return;
+              }
+            }
+
+            this.plugin.settings.slugGenerationMode = newMode;
             await this.plugin.saveSettings();
           });
       });
 
     // 图片裁剪设置
-    containerEl.createEl('h3', { text: '图片裁剪设置' });
+    containerEl.createEl('h3', { text: t('settings_imageCropSettings') });
 
     new Setting(containerEl)
-      .setName('裁剪比例')
-      .setDesc('特色图片的裁剪比例')
+      .setName(t('settings_imageCropRatio'))
+      .setDesc(t('settings_imageCropRatioDesc'))
       .addDropdown((dropdown) => {
         dropdown
-          .addOption('16:9', '16:9（推荐）')
+          .addOption('16:9', '16:9')
           .addOption('4:3', '4:3')
           .addOption('1:1', '1:1')
           .addOption('3:2', '3:2')
@@ -262,8 +295,8 @@ export class WordpressSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
-      .setName('图片宽度')
-      .setDesc('特色图片和 AI 生图的宽度（像素）')
+      .setName(t('settings_imageCropWidth'))
+      .setDesc(t('settings_imageCropWidthDesc'))
       .addText(text => {
         text
           .setPlaceholder('1200')
@@ -278,14 +311,14 @@ export class WordpressSettingTab extends PluginSettingTab {
       });
 
     // Unsplash 配置
-    containerEl.createEl('h3', { text: 'Unsplash 配置' });
+    containerEl.createEl('h3', { text: t('settings_unsplashConfig') });
 
     new Setting(containerEl)
-      .setName('Unsplash Access Key')
-      .setDesc('用于搜索和下载 Unsplash 图片')
+      .setName(t('settings_unsplashAccessKey'))
+      .setDesc(t('settings_unsplashAccessKeyDesc'))
       .addText(text => {
         text
-          .setPlaceholder('输入 Unsplash Access Key')
+          .setPlaceholder(t('settings_unsplashAccessKeyPlaceholder'))
           .setValue(this.plugin.settings.unsplashAccessKey || '')
           .onChange(async (value) => {
             this.plugin.settings.unsplashAccessKey = value;
@@ -294,36 +327,36 @@ export class WordpressSettingTab extends PluginSettingTab {
         text.inputEl.type = 'password';
       })
       .addButton(btn => {
-        btn.setButtonText('验证')
+        btn.setButtonText(t('settings_validateButton'))
           .onClick(async () => {
             if (!this.plugin.settings.unsplashAccessKey) {
-              new Notice('请先输入 Access Key');
+              new Notice(t('notice_unsplashKeyRequired'));
               return;
             }
 
             btn.setDisabled(true);
-            btn.setButtonText('验证中...');
+            btn.setButtonText(t('settings_validating'));
 
             try {
               const service = new UnsplashService(this.plugin.settings.unsplashAccessKey);
               const isValid = await service.validateApiKey();
 
               if (isValid) {
-                new Notice('✓ Unsplash API Key 验证成功');
+                new Notice(t('notice_unsplashKeyValid'));
               } else {
-                new Notice('✗ Unsplash API Key 验证失败');
+                new Notice(t('notice_unsplashKeyInvalid'));
               }
             } catch (error) {
-              new Notice(`验证失败: ${error instanceof Error ? error.message : '未知错误'}`);
+              new Notice(t('notice_validationFailed', { error: error instanceof Error ? error.message : 'Unknown error' }));
             } finally {
               btn.setDisabled(false);
-              btn.setButtonText('验证');
+              btn.setButtonText(t('settings_validateButton'));
             }
           });
       });
 
     // 文字处理 AI 配置
-    containerEl.createEl('h3', { text: '文字处理 AI' });
+    containerEl.createEl('h3', { text: t('settings_textAIConfig') });
 
     const textAIConfig = this.plugin.settings.aiConfig?.textAI || {
       provider: 'openai',
@@ -333,12 +366,12 @@ export class WordpressSettingTab extends PluginSettingTab {
     };
 
     new Setting(containerEl)
-      .setName('AI 提供商')
-      .setDesc('选择 AI 服务提供商')
+      .setName(t('settings_aiProvider'))
+      .setDesc(t('settings_aiProviderDesc'))
       .addDropdown((dropdown) => {
         dropdown
-          .addOption('openai', 'OpenAI')
-          .addOption('claude', 'Claude (Anthropic)')
+          .addOption('openai', t('settings_aiProviderOpenAI'))
+          .addOption('claude', t('settings_aiProviderClaude'))
           .setValue(textAIConfig.provider)
           .onChange(async (value) => {
             if (!this.plugin.settings.aiConfig) {
@@ -354,11 +387,11 @@ export class WordpressSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
-      .setName('Base URL')
-      .setDesc('API 基础地址')
+      .setName(t('settings_aiBaseURL'))
+      .setDesc(t('settings_aiBaseURLDesc'))
       .addText(text => {
         text
-          .setPlaceholder('https://api.openai.com/v1')
+          .setPlaceholder(t('settings_aiBaseURLPlaceholder'))
           .setValue(textAIConfig.baseURL)
           .onChange(async (value) => {
             if (!this.plugin.settings.aiConfig) {
@@ -374,11 +407,11 @@ export class WordpressSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
-      .setName('API Key')
-      .setDesc('AI 服务的 API 密钥')
+      .setName(t('settings_aiAPIKey'))
+      .setDesc(t('settings_aiAPIKeyDesc'))
       .addText(text => {
         text
-          .setPlaceholder('sk-...')
+          .setPlaceholder(t('settings_aiAPIKeyPlaceholder'))
           .setValue(textAIConfig.apiKey)
           .onChange(async (value) => {
             if (!this.plugin.settings.aiConfig) {
@@ -395,11 +428,11 @@ export class WordpressSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
-      .setName('模型名称')
-      .setDesc('使用的模型名称')
+      .setName(t('settings_aiModel'))
+      .setDesc(t('settings_aiModelDesc'))
       .addText(text => {
         text
-          .setPlaceholder('gpt-3.5-turbo')
+          .setPlaceholder(t('settings_aiModelPlaceholder'))
           .setValue(textAIConfig.model)
           .onChange(async (value) => {
             if (!this.plugin.settings.aiConfig) {
@@ -413,36 +446,36 @@ export class WordpressSettingTab extends PluginSettingTab {
           });
       })
       .addButton(btn => {
-        btn.setButtonText('验证连接')
+        btn.setButtonText(t('settings_validateConnection'))
           .onClick(async () => {
             if (!this.plugin.settings.aiConfig?.textAI) {
-              new Notice('请先配置 AI 服务');
+              new Notice(t('notice_aiConfigRequired'));
               return;
             }
 
             btn.setDisabled(true);
-            btn.setButtonText('验证中...');
+            btn.setButtonText(t('settings_validating'));
 
             try {
               const service = new AIService(this.plugin.settings.aiConfig);
               const result = await service.validateConfig(this.plugin.settings.aiConfig.textAI);
 
               if (result.valid) {
-                new Notice('✓ AI 配置验证成功');
+                new Notice(t('notice_aiConfigValid'));
               } else {
-                new Notice(`✗ AI 配置验证失败: ${result.error}`);
+                new Notice(t('notice_aiConfigInvalid', { error: result.error || 'Unknown error' }));
               }
             } catch (error) {
-              new Notice(`验证失败: ${error instanceof Error ? error.message : '未知错误'}`);
+              new Notice(t('notice_validationFailed', { error: error instanceof Error ? error.message : 'Unknown error' }));
             } finally {
               btn.setDisabled(false);
-              btn.setButtonText('验证连接');
+              btn.setButtonText(t('settings_validateConnection'));
             }
           });
       });
 
     // 图片生成 AI 配置
-    containerEl.createEl('h3', { text: '图片生成 AI' });
+    containerEl.createEl('h3', { text: t('settings_imageAIConfig') });
 
     const imageAIConfig = this.plugin.settings.aiConfig?.imageAI || {
       provider: 'openai',
@@ -452,11 +485,11 @@ export class WordpressSettingTab extends PluginSettingTab {
     };
 
     new Setting(containerEl)
-      .setName('AI 提供商')
-      .setDesc('选择图片生成 AI 服务提供商')
+      .setName(t('settings_aiProvider'))
+      .setDesc(t('settings_imageAIProviderDesc'))
       .addDropdown((dropdown) => {
         dropdown
-          .addOption('openai', 'OpenAI (DALL-E)')
+          .addOption('openai', t('settings_aiProviderOpenAIImage'))
           .setValue(imageAIConfig.provider)
           .onChange(async (value) => {
             if (!this.plugin.settings.aiConfig) {
@@ -472,11 +505,11 @@ export class WordpressSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
-      .setName('Base URL')
-      .setDesc('API 基础地址')
+      .setName(t('settings_aiBaseURL'))
+      .setDesc(t('settings_aiBaseURLDesc'))
       .addText(text => {
         text
-          .setPlaceholder('https://api.openai.com/v1')
+          .setPlaceholder(t('settings_aiBaseURLPlaceholder'))
           .setValue(imageAIConfig.baseURL)
           .onChange(async (value) => {
             if (!this.plugin.settings.aiConfig) {
@@ -492,11 +525,11 @@ export class WordpressSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
-      .setName('API Key')
-      .setDesc('图片生成 AI 的 API 密钥')
+      .setName(t('settings_aiAPIKey'))
+      .setDesc(t('settings_aiAPIKeyDesc'))
       .addText(text => {
         text
-          .setPlaceholder('sk-...')
+          .setPlaceholder(t('settings_aiAPIKeyPlaceholder'))
           .setValue(imageAIConfig.apiKey)
           .onChange(async (value) => {
             if (!this.plugin.settings.aiConfig) {
@@ -513,11 +546,11 @@ export class WordpressSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
-      .setName('模型名称')
-      .setDesc('使用的图片生成模型')
+      .setName(t('settings_aiModel'))
+      .setDesc(t('settings_aiModelDesc'))
       .addText(text => {
         text
-          .setPlaceholder('dall-e-3')
+          .setPlaceholder(t('settings_aiImageModelPlaceholder'))
           .setValue(imageAIConfig.model)
           .onChange(async (value) => {
             if (!this.plugin.settings.aiConfig) {
@@ -531,30 +564,30 @@ export class WordpressSettingTab extends PluginSettingTab {
           });
       })
       .addButton(btn => {
-        btn.setButtonText('验证连接')
+        btn.setButtonText(t('settings_validateConnection'))
           .onClick(async () => {
             if (!this.plugin.settings.aiConfig?.imageAI) {
-              new Notice('请先配置图片生成 AI');
+              new Notice(t('notice_imageAIConfigRequired'));
               return;
             }
 
             btn.setDisabled(true);
-            btn.setButtonText('验证中...');
+            btn.setButtonText(t('settings_validating'));
 
             try {
               const service = new AIService(this.plugin.settings.aiConfig);
               const result = await service.validateConfig(this.plugin.settings.aiConfig.imageAI, true);
 
               if (result.valid) {
-                new Notice('✓ 图片生成 AI 配置验证成功');
+                new Notice(t('notice_imageAIConfigValid'));
               } else {
-                new Notice(`✗ 图片生成 AI 配置验证失败: ${result.error}`);
+                new Notice(t('notice_imageAIConfigInvalid', { error: result.error || 'Unknown error' }));
               }
             } catch (error) {
-              new Notice(`验证失败: ${error instanceof Error ? error.message : '未知错误'}`);
+              new Notice(t('notice_validationFailed', { error: error instanceof Error ? error.message : 'Unknown error' }));
             } finally {
               btn.setDisabled(false);
-              btn.setButtonText('验证连接');
+              btn.setButtonText(t('settings_validateConnection'));
             }
           });
       });

@@ -1,6 +1,7 @@
 import { App, Modal, Setting } from 'obsidian';
 import { FrontmatterConflict, ConflictResolution } from './frontmatter-manager';
 import { SafeAny } from './utils';
+import type WordpressPlugin from './main';
 
 /**
  * Modal for resolving frontmatter conflicts between local and remote data
@@ -9,13 +10,16 @@ export class FrontmatterConflictModal extends Modal {
   private resolution: ConflictResolution = 'cancel';
   private conflicts: FrontmatterConflict[];
   private onResolve: (resolution: ConflictResolution) => void;
+  private plugin: WordpressPlugin;
 
   constructor(
     app: App,
+    plugin: WordpressPlugin,
     conflicts: FrontmatterConflict[],
     onResolve: (resolution: ConflictResolution) => void
   ) {
     super(app);
+    this.plugin = plugin;
     this.conflicts = conflicts;
     this.onResolve = onResolve;
   }
@@ -26,11 +30,11 @@ export class FrontmatterConflictModal extends Modal {
     contentEl.addClass('wp-conflict-modal');
 
     // Title
-    contentEl.createEl('h2', { text: '⚠️ 检测到 Frontmatter 冲突' });
+    contentEl.createEl('h2', { text: this.plugin.t('conflictModal_title') });
 
     // Description
     contentEl.createEl('p', {
-      text: '本地文件的 frontmatter 数据与远程 WordPress 文章数据不一致。请选择如何处理：'
+      text: this.plugin.t('conflictModal_description')
     });
 
     // Conflicts list
@@ -41,17 +45,17 @@ export class FrontmatterConflictModal extends Modal {
 
       conflictItem.createEl('div', {
         cls: 'wp-conflict-field',
-        text: `字段: ${this.getFieldLabel(conflict.field)}`
+        text: this.plugin.t('conflictModal_field', { field: this.getFieldLabel(conflict.field) })
       });
 
       const valuesContainer = conflictItem.createDiv('wp-conflict-values');
 
       const localValue = valuesContainer.createDiv('wp-conflict-value');
-      localValue.createEl('strong', { text: '本地值: ' });
+      localValue.createEl('strong', { text: this.plugin.t('conflictModal_localValue') });
       localValue.createEl('span', { text: this.formatValue(conflict.localValue) });
 
       const remoteValue = valuesContainer.createDiv('wp-conflict-value');
-      remoteValue.createEl('strong', { text: '远程值: ' });
+      remoteValue.createEl('strong', { text: this.plugin.t('conflictModal_remoteValue') });
       remoteValue.createEl('span', { text: this.formatValue(conflict.remoteValue) });
     }
 
@@ -59,10 +63,10 @@ export class FrontmatterConflictModal extends Modal {
     const optionsContainer = contentEl.createDiv('wp-conflict-options');
 
     new Setting(optionsContainer)
-      .setName('使用本地值')
-      .setDesc('保留本地 frontmatter 的值，覆盖远程数据')
+      .setName(this.plugin.t('conflictModal_useLocalName'))
+      .setDesc(this.plugin.t('conflictModal_useLocalDesc'))
       .addButton(btn => btn
-        .setButtonText('使用本地')
+        .setButtonText(this.plugin.t('conflictModal_useLocalButton'))
         .setCta()
         .onClick(() => {
           this.resolution = 'local';
@@ -71,10 +75,10 @@ export class FrontmatterConflictModal extends Modal {
       );
 
     new Setting(optionsContainer)
-      .setName('使用远程值')
-      .setDesc('使用远程 WordPress 的值，更新本地 frontmatter')
+      .setName(this.plugin.t('conflictModal_useRemoteName'))
+      .setDesc(this.plugin.t('conflictModal_useRemoteDesc'))
       .addButton(btn => btn
-        .setButtonText('使用远程')
+        .setButtonText(this.plugin.t('conflictModal_useRemoteButton'))
         .onClick(() => {
           this.resolution = 'remote';
           this.close();
@@ -82,10 +86,10 @@ export class FrontmatterConflictModal extends Modal {
       );
 
     new Setting(optionsContainer)
-      .setName('取消发布')
-      .setDesc('取消本次发布操作，手动解决冲突')
+      .setName(this.plugin.t('conflictModal_cancelName'))
+      .setDesc(this.plugin.t('conflictModal_cancelDesc'))
       .addButton(btn => btn
-        .setButtonText('取消')
+        .setButtonText(this.plugin.t('conflictModal_cancelButton'))
         .setWarning()
         .onClick(() => {
           this.resolution = 'cancel';
@@ -105,11 +109,11 @@ export class FrontmatterConflictModal extends Modal {
    */
   private getFieldLabel(field: string): string {
     const labels: Record<string, string> = {
-      postId: '文章 ID',
-      postType: '文章类型',
-      categories: '分类',
-      slug: 'URL 别名',
-      tags: '标签'
+      postId: this.plugin.t('conflictModal_fieldPostId'),
+      postType: this.plugin.t('conflictModal_fieldPostType'),
+      categories: this.plugin.t('conflictModal_fieldCategories'),
+      slug: this.plugin.t('conflictModal_fieldSlug'),
+      tags: this.plugin.t('conflictModal_fieldTags')
     };
     return labels[field] || field;
   }
@@ -119,7 +123,7 @@ export class FrontmatterConflictModal extends Modal {
    */
   private formatValue(value: SafeAny): string {
     if (value === null || value === undefined || value === '') {
-      return '(空)';
+      return this.plugin.t('conflictModal_emptyValue');
     }
     if (Array.isArray(value)) {
       return value.join(', ');
@@ -131,14 +135,16 @@ export class FrontmatterConflictModal extends Modal {
 /**
  * Open conflict resolution modal and wait for user choice
  * @param app - Obsidian app instance
+ * @param plugin - Plugin instance for i18n
  * @param conflicts - Array of conflicts to resolve
  * @returns Promise resolving to user's choice
  */
 export function openConflictModal(
   app: App,
+  plugin: WordpressPlugin,
   conflicts: FrontmatterConflict[]
 ): Promise<ConflictResolution> {
   return new Promise((resolve) => {
-    new FrontmatterConflictModal(app, conflicts, resolve).open();
+    new FrontmatterConflictModal(app, plugin, conflicts, resolve).open();
   });
 }
