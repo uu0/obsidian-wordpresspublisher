@@ -20,10 +20,60 @@ import { createModuleLogger } from './utils/logger';
 
 const log = createModuleLogger('WpPublishModalV2');
 
-// Default prompt templates - used as both defaults and placeholders
-const DEFAULT_SUMMARY_PROMPT = '请根据以下文章内容，生成一段100-200字的简洁摘要。\n要求：\n1. 概括文章核心内容和主要观点\n2. 语言流畅自然\n3. 只返回摘要文本，不要添加任何前缀或说明\n\n文章内容：\n{content}';
-const DEFAULT_TAGS_PROMPT = '请根据以下文章内容，提取1-4个最相关的关键词作为标签。\n要求：\n1. 每个标签简洁精炼（2-4个字）\n2. 标签之间用逗号分隔\n3. 只返回逗号分隔的标签，不要添加任何前缀或说明\n\n文章内容：\n{content}';
-const DEFAULT_IMAGE_PROMPT = '根据以下文章摘要或标签，生成一个适合作为博客封面图的英文图片描述。\n要求：简洁、视觉化、专业，适合 AI 图片生成。\n只返回英文图片描述，不要添加任何前缀或说明。\n\n文章标题：{title}\n文章摘要/标签：{content}';
+// Default prompt templates will be loaded from i18n
+
+/**
+ * 检测文本的主要语言
+ */
+function detectLanguage(text: string): 'zh' | 'en' | 'other' {
+  if (!text || text.length < 10) return 'en';
+
+  // 统计中文字符数量
+  const chineseChars = text.match(/[\u4e00-\u9fa5]/g);
+  const chineseCount = chineseChars ? chineseChars.length : 0;
+
+  // 统计英文字符数量
+  const englishChars = text.match(/[a-zA-Z]/g);
+  const englishCount = englishChars ? englishChars.length : 0;
+
+  // 如果中文字符占比超过30%，认为是中文
+  if (chineseCount > text.length * 0.3) {
+    return 'zh';
+  }
+
+  // 如果英文字符占比超过40%，认为是英文
+  if (englishCount > text.length * 0.4) {
+    return 'en';
+  }
+
+  // 其他情况，默认英文
+  return 'other';
+}
+
+/**
+ * Get localized prompt based on language
+ */
+function getLocalizedPrompt(plugin: WordpressPlugin, language: 'zh' | 'en' | 'other', type: 'summary' | 'tags' | 'image'): string {
+  // Use English prompts for English or other languages
+  if (language === 'en' || language === 'other') {
+    if (type === 'summary') {
+      return plugin.t('defaultPrompt_summaryEn');
+    } else if (type === 'tags') {
+      return plugin.t('defaultPrompt_tagsEn');
+    } else {
+      return plugin.t('defaultPrompt_imageEn');
+    }
+  }
+
+  // Use Chinese prompts for Chinese
+  if (type === 'summary') {
+    return plugin.t('defaultPrompt_summary');
+  } else if (type === 'tags') {
+    return plugin.t('defaultPrompt_tags');
+  } else {
+    return plugin.t('defaultPrompt_image');
+  }
+}
 
 /**
  * WordPress publish modal V2 - New version with improved UI
@@ -54,15 +104,15 @@ export class WpPublishModalV2 extends AbstractModal {
 
   // Prompt templates from settings, with proper defaults
   private get imageGenerationPrompt(): string {
-    return this.plugin.settings.imageGenerationPrompt || DEFAULT_IMAGE_PROMPT;
+    return this.plugin.settings.imageGenerationPrompt || this.plugin.t('defaultPrompt_image');
   }
 
   private get summaryPrompt(): string {
-    return this.plugin.settings.summaryPrompt || DEFAULT_SUMMARY_PROMPT;
+    return this.plugin.settings.summaryPrompt || this.plugin.t('defaultPrompt_summary');
   }
 
   private get tagsPrompt(): string {
-    return this.plugin.settings.tagsPrompt || DEFAULT_TAGS_PROMPT;
+    return this.plugin.settings.tagsPrompt || this.plugin.t('defaultPrompt_tags');
   }
 
   constructor(
@@ -457,9 +507,9 @@ export class WpPublishModalV2 extends AbstractModal {
     const tabContainer = container.createDiv('wp-publish-tabs');
 
     const tabs = [
-      { id: 'settings', label: '⚙️ 设置' },
-      { id: 'preview', label: '👁️ 预览' },
-      { id: 'advanced', label: '🔧 高级设置' }
+      { id: 'settings', label: this.plugin.t('publishModal_settingsTab') },
+      { id: 'preview', label: this.plugin.t('publishModal_previewTab') },
+      { id: 'advanced', label: this.plugin.t('publishModal_advancedTab') }
     ];
 
     tabs.forEach(tab => {
@@ -485,7 +535,7 @@ export class WpPublishModalV2 extends AbstractModal {
 
   private renderFeaturedImageSettings(container: HTMLElement, params: WordPressPostParams): void {
     const card = container.createDiv('wp-settings-card');
-    card.createEl('h3', { text: '特色图片', cls: 'wp-settings-section-title' });
+    card.createEl('h3', { text: this.t('publishModal_featuredImage'), cls: 'wp-settings-section-title' });
 
     const previewContainer = card.createDiv('featured-image-preview-large');
 
@@ -507,7 +557,7 @@ export class WpPublishModalV2 extends AbstractModal {
       info.createSpan({ text: this.featuredImage.fileName });
 
       const removeBtn = previewContainer.createEl('button', {
-        text: '移除',
+        text: this.t('confirmModal_cancel'),
         cls: 'featured-image-remove-btn'
       });
       removeBtn.onclick = () => {
@@ -526,7 +576,7 @@ export class WpPublishModalV2 extends AbstractModal {
       img.style.borderRadius = '6px';
 
       const info = previewContainer.createDiv('featured-image-info');
-      info.createSpan({ text: '✅ 已上传到 WordPress' });
+      info.createSpan({ text: this.t('publishModal_uploadedToWordPress') });
       info.style.color = 'var(--text-success)';
       info.style.display = 'flex';
       info.style.alignItems = 'center';
@@ -534,7 +584,7 @@ export class WpPublishModalV2 extends AbstractModal {
       info.style.gap = '4px';
     } else {
       previewContainer.createEl('p', {
-        text: '未选择特色图片',
+        text: this.t('publishModal_noFeaturedImage'),
         cls: 'featured-image-placeholder-text'
       });
     }
@@ -542,29 +592,29 @@ export class WpPublishModalV2 extends AbstractModal {
     // 四个按钮
     const btnRow = card.createDiv('featured-image-btn-row');
 
-    const localBtn = btnRow.createEl('button', { text: '📁 本地', cls: 'feature-btn' });
+    const localBtn = btnRow.createEl('button', { text: this.t('publishModal_localImage'), cls: 'feature-btn' });
     localBtn.onclick = () => this.selectLocalImage(params);
 
     // 在线按钮 (Unsplash) - use tags as search query
-    const onlineBtn = btnRow.createEl('button', { text: '🌐 在线', cls: 'feature-btn' });
+    const onlineBtn = btnRow.createEl('button', { text: this.t('publishModal_onlineImage'), cls: 'feature-btn' });
     onlineBtn.onclick = () => {
       if (!this.plugin.settings.unsplashAccessKey) {
-        new Notice('请先在插件设置中配置 Unsplash API Key');
+        new Notice(this.t('publishModal_unsplashKeyRequired'));
       } else {
         this.selectUnsplashImage(params);
       }
     };
 
-    const aiBtn = btnRow.createEl('button', { text: '🎨 AI生成', cls: 'feature-btn' });
+    const aiBtn = btnRow.createEl('button', { text: this.t('publishModal_aiGenerateBtn'), cls: 'feature-btn' });
     if (!this.plugin.settings.aiConfig) {
       aiBtn.onclick = () => {
-        new Notice('请先在插件设置中配置 AI 服务（图片生成 AI）');
+        new Notice(this.t('publishModal_imageAIRequired'));
       };
     } else {
       aiBtn.onclick = () => this.generateAImage(params);
     }
 
-    const galleryBtn = btnRow.createEl('button', { text: '📚 图库', cls: 'feature-btn' });
+    const galleryBtn = btnRow.createEl('button', { text: this.t('publishModal_galleryImage'), cls: 'feature-btn' });
     galleryBtn.onclick = () => this.selectVaultImage(params);
   }
 
@@ -587,9 +637,9 @@ export class WpPublishModalV2 extends AbstractModal {
           // 保存到缓存
           await this.saveImageToCache(arrayBuffer, file.name, file.type, 'local');
           this.display(params);
-          new Notice('图片已选择');
+          new Notice(this.t('publishModal_imageSelected_simple'));
         } catch (error) {
-          new Notice(`选择图片失败: ${error instanceof Error ? error.message : '未知错误'}`);
+          new Notice(this.t('publishModal_imageSelectFailed', { error: error instanceof Error ? error.message : 'Unknown error' }));
         }
       }
     };
@@ -598,7 +648,7 @@ export class WpPublishModalV2 extends AbstractModal {
 
   private selectUnsplashImage(params: WordPressPostParams): void {
     if (!this.unsplashService) {
-      new Notice('请先在插件设置中配置 Unsplash Access Key');
+      new Notice(this.t('publishModal_unsplashKeyRequiredSimple'));
       return;
     }
 
@@ -624,7 +674,7 @@ export class WpPublishModalV2 extends AbstractModal {
         // 保存到缓存
         await this.saveImageToCache(finalBuffer, fileName, 'image/jpeg', 'unsplash');
         this.display(params);
-        new Notice('图片已选择');
+        new Notice(this.t('publishModal_imageSelected_simple'));
       },
       tagsQuery
     );
@@ -647,7 +697,7 @@ export class WpPublishModalV2 extends AbstractModal {
 
   private async generateAImage(params: WordPressPostParams): Promise<void> {
     if (!this.plugin.settings.aiConfig || !this.aiService) {
-      new Notice('请先在插件设置中配置 AI 服务');
+      new Notice(this.t('publishModal_aiServiceRequired'));
       return;
     }
 
@@ -655,8 +705,19 @@ export class WpPublishModalV2 extends AbstractModal {
       const imagePromptContent = await this.getImagePromptContent(params);
       if (!imagePromptContent) return;
 
-      new Notice('AI 正在生成图片，请稍候...');
-      const imageUrl = await this.aiService.generateImage(imagePromptContent);
+      // 检测文章语言并生成图片描述提示词
+      const contentToDetect = this.editableContent || this.articleContent;
+      const language = detectLanguage(contentToDetect);
+      log.info('Detected language for image generation:', language);
+
+      const basePrompt = this.imageGenerationPrompt || this.plugin.t('defaultPrompt_image');
+      const localizedPrompt = getLocalizedPrompt(this.plugin, language, 'image');
+      const imageDescriptionPrompt = localizedPrompt
+        .replace('{title}', params.title || '')
+        .replace('{content}', imagePromptContent);
+
+      new Notice(this.t('publishModal_aiGeneratingImage'));
+      const imageUrl = await this.aiService.generateImage(imageDescriptionPrompt);
       const response = await fetch(imageUrl);
       const arrayBuffer = await response.arrayBuffer();
 
@@ -672,10 +733,10 @@ export class WpPublishModalV2 extends AbstractModal {
       await this.saveImageToCache(arrayBuffer, fileName, 'image/png', 'ai');
 
       this.display(params);
-      new Notice('AI 图片已生成');
+      new Notice(this.t('publishModal_aiImageGenerated'));
     } catch (error) {
       log.error('AI image generation error:', error);
-      new Notice(`生成图片失败: ${error instanceof Error ? error.message : '未知错误'}`);
+      new Notice(this.t('publishModal_aiImageGenerateFailed', { error: error instanceof Error ? error.message : 'Unknown error' }));
     }
   }
 
@@ -691,28 +752,35 @@ export class WpPublishModalV2 extends AbstractModal {
 
     // Generate summary first
     if (!this.aiService) {
-      new Notice('请先在插件设置中配置 AI 服务（文字处理 AI）');
+      new Notice(this.t('notice_aiConfigRequired'));
       return null;
     }
 
     const contentToUse = this.editableContent || this.articleContent;
     if (!contentToUse) {
-      new Notice('文章内容为空，无法生成摘要');
+      new Notice(this.t('publishModal_emptyContent'));
       return null;
     }
 
     try {
-      new Notice('正在生成摘要...');
+      new Notice(this.t('publishModal_generatingSummary'));
       const cleanContent = this.sanitizeContentForAI(contentToUse, 2000);
-      const prompt = this.summaryPrompt.replace('{content}', cleanContent);
+
+      // 检测文章语言并适配提示词
+      const language = detectLanguage(cleanContent);
+      log.info('Detected language for image summary:', language);
+      const basePrompt = this.summaryPrompt || this.plugin.t('defaultPrompt_summary');
+      const localizedPrompt = getLocalizedPrompt(this.plugin, language, 'summary');
+      const prompt = localizedPrompt.replace('{content}', cleanContent);
+
       const summary = await this.aiService.generateText(prompt);
       params.excerpt = summary.trim();
-      new Notice('摘要已生成，正在生成图片...');
+      new Notice(this.t('publishModal_generatingSummary'));
       this.display(params);
       return params.excerpt;
     } catch (error) {
       log.error('Generate summary for image error:', error);
-      new Notice(`生成摘要失败: ${error instanceof Error ? error.message : '未知错误'}`);
+      new Notice(this.t('publishModal_summaryGenerateFailed', { error: error instanceof Error ? error.message : 'Unknown error' }));
       return null;
     }
   }
@@ -720,7 +788,8 @@ export class WpPublishModalV2 extends AbstractModal {
   private selectVaultImage(params: WordPressPostParams): void {
     const modal = new VaultImagePickerModal(
       this.app,
-      async (file, arrayBuffer, mimeType) => {
+      this.plugin,
+      async (file: TFile, arrayBuffer: ArrayBuffer, mimeType: string) => {
         this.featuredImage = {
           fileName: file.name,
           mimeType: mimeType,
@@ -731,7 +800,7 @@ export class WpPublishModalV2 extends AbstractModal {
         // 保存到缓存
         await this.saveImageToCache(arrayBuffer, file.name, mimeType, 'vault');
         this.display(params);
-        new Notice('已从图库选择: ' + file.name);
+        new Notice(this.t('publishModal_imageFromGallery', { fileName: file.name }));
       }
     );
     modal.open();
@@ -739,15 +808,15 @@ export class WpPublishModalV2 extends AbstractModal {
 
   private renderBasicSettings(container: HTMLElement, params: WordPressPostParams): void {
     const card = container.createDiv('wp-settings-card');
-    card.createEl('h3', { text: '基本设置', cls: 'wp-settings-section-title' });
+    card.createEl('h3', { text: this.plugin.t('publishModal_basicSettings'), cls: 'wp-settings-section-title' });
 
     // 标题
     new Setting(card)
-      .setName('标题')
-      .setDesc('文章或页面的标题，按回车或失去焦点时自动更新Slug')
+      .setName(this.t('publishModal_titleName'))
+      .setDesc(this.t('publishModal_titleDesc'))
       .addText(text => {
         this.titleInput = text.inputEl;
-        text.setPlaceholder('输入标题...')
+        text.setPlaceholder(this.t('publishModal_titlePlaceholder'))
           .setValue(params.title || '')
           .onChange(value => {
             params.title = value;
@@ -761,7 +830,7 @@ export class WpPublishModalV2 extends AbstractModal {
             if (!this.lastAutoGeneratedSlug || params.slug === this.lastAutoGeneratedSlug) {
               this.generateDefaultSlug(params.title, params);
               this.lastAutoGeneratedSlug = params.slug || '';
-              new Notice('Slug 已自动更新');
+              new Notice(this.t('publishModal_slugAutoUpdated'));
             }
           }
         };
@@ -782,15 +851,15 @@ export class WpPublishModalV2 extends AbstractModal {
 
     // Slug
     const slugSetting = new Setting(card)
-      .setName('Slug（别名）')
-      .setDesc('URL 中使用的别名，随标题自动更新，也可手动修改');
+      .setName(this.t('publishModal_slugName'))
+      .setDesc(this.t('publishModal_slugDesc'));
 
     // Track the initial slug value to detect manual edits
     const initialSlugValue = params.slug;
 
     slugSetting.addText(text => {
       this.slugInput = text.inputEl;
-      text.setPlaceholder('自动生成或手动输入...')
+      text.setPlaceholder(this.t('publishModal_slugPlaceholder'))
         .setValue(params.slug || '')
         .onChange(value => {
           const sanitized = SlugGenerator.sanitizeSlug(value);
@@ -808,22 +877,22 @@ export class WpPublishModalV2 extends AbstractModal {
     if (this.plugin.settings.slugGenerationMode === 'ai-translate') {
       if (!this.plugin.settings.aiConfig) {
         slugSetting.addButton(btn => {
-          btn.setButtonText('⚠️需配置AI')
-            .setTooltip('请先在插件设置中配置 AI 服务')
+          btn.setButtonText(this.t('publishModal_slugAIButtonNeedConfig'))
+            .setTooltip(this.t('publishModal_aiServiceRequired'))
             .setDisabled(true);
         });
       } else {
         slugSetting.addButton(btn => {
-          btn.setButtonText('AI翻译')
-            .setTooltip('使用 AI 将标题翻译成英文 Slug')
+          btn.setButtonText(this.t('publishModal_slugAIButton'))
+            .setTooltip(this.t('publishModal_slugAIButton'))
             .onClick(async () => {
               if (!params.title) {
-                new Notice('请先输入标题');
+                new Notice(this.t('publishModal_slugNeedTitle'));
                 return;
               }
 
               btn.setDisabled(true);
-              btn.setButtonText('翻译中...');
+              btn.setButtonText(this.t('publishModal_slugAIButtonTranslating'));
 
               try {
                 const slug = await this.aiService!.translateToSlug(params.title);
@@ -831,12 +900,12 @@ export class WpPublishModalV2 extends AbstractModal {
                   this.slugInput.value = slug;
                   params.slug = slug;
                 }
-                new Notice('Slug已生成');
+                new Notice(this.t('publishModal_slugGenerated'));
               } catch (error) {
-                new Notice(`翻译失败: ${error instanceof Error ? error.message : '未知错误'}`);
+                new Notice(this.t('publishModal_slugTranslateFailed', { error: error instanceof Error ? error.message : 'Unknown error' }));
               } finally {
                 btn.setDisabled(false);
-                btn.setButtonText('AI翻译');
+                btn.setButtonText(this.t('publishModal_slugAIButton'));
               }
             });
         });
@@ -849,18 +918,22 @@ export class WpPublishModalV2 extends AbstractModal {
 
     if (params.postType === PostTypeConst.Post && validCategories.length > 0) {
       new Setting(card)
-        .setName('分类')
-        .setDesc('选择文章分类')
+        .setName(this.t('publishModal_categoryName'))
+        .setDesc(this.t('publishModal_categoryDesc'))
         .addDropdown((dropdown) => {
 
-          // 查找"未分类"
-          const uncategorized = validCategories.find(it => it.name === '未分类');
+          // Find "Uncategorized" category
+          const uncategorized = validCategories.find(it =>
+            it.name === this.plugin.t('publishModal_uncategorized') ||
+            it.name === 'Uncategorized' ||
+            it.name === '未分类'
+          );
 
           validCategories.forEach(it => {
             dropdown.addOption(String(it.id), it.name);
           });
 
-          // 如果没有选中分类，默认选择"未分类"
+          // If no category selected, default to "Uncategorized"
           const selectedCategory = params.categories[0]
             ? String(params.categories[0])
             : (uncategorized ? String(uncategorized.id) : String(validCategories[0]?.id || ''));
@@ -880,14 +953,14 @@ export class WpPublishModalV2 extends AbstractModal {
 
     // 发布状态 - preserve slug on state change
     new Setting(card)
-      .setName('状态')
-      .setDesc('选择发布状态')
+      .setName(this.t('publishModal_statusName'))
+      .setDesc(this.t('publishModal_statusDesc'))
       .addDropdown((dropdown) => {
         dropdown
-          .addOption(PostStatus.Draft, '草稿')
-          .addOption(PostStatus.Publish, '发布')
-          .addOption(PostStatus.Private, '私密')
-          .addOption(PostStatus.Future, '定时发布')
+          .addOption(PostStatus.Draft, this.plugin.t('publishModal_statusDraft'))
+          .addOption(PostStatus.Publish, this.plugin.t('publishModal_statusPublish'))
+          .addOption(PostStatus.Private, this.plugin.t('publishModal_statusPrivate'))
+          .addOption(PostStatus.Future, this.plugin.t('publishModal_statusFuture'))
           .setValue(params.status)
           .onChange((value) => {
             params.status = value as PostStatus;
@@ -899,8 +972,8 @@ export class WpPublishModalV2 extends AbstractModal {
     // 定时发布日期
     if (params.status === PostStatus.Future) {
       new Setting(card)
-        .setName('发布时间')
-        .setDesc('格式：yyyy-MM-dd 或 yyyy-MM-dd HH:mm:ss')
+        .setName(this.t('publishModal_postDateTimeName'))
+        .setDesc(this.t('publishModal_postDateTimeDescFormat'))
         .addText(text => {
           text.setValue(format(new Date(), 'yyyy-MM-dd HH:mm:ss'));
           this.setupDateMask(text.inputEl, params);
@@ -911,12 +984,12 @@ export class WpPublishModalV2 extends AbstractModal {
 
     // 评论状态
     new Setting(card)
-      .setName('评论')
-      .setDesc('是否允许评论')
+      .setName(this.t('publishModal_commentName'))
+      .setDesc(this.t('publishModal_commentDesc'))
       .addDropdown((dropdown) => {
         dropdown
-          .addOption(CommentStatus.Open, '开启')
-          .addOption(CommentStatus.Closed, '关闭')
+          .addOption(CommentStatus.Open, this.plugin.t('publishModal_commentOpen'))
+          .addOption(CommentStatus.Closed, this.plugin.t('publishModal_commentClosed'))
           .setValue(params.commentStatus)
           .onChange((value) => {
             params.commentStatus = value as CommentStatus;
@@ -925,12 +998,12 @@ export class WpPublishModalV2 extends AbstractModal {
 
     // 发布为Markdown选项
     new Setting(card)
-      .setName('发布格式')
-      .setDesc('选择发布内容格式')
+      .setName(this.t('publishModal_postTypeName'))
+      .setDesc(this.t('publishModal_postTypeDesc'))
       .addDropdown((dropdown) => {
         dropdown
-          .addOption('html', 'HTML (渲染后)')
-          .addOption('markdown', 'Markdown (原始)')
+          .addOption('html', this.plugin.t('publishModal_formatHTML'))
+          .addOption('markdown', this.plugin.t('publishModal_formatMarkdown'))
           .setValue('html')
           .onChange((value) => {
             (params as SafeAny).contentFormat = value;
@@ -974,10 +1047,10 @@ export class WpPublishModalV2 extends AbstractModal {
     });
   }
 
-  // ==================== 预览标签 ====================
+  // ==================== Preview Tab ====================
   private renderPreviewTab(container: HTMLElement, params: WordPressPostParams): void {
     const card = container.createDiv('wp-preview-card');
-    card.createEl('h3', { text: '文章预览', cls: 'wp-preview-card-title' });
+    card.createEl('h3', { text: this.plugin.t('publishModal_previewTitle'), cls: 'wp-preview-card-title' });
 
     if (this.isEditingPreview) {
       this.renderPreviewEditor(card);
@@ -990,7 +1063,7 @@ export class WpPublishModalV2 extends AbstractModal {
     const editorArea = card.createDiv('wp-preview-editor-area');
     const textarea = editorArea.createEl('textarea', {
       cls: 'wp-preview-textarea',
-      attr: { placeholder: '在此编辑 Markdown 内容...' }
+      attr: { placeholder: this.plugin.t('publishModal_previewEditPlaceholder') }
     });
     textarea.value = this.editableContent;
     textarea.style.width = '100%';
@@ -1024,14 +1097,14 @@ export class WpPublishModalV2 extends AbstractModal {
   }
 
   private renderFeaturedImagePreview(card: HTMLElement, image: FeaturedImageResult): void {
-    const section = this.createImageSection(card, '特色图片');
+    const section = this.createImageSection(card, this.plugin.t('publishModal_previewFeaturedImage'));
     const blob = new Blob([image.content], { type: image.mimeType });
     const url = URL.createObjectURL(blob);
     this.createPreviewImage(section, url);
   }
 
   private renderUploadedImagePreview(card: HTMLElement, imageUrl: string): void {
-    const section = this.createImageSection(card, '特色图片（已上传到 WordPress）');
+    const section = this.createImageSection(card, this.plugin.t('publishModal_previewFeaturedImageUploaded'));
     this.createPreviewImage(section, imageUrl);
   }
 
@@ -1078,7 +1151,7 @@ export class WpPublishModalV2 extends AbstractModal {
       color: 'var(--text-muted)',
       borderLeft: '3px solid var(--interactive-accent)'
     });
-    section.createEl('strong', { text: '摘要: ' });
+    section.createEl('strong', { text: this.plugin.t('publishModal_previewSummary') });
     section.createSpan({ text: excerpt });
   }
 
@@ -1092,7 +1165,7 @@ export class WpPublishModalV2 extends AbstractModal {
       alignItems: 'center'
     });
 
-    const label = section.createEl('span', { text: '标签: ' });
+    const label = section.createEl('span', { text: this.plugin.t('publishModal_previewTags') });
     label.style.fontSize = '12px';
     label.style.color = 'var(--text-muted)';
 
@@ -1133,26 +1206,26 @@ export class WpPublishModalV2 extends AbstractModal {
     previewContent.appendChild(style);
   }
 
-  // ==================== 高级设置标签 ====================
+  // ==================== Advanced Settings Tab ====================
   private renderAdvancedTab(container: HTMLElement, params: WordPressPostParams): void {
     const card = container.createDiv('wp-advanced-card');
 
     const header = card.createDiv('wp-advanced-header');
-    header.createEl('h3', { text: '自定义提示词', cls: 'wp-advanced-card-title' });
+    header.createEl('h3', { text: this.plugin.t('publishModal_advancedTitle'), cls: 'wp-advanced-card-title' });
 
     const notice = header.createDiv('wp-advanced-notice');
     notice.style.padding = '12px';
     notice.style.backgroundColor = 'var(--background-secondary)';
     notice.style.borderRadius = '6px';
     notice.style.marginBottom = '20px';
-    notice.createEl('p', { text: '在这里自定义 AI 生成内容时使用的提示词。留空则使用默认提示词。' });
+    notice.createEl('p', { text: this.plugin.t('publishModal_advancedNotice') });
 
-    // 摘要提示词 - no desc, expanded textarea with default as placeholder
+    // Summary prompt
     const summarySection = card.createDiv('wp-advanced-section');
-    summarySection.createEl('h4', { text: '📝 摘要生成提示词', cls: 'wp-advanced-section-title' });
+    summarySection.createEl('h4', { text: this.plugin.t('publishModal_summaryPromptTitle'), cls: 'wp-advanced-section-title' });
     const summarySetting = new Setting(summarySection);
     summarySetting.addTextArea(text => {
-      text.setPlaceholder(DEFAULT_SUMMARY_PROMPT)
+      text.setPlaceholder(this.plugin.t('defaultPrompt_summary'))
         .setValue(this.plugin.settings.summaryPrompt || '')
         .onChange(value => {
           (this.plugin.settings as SafeAny).summaryPrompt = value;
@@ -1165,12 +1238,12 @@ export class WpPublishModalV2 extends AbstractModal {
       text.inputEl.style.lineHeight = '1.5';
     });
 
-    // 标签提示词
+    // Tags prompt
     const tagsSection = card.createDiv('wp-advanced-section');
-    tagsSection.createEl('h4', { text: '🏷️ 标签生成提示词', cls: 'wp-advanced-section-title' });
+    tagsSection.createEl('h4', { text: this.plugin.t('publishModal_tagsPromptTitle'), cls: 'wp-advanced-section-title' });
     const tagsSetting = new Setting(tagsSection);
     tagsSetting.addTextArea(text => {
-      text.setPlaceholder(DEFAULT_TAGS_PROMPT)
+      text.setPlaceholder(this.plugin.t('defaultPrompt_tags'))
         .setValue(this.plugin.settings.tagsPrompt || '')
         .onChange(value => {
           (this.plugin.settings as SafeAny).tagsPrompt = value;
@@ -1183,12 +1256,12 @@ export class WpPublishModalV2 extends AbstractModal {
       text.inputEl.style.lineHeight = '1.5';
     });
 
-    // 图片生成提示词
+    // Image generation prompt
     const imageSection = card.createDiv('wp-advanced-section');
-    imageSection.createEl('h4', { text: '🎨 图片生成提示词', cls: 'wp-advanced-section-title' });
+    imageSection.createEl('h4', { text: this.plugin.t('publishModal_imagePromptTitle'), cls: 'wp-advanced-section-title' });
     const imageSetting = new Setting(imageSection);
     imageSetting.addTextArea(text => {
-      text.setPlaceholder(DEFAULT_IMAGE_PROMPT)
+      text.setPlaceholder(this.plugin.t('defaultPrompt_image'))
         .setValue(this.plugin.settings.imageGenerationPrompt || '')
         .onChange(value => {
           (this.plugin.settings as SafeAny).imageGenerationPrompt = value;
@@ -1205,63 +1278,63 @@ export class WpPublishModalV2 extends AbstractModal {
     const saveSection = card.createDiv('wp-advanced-save');
     new Setting(saveSection)
       .addButton(btn => {
-        btn.setButtonText('💾 保存设置')
+        btn.setButtonText(this.t('publishModal_saveSettings'))
           .setCta()
           .onClick(async () => {
             await this.plugin.saveSettings();
-            new Notice('设置已保存');
+            new Notice(this.t('publishModal_settingsSaved'));
           });
       });
   }
 
-  // ==================== 底部操作栏 ====================
+  // ==================== Bottom Action Bar ====================
   private renderBottomBar(container: HTMLElement, params: WordPressPostParams): void {
     const bottomContainer = container.createDiv('wp-publish-bottom-bar');
 
     if (this.currentTab === 'preview') {
       const editBtn = bottomContainer.createEl('button', {
-        text: this.isEditingPreview ? '💾 保存' : '✏️ 编辑',
+        text: this.isEditingPreview ? this.plugin.t('publishModal_saveButton') : this.plugin.t('publishModal_editButton'),
         cls: 'mod-cta'
       });
       editBtn.onclick = () => {
         if (this.isEditingPreview) {
           this.isEditingPreview = false;
-          new Notice('内容已保存');
+          new Notice(this.t('publishModal_contentSaved'));
         } else {
           this.isEditingPreview = true;
         }
         this.display(params);
       };
 
-      const summaryBtn = bottomContainer.createEl('button', { text: '📝 生成摘要' });
+      const summaryBtn = bottomContainer.createEl('button', { text: this.t('publishModal_generateSummary') });
       if (!this.aiService) {
         summaryBtn.addClass('disabled');
         summaryBtn.onclick = () => {
-          new Notice('请先在插件设置中配置 AI 服务（文字处理 AI）');
+          new Notice(this.t('notice_aiConfigRequired'));
         };
       } else {
         summaryBtn.onclick = () => this.generateSummary(params);
       }
 
-      const tagsBtn = bottomContainer.createEl('button', { text: '🏷️ 生成标签' });
+      const tagsBtn = bottomContainer.createEl('button', { text: this.t('publishModal_generateTags') });
       if (!this.aiService) {
         tagsBtn.addClass('disabled');
         tagsBtn.onclick = () => {
-          new Notice('请先在插件设置中配置 AI 服务（文字处理 AI）');
+          new Notice(this.t('notice_aiConfigRequired'));
         };
       } else {
         tagsBtn.onclick = () => this.generateTags(params);
       }
 
       const publishBtn = bottomContainer.createEl('button', {
-        text: '🚀 发布',
+        text: this.t('publishModal_publishButton'),
         cls: 'mod-cta publish-btn'
       });
       this.publishBtn = publishBtn;
       publishBtn.onclick = () => this.doPublish(params, publishBtn);
     } else {
       const publishBtn = bottomContainer.createEl('button', {
-        text: '🚀 发布',
+        text: this.t('publishModal_publishButton'),
         cls: 'mod-cta publish-btn-full'
       });
       this.publishBtn = publishBtn;
@@ -1286,55 +1359,69 @@ export class WpPublishModalV2 extends AbstractModal {
 
   private async generateSummary(params: WordPressPostParams): Promise<void> {
     if (!this.aiService) {
-      new Notice('请先在插件设置中配置 AI 服务');
+      new Notice(this.t('publishModal_aiServiceRequired'));
       return;
     }
 
     const contentToUse = this.editableContent || this.articleContent;
     if (!contentToUse) {
-      new Notice('文章内容为空');
+      new Notice(this.t('publishModal_emptyContentForTags'));
       return;
     }
 
     try {
-      new Notice('正在生成摘要...');
+      new Notice(this.t('publishModal_generatingSummary'));
       const cleanContent = this.sanitizeContentForAI(contentToUse, 2000);
       log.info('Generating summary from content length:', cleanContent.length);
-      const prompt = this.summaryPrompt.replace('{content}', cleanContent);
+
+      // 检测文章语言并适配提示词
+      const language = detectLanguage(cleanContent);
+      log.info('Detected language:', language);
+      const basePrompt = this.summaryPrompt || this.plugin.t('defaultPrompt_summary');
+      const localizedPrompt = getLocalizedPrompt(this.plugin, language, 'summary');
+      const prompt = localizedPrompt.replace('{content}', cleanContent);
+
       const summary = await this.aiService.generateText(prompt);
       params.excerpt = summary.trim();
-      new Notice('摘要已生成: ' + params.excerpt.substring(0, 50) + '...');
+      new Notice(this.t('publishModal_summaryGenerated', { summary: params.excerpt.substring(0, 50) }));
       this.display(params);
     } catch (error) {
       log.error('Generate summary error:', error);
-      new Notice(`生成摘要失败: ${error instanceof Error ? error.message : '未知错误'}`);
+      new Notice(this.t('publishModal_summaryGenerateFailed', { error: error instanceof Error ? error.message : 'Unknown error' }));
     }
   }
 
   private async generateTags(params: WordPressPostParams): Promise<void> {
     if (!this.aiService) {
-      new Notice('请先在插件设置中配置 AI 服务');
+      new Notice(this.t('notice_aiConfigRequired'));
       return;
     }
 
     const contentToUse = this.editableContent || this.articleContent;
     if (!contentToUse) {
-      new Notice('文章内容为空');
+      new Notice(this.t('publishModal_emptyContentForTags'));
       return;
     }
 
     try {
-      new Notice('正在生成标签...');
+      new Notice(this.t('publishModal_generatingTags'));
       const cleanContent = this.sanitizeContentForAI(contentToUse, 2000);
       log.info('Generating tags from content length:', cleanContent.length);
-      const prompt = this.tagsPrompt.replace('{content}', cleanContent);
+
+      // 检测文章语言并适配提示词
+      const language = detectLanguage(cleanContent);
+      log.info('Detected language:', language);
+      const basePrompt = this.tagsPrompt || this.plugin.t('defaultPrompt_tags');
+      const localizedPrompt = getLocalizedPrompt(this.plugin, language, 'tags');
+      const prompt = localizedPrompt.replace('{content}', cleanContent);
+
       const tags = await this.aiService.generateText(prompt);
       params.tags = tags.split(/[,，]/).map(t => t.trim()).filter(t => t).slice(0, 4);
-      new Notice('标签已生成: ' + params.tags.join(', '));
+      new Notice(this.t('publishModal_tagsGenerated', { tags: params.tags.join(', ') }));
       this.display(params);
     } catch (error) {
       log.error('Generate tags error:', error);
-      new Notice(`生成标签失败: ${error instanceof Error ? error.message : '未知错误'}`);
+      new Notice(this.t('publishModal_tagsGenerateFailed', { error: error instanceof Error ? error.message : 'Unknown error' }));
     }
   }
 
@@ -1428,9 +1515,9 @@ export class WpPublishModalV2 extends AbstractModal {
     const spinner = container.createDiv('wp-publish-spinner');
     spinner.createSpan({ cls: 'wp-spinner-cat' });
 
-    // 进度文字
+    // Progress text
     const text = container.createDiv('wp-publish-progress-text');
-    text.textContent = '正在发布到 WordPress...';
+    text.textContent = this.plugin.t('publishModal_publishingProgress');
 
     // 进度条背景动画
     const progressBar = container.createDiv('wp-publish-progress-bar');
@@ -1443,7 +1530,7 @@ export class WpPublishModalV2 extends AbstractModal {
    * 显示发布成功提示
    */
   private showSuccessNotice(): void {
-    new Notice('🎉 文章发布成功！', 5000);
+    new Notice(this.t('publishModal_publishSuccess'), 5000);
     // 延迟关闭窗口，让用户看到成功提示
     setTimeout(() => {
       this.close();
@@ -1503,7 +1590,7 @@ export class WpPublishModalV2 extends AbstractModal {
 
     // 错误标题
     const title = container.createDiv('wp-error-title');
-    title.setText('发布失败');
+    title.setText(this.t('publishModal_publishFailedTitle'));
 
     // 错误详情
     const detail = container.createDiv('wp-error-detail');
@@ -1514,7 +1601,7 @@ export class WpPublishModalV2 extends AbstractModal {
 
     // 重试按钮
     const retryBtn = buttons.createEl('button', { cls: 'wp-error-retry-btn' });
-    retryBtn.setText('重试');
+    retryBtn.setText(this.t('publishModal_retryButton'));
     retryBtn.onclick = () => {
       overlay.remove();
       // 恢复模态窗口显示
@@ -1527,7 +1614,7 @@ export class WpPublishModalV2 extends AbstractModal {
 
     // 关闭按钮
     const closeBtn = buttons.createEl('button', { cls: 'wp-error-close-btn' });
-    closeBtn.setText('关闭');
+    closeBtn.setText(this.t('publishModal_closeButton'));
     closeBtn.onclick = () => {
       overlay.remove();
       this.close();

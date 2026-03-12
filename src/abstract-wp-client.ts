@@ -38,7 +38,7 @@ export abstract class AbstractWordPressClient implements WordPressClient {
     protected readonly plugin: WordpressPlugin,
     protected readonly profile: WpProfile
   ) {
-    this.frontmatterManager = new FrontmatterManager(plugin.app);
+    this.frontmatterManager = new FrontmatterManager(plugin.app, plugin);
   }
 
   abstract publish(
@@ -210,7 +210,10 @@ export abstract class AbstractWordPressClient implements WordPressClient {
             console.log(`[tryToPublish] Created remote category: ${term.name} -> ID ${newTerm.id}`);
           } catch (e) {
             console.error(`[tryToPublish] Failed to create category: ${term.name}`, e);
-            new Notice(`无法创建分类 "${term.name}": ${e instanceof Error ? e.message : '未知错误'}`);
+            new Notice(this.plugin.t('notice_createCategoryFailed', {
+              name: term.name,
+              error: e instanceof Error ? e.message : 'Unknown error'
+            }));
           }
         }
       } else {
@@ -249,7 +252,7 @@ export abstract class AbstractWordPressClient implements WordPressClient {
             const existingKeys = Object.keys(fm);
             const duplicates = existingKeys.filter((key, index) => existingKeys.indexOf(key) !== index);
             if (duplicates.length > 0) {
-              new Notice(`⚠️ Frontmatter 中存在重复字段: ${duplicates.join(', ')}，请手动检查`);
+              new Notice(this.plugin.t('notice_duplicateFrontmatter', { fields: duplicates.join(', ') }));
             }
 
             // Preserve existing non-plugin fields
@@ -413,15 +416,15 @@ export abstract class AbstractWordPressClient implements WordPressClient {
         if (remoteData) {
           const conflicts = this.frontmatterManager.detectConflicts(matterData, remoteData);
           if (conflicts.length > 0) {
-            const resolution = await openConflictModal(this.plugin.app, conflicts);
+            const resolution = await openConflictModal(this.plugin.app, this.plugin, conflicts);
 
             if (resolution === 'cancel') {
-              new Notice('❌ 发布已取消');
+              new Notice(this.plugin.t('notice_publishCancelled'));
               return {
                 code: WordPressClientReturnCode.Error,
                 error: {
                   code: WordPressClientReturnCode.Error,
-                  message: '用户取消发布'
+                  message: this.plugin.t('error_userCancelledPublish')
                 }
               };
             } else if (resolution === 'remote') {

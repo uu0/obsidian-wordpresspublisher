@@ -5,7 +5,7 @@ import { createModuleLogger } from './utils/logger';
 
 const log = createModuleLogger('WordpressPlugin');
 import { WordPressPostParams } from './wp-client';
-import { I18n } from './i18n';
+import { I18n, TranslateKey } from './i18n';
 import { EventType, WP_OAUTH2_REDIRECT_URI, WP_OAUTH2_URL_ACTION } from './consts';
 import { OAuth2Client } from './oauth2-client';
 import { CommentStatus, PostStatus, PostTypeConst } from './wp-api';
@@ -43,6 +43,11 @@ export default class WordpressPlugin extends Plugin {
       throw new Error('I18n not initialized');
     }
     return this._i18n;
+  }
+
+  /** Convenience method for translation - delegates to i18n.t() */
+  t(key: TranslateKey, vars?: Record<string, string>): string {
+    return this.i18n.t(key, vars);
   }
 
   /** Ribbon icon element reference */

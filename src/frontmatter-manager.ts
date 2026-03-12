@@ -1,6 +1,7 @@
 import { App, Notice, TFile } from 'obsidian';
 import { MatterData } from './types';
 import { SafeAny } from './utils';
+import type WordpressPlugin from './main';
 
 /**
  * Standard frontmatter fields in fixed order
@@ -50,7 +51,7 @@ export interface FrontmatterConflict {
  * Handles frontmatter initialization, normalization, and conflict detection
  */
 export class FrontmatterManager {
-  constructor(private app: App) {}
+  constructor(private app: App, private plugin: WordpressPlugin) {}
 
   /**
    * Initialize or normalize frontmatter fields
@@ -66,7 +67,7 @@ export class FrontmatterManager {
       // Case 1: Empty frontmatter - add all standard fields with empty values
       if (existingKeys.length === 0) {
         for (const field of STANDARD_FRONTMATTER_FIELDS) {
-          fm[field] = field === 'categories' ? '未分类' : '';
+          fm[field] = field === 'categories' ? this.plugin.t('frontmatter_defaultCategory') : '';
         }
         frontmatter = { ...fm };
         return;
@@ -102,7 +103,7 @@ export class FrontmatterManager {
 
       // 2. Standard fields in fixed order
       for (const field of STANDARD_FRONTMATTER_FIELDS) {
-        fm[field] = existingValues[field] ?? (field === 'categories' ? '未分类' : '');
+        fm[field] = existingValues[field] ?? (field === 'categories' ? this.plugin.t('frontmatter_defaultCategory') : '');
       }
 
       frontmatter = { ...fm };

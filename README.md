@@ -1,163 +1,168 @@
-# WordPress Publisher - Obsidian WordPress 发布插件
+# WordPress Publisher for Obsidian
 
-**版本**: 1.0.0
-**作者**: uu0
-**更新日期**: 2026-03-11
+[English](README.md) | [简体中文](README_zh.md)
 
-## 项目说明
+**Version**: 1.0.1
+**Author**: uu0
+**Last Updated**: 2026-03-12
 
-本项目基于 [obsidian-wordpress](https://github.com/devbean/obsidian-wordpress) 进行深度重构和功能扩展。在保留原有 WordPress 发布核心功能的基础上，新增了发布界面、智能 Slug 生成、特色图片选择、AI 服务集成等功能模块，并重构了整体代码架构。
+## About This Project
 
-**主要扩展功能**：
-- 全新的可视化发布界面，支持文章/页面类型选择、分类管理、状态控制
-- 智能 Slug 生成系统（拼音转换 / AI 翻译双模式）
-- 三种特色图片设置方式（本地图片 / Unsplash 搜索 / AI 生成）
-- OpenAI / Claude AI 服务集成，支持自动摘要和智能翻译
-- 现代化 UI 设计，支持暗色主题和毛玻璃效果
+This project is a deep refactor and feature extension based on [obsidian-wordpress](https://github.com/devbean/obsidian-wordpress). While preserving the core WordPress publishing functionality, we've added a modern publishing interface, intelligent slug generation, featured image selection, AI service integration, and completely refactored the codebase architecture.
 
-## 简介
+**Key Extensions**:
+- Brand new visual publishing interface with post/page type selection, category management, and status control
+- Intelligent slug generation system (Pinyin conversion / AI translation dual modes)
+- Three featured image options (local images / Unsplash search / AI generation)
+- OpenAI / Claude AI service integration with auto-summary and smart translation
+- Modern UI design with dark theme and glassmorphism effects
 
-WordPress Publisher 是一款功能强大的 Obsidian 插件，让你能够一键将 Markdown 笔记发布到 WordPress 网站。支持文章和页面两种发布类型，内置智能 Slug 生成、特色图片选择和 AI 功能集成，大幅提升内容发布效率。
+## Overview
 
-## 核心功能
+WordPress Publisher is a powerful Obsidian plugin that enables one-click publishing of Markdown notes to WordPress sites. It supports both posts and pages, with built-in intelligent slug generation, featured image selection, and AI integration to dramatically improve content publishing efficiency.
 
-### 📝 内容发布
+## Core Features
 
-- **双类型支持**：发布为文章 (Post) 或页面 (Page)
-- **分类管理**：支持选择 WordPress 分类和标签
-- **状态控制**：草稿、待审、发布等多种状态
-- **实时预览**：发布前预览所有设置
+### 📝 Content Publishing
 
-### 🔗 智能 Slug 生成
+- **Dual Type Support**: Publish as posts or pages
+- **Category Management**: Select WordPress categories and tags
+- **Status Control**: Draft, pending review, published, and more
+- **Live Preview**: Preview all settings before publishing
 
-- **拼音模式**：中文标题自动转换为拼音（如 "减脂食谱" → "jian-zhi-shi-pu"）
-- **AI 翻译模式**：使用 AI 将中文翻译成英文 Slug（如 "减脂食谱" → "weight-loss-recipes"）
-- **手动编辑**：支持在发布界面修改自动生成的 Slug
+### 🔗 Intelligent Slug Generation
 
-### 🖼️ 特色图片
+- **Pinyin Mode**: Automatically converts Chinese titles to pinyin (e.g., "减脂食谱" → "jian-zhi-shi-pu")
+- **AI Translation Mode**: Uses AI to translate Chinese to English slugs (e.g., "减脂食谱" → "weight-loss-recipes")
+- **Manual Editing**: Edit auto-generated slugs in the publishing interface
 
-三种方式设置特色图片：
+### 🖼️ Featured Images
 
-1. **本地图片**：从文件系统或 Obsidian 笔记库选择
-2. **Unsplash**：搜索免费高质量图片一键下载
-3. **AI 生成**：根据文章内容自动生成图片
+Three ways to set featured images:
 
-### 🤖 AI 服务集成
+1. **Local Images**: Select from file system or Obsidian vault
+2. **Unsplash**: Search and download free high-quality images
+3. **AI Generation**: Auto-generate images based on article content
 
-- **双引擎配置**：文字处理 AI + 图片生成 AI
-- **支持的提供商**：OpenAI (GPT/DALL-E)、Claude
-- **功能**：自动生成摘要、翻译 Slug、生成图片提示词
-- **兼容 API**：支持自定义 Base URL，适配国内镜像
+### 🤖 AI Service Integration
 
-### 💎 现代化界面
+- **Dual Engine Configuration**: Text processing AI + Image generation AI
+- **Supported Providers**: OpenAI (GPT/DALL-E), Claude
+- **Features**: Auto-generate summaries, translate slugs, generate image prompts
+- **API Compatibility**: Supports custom Base URLs for regional mirrors
 
-- 卡片式布局，左右分栏设计
-- 毛玻璃背景效果
-- 平滑动画过渡
-- 暗色主题适配
+### 💎 Modern Interface
 
-## 安装
+- Card-based layout with split-pane design
+- Glassmorphism background effects
+- Smooth animation transitions
+- Dark theme support
 
-### 手动安装
+## Installation
 
-1. 下载最新版本的 `main.js`、`styles.css` 和 `manifest.json`
-2. 在 Obsidian 库中创建文件夹：`.obsidian/plugins/obsidian-wordpresspublisher/`
-3. 将下载的文件复制到该文件夹
-4. 重启 Obsidian，在设置中启用插件
+### Manual Installation
 
-### 从源码构建
+1. Download the latest `main.js`, `styles.css`, and `manifest.json`
+2. Create folder in your Obsidian vault: `.obsidian/plugins/obsidian-wordpresspublisher/`
+3. Copy downloaded files to this folder
+4. Restart Obsidian and enable the plugin in settings
+
+### Build from Source
 
 ```bash
-# 克隆仓库
+# Clone repository
 git clone https://github.com/your-repo/obsidian-wordpresspublisher.git
 cd obsidian-wordpresspublisher
 
-# 安装依赖
+# Install dependencies
 npm install
 
-# 构建
+# Build
 npm run build
 
-# 开发模式
+# Development mode
 npm run dev
 ```
 
-## 配置
+## Configuration
 
-### WordPress 连接
+### WordPress Connection
 
-1. 进入插件设置页面
-2. 输入 WordPress 网站地址
-3. 输入用户名和应用密码（在 WordPress 后台生成）
-4. 点击验证连接
+1. Go to plugin settings page
+2. Enter your WordPress site URL
+3. Enter username and application password (generated in WordPress admin)
+4. Click verify connection
 
-### Slug 生成设置
+### Slug Generation Settings
 
-- **自动生成 Slug**：开启/关闭自动生成功能
-- **Slug 生成模式**：选择「拼音转换」或「AI 翻译」
+- **Auto-generate Slug**: Enable/disable automatic generation
+- **Slug Generation Mode**: Choose "Pinyin Conversion" or "AI Translation"
 
-### Unsplash 设置
+### Unsplash Settings
 
-1. 访问 [Unsplash Developers](https://unsplash.com/developers) 创建应用
-2. 获取 Access Key
-3. 在插件设置中输入并验证
+1. Visit [Unsplash Developers](https://unsplash.com/developers) to create an app
+2. Get your Access Key
+3. Enter and verify in plugin settings
 
-### AI 服务设置
+### AI Service Settings
 
 ```
-AI 提供商: OpenAI / Claude
+AI Provider: OpenAI / Claude
 Base URL: https://api.openai.com/v1
 API Key: sk-...
-模型名称: gpt-3.5-turbo / claude-3-sonnet
+Model Name: gpt-3.5-turbo / claude-3-sonnet
 ```
 
-**提示**：可使用国内镜像服务的 Base URL
+**Tip**: You can use regional mirror service Base URLs
 
-## 使用方法
+## Usage
 
-1. **编写文章**：在 Obsidian 中编写 Markdown 文档
-2. **打开发布界面**：点击插件图标或使用命令面板
-3. **填写信息**：标题、分类、状态等
-4. **选择特色图片**（可选）：本地/Unsplash/AI 生成
-5. **发布**：点击发布按钮等待完成
+1. **Write Content**: Create Markdown document in Obsidian
+2. **Open Publishing Interface**: Click plugin icon or use command palette
+3. **Fill Information**: Title, categories, status, etc.
+4. **Select Featured Image** (optional): Local/Unsplash/AI generation
+5. **Publish**: Click publish button and wait for completion
 
-## 文件结构
+## Project Structure
 
 ```
 src/
-├── ai-service.ts              # AI 服务模块
-├── slug-generator.ts          # Slug 生成工具
-├── unsplash-service.ts        # Unsplash 集成
-├── featured-image-modal.ts    # 特色图片选择
-├── wp-publish-modal-v2.ts     # 发布界面
-└── plugin-settings.ts         # 设置定义
+├── ai-service.ts              # AI service module
+├── slug-generator.ts          # Slug generation utilities
+├── unsplash-service.ts        # Unsplash integration
+├── featured-image-modal.ts    # Featured image selector
+├── wp-publish-modal-v2.ts     # Publishing interface
+├── plugin-settings.ts         # Settings definitions
+└── i18n/                      # Internationalization
+    ├── en.json                # English translations
+    └── zh-cn.json             # Chinese translations
 
-styles.css                     # UI 样式
-manifest.json                  # 插件配置
+styles.css                     # UI styles
+manifest.json                  # Plugin manifest
 ```
 
-## 注意事项
+## Important Notes
 
-- Unsplash API 免费但有限额
-- OpenAI/Claude API 按使用量计费
-- 建议使用稳定的网络环境
-- API Key 加密存储，建议定期更换
+- Unsplash API is free but has rate limits
+- OpenAI/Claude APIs are billed by usage
+- Stable network connection recommended
+- API keys are encrypted; regular rotation recommended
 
-## 许可证
+## License
 
-MIT License
+GPL-3.0 License
 
-## 致谢
+## Acknowledgments
 
-本项目在开发过程中使用了以下开源项目，特此致谢：
+This project uses the following open-source projects:
 
-| 项目 | 说明 |
-|------|------|
-| [obsidian-wordpress](https://github.com/devbean/obsidian-wordpress) | 本项目基于此进行深度重构和功能扩展，感谢原作者 devbean 提供的基础框架 |
-| [Obsidian](https://obsidian.md) | 强大的知识库应用，提供了完整的插件开发 API |
-| [OpenAI Node.js SDK](https://github.com/openai/openai-node) | OpenAI API 官方 Node.js SDK，用于 AI 文字处理和图片生成 |
-| [Anthropic SDK](https://github.com/anthropics/anthropic-sdk-typescript) | Claude AI 官方 TypeScript SDK，提供 Claude 模型支持 |
-| [pinyin-pro](https://github.com/zh-lx/pinyin-pro) | 高性能中文转拼音库，用于智能 Slug 生成 |
-| [unsplash-js](https://github.com/unsplash/unsplash-js) | Unsplash API 官方 JavaScript 客户端，用于图片搜索 |
+| Project | Description |
+|---------|-------------|
+| [obsidian-wordpress](https://github.com/devbean/obsidian-wordpress) | This project is based on deep refactoring and feature extension of this plugin. Thanks to original author devbean for the foundational framework |
+| [Obsidian](https://obsidian.md) | Powerful knowledge base application with comprehensive plugin development API |
+| [OpenAI Node.js SDK](https://github.com/openai/openai-node) | Official OpenAI Node.js SDK for AI text processing and image generation |
+| [Anthropic SDK](https://github.com/anthropics/anthropic-sdk-typescript) | Official Claude AI TypeScript SDK providing Claude model support |
+| [pinyin-pro](https://github.com/zh-lx/pinyin-pro) | High-performance Chinese to Pinyin library for intelligent slug generation |
+| [unsplash-js](https://github.com/unsplash/unsplash-js) | Official Unsplash JavaScript client for image search |
 
-感谢所有开源社区的贡献者！
+Thanks to all open-source community contributors!

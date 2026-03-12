@@ -67,7 +67,7 @@ export async function resizeFeaturedImage(
       quality: 0.92
     });
 
-    new Notice(`图片已裁剪为 ${targetWidth}x${targetHeight}px (${aspectRatio})`);
+    // Note: Cannot show notice here as this is a standalone function
     return await outputBlob.arrayBuffer();
   } catch (error) {
     log.error('Image resize failed', error);
@@ -125,61 +125,61 @@ export class FeaturedImageModal extends Modal {
     contentEl.empty();
     contentEl.addClass('featured-image-modal');
 
-    contentEl.createEl('h2', { text: '选择特色图片' });
+    contentEl.createEl('h2', { text: this.plugin.t('featuredImageModal_title') });
 
     // 创建按钮选择区域（不再使用tab）
     const buttonRow = contentEl.createDiv('featured-image-buttons-row');
 
-    // 本地图片按钮
+    // Local image button
     const localBtn = buttonRow.createEl('button', {
-      text: '📁 本地图片',
+      text: this.plugin.t('publishModal_localImageButton'),
       cls: 'feature-btn'
     });
     localBtn.onclick = () => this.openLocalPicker();
 
-    // Unsplash 按钮
+    // Unsplash button
     const unsplashBtn = buttonRow.createEl('button', {
-      text: '🖼️ Unsplash',
+      text: this.plugin.t('publishModal_unsplashButton'),
       cls: 'feature-btn'
     });
     if (this.unsplashService) {
       unsplashBtn.onclick = () => this.openUnsplashPicker();
     } else {
       unsplashBtn.addClass('disabled');
-      unsplashBtn.title = '请先在设置中配置 Unsplash API Key';
+      unsplashBtn.title = this.plugin.t('featuredImageModal_unsplashTooltip');
     }
 
-    // AI 生成按钮
+    // AI generation button
     const aiBtn = buttonRow.createEl('button', {
-      text: '🎨 AI 生成',
+      text: this.plugin.t('publishModal_aiGenerateImageButton'),
       cls: 'feature-btn'
     });
     aiBtn.onclick = () => {
       if (!this.aiService) {
-        new Notice('请先在设置中配置 AI 服务（图片生成 AI）');
+        new Notice(this.plugin.t('featuredImageModal_aiServiceRequired'));
       } else {
         this.openAIPicker();
       }
     };
 
-    // 笔记库选择按钮
+    // Vault button
     const vaultBtn = buttonRow.createEl('button', {
-      text: '📚 笔记库',
+      text: this.plugin.t('publishModal_vaultButton'),
       cls: 'feature-btn'
     });
     vaultBtn.onclick = () => this.openVaultPicker();
 
-    // 底部按钮
+    // Footer buttons
     const footerContainer = contentEl.createDiv('featured-image-footer');
 
-    const cancelBtn = footerContainer.createEl('button', { text: '取消' });
+    const cancelBtn = footerContainer.createEl('button', { text: this.plugin.t('publishModal_cancelButton') });
     cancelBtn.onclick = () => {
       this.close();
       this.onSubmit(null);
     };
 
     const confirmBtn = footerContainer.createEl('button', {
-      text: '确认选择',
+      text: this.plugin.t('publishModal_confirmButton'),
       cls: 'mod-cta'
     });
     confirmBtn.onclick = () => {
@@ -187,7 +187,7 @@ export class FeaturedImageModal extends Modal {
         this.close();
         this.onSubmit(this.result);
       } else {
-        new Notice('请先选择一张图片');
+        new Notice(this.plugin.t('featuredImageModal_selectImageFirst'));
       }
     };
   }
@@ -212,7 +212,7 @@ export class FeaturedImageModal extends Modal {
           const processed = await this.resizeImage(arrayBuffer, file.type);
           if (!processed) {
             // 如果调整失败，使用原图
-            new Notice('图片过大，将尝试调整大小');
+            new Notice(this.plugin.t('featuredImageModal_imageTooLarge'));
           }
 
           this.result = {
@@ -224,9 +224,9 @@ export class FeaturedImageModal extends Modal {
 
           const url = URL.createObjectURL(new Blob([this.result.content], { type: this.result.mimeType }));
           this.showPreview(url);
-          new Notice('图片已选择');
+          new Notice(this.plugin.t('featuredImageModal_imageSelectedSimple'));
         } catch (error) {
-          new Notice(`选择图片失败: ${error instanceof Error ? error.message : '未知错误'}`);
+          new Notice(this.plugin.t('featuredImageModal_imageSelectFailed', { error: error instanceof Error ? error.message : '未知错误' }));
         }
       }
     };
@@ -286,6 +286,7 @@ export class FeaturedImageModal extends Modal {
   private openVaultPicker(): void {
     const modal = new VaultImagePickerModal(
       this.app,
+      this.plugin,
       async (file, arrayBuffer, mimeType) => {
         // 调整图片大小
         const processed = await this.resizeImage(arrayBuffer, mimeType);
@@ -317,7 +318,7 @@ export class FeaturedImageModal extends Modal {
     const previewSection = contentEl.createDiv('image-preview-section');
 
     const previewContainer = previewSection.createDiv('preview-container');
-    previewContainer.createEl('h3', { text: '预览' });
+    previewContainer.createEl('h3', { text: this.plugin.t('publishModal_previewLabel') });
 
     const img = previewContainer.createEl('img', {
       attr: { src: imageUrl }
@@ -325,12 +326,12 @@ export class FeaturedImageModal extends Modal {
     img.style.maxWidth = '100%';
     img.style.height = 'auto';
 
-    // 显示图片信息
+    // Display image info
     const info = previewSection.createDiv('preview-info');
     if (this.result) {
-      info.createSpan({ text: `文件名: ${this.result.fileName}` });
+      info.createSpan({ text: this.plugin.t('publishModal_fileNameLabel', { fileName: this.result.fileName }) });
       info.createEl('br');
-      info.createSpan({ text: `宽度: ${this.TARGET_WIDTH}px (已统一设置)` });
+      info.createSpan({ text: this.plugin.t('publishModal_widthLabel', { width: this.TARGET_WIDTH.toString() }) });
     }
   }
 
@@ -382,7 +383,7 @@ export class FeaturedImageModal extends Modal {
       });
 
       const ratio = this.plugin.settings.imageCropRatio || '16:9';
-      new Notice(`图片已裁剪为 ${targetWidth}x${targetHeight}px (${ratio})`);
+      new Notice(this.plugin.t('featuredImageModal_imageCropped', { width: targetWidth.toString(), height: targetHeight.toString(), ratio: ratio }));
       return await outputBlob.arrayBuffer();
     } catch (error) {
       log.error('Image resize failed', error);
@@ -433,13 +434,13 @@ export class UnsplashPickerModal extends Modal {
     contentEl.empty();
     contentEl.addClass('unsplash-picker-modal');
 
-    contentEl.createEl('h2', { text: '选择 Unsplash 图片' });
+    contentEl.createEl('h2', { text: this.plugin.t('unsplashModal_title') });
 
-    // 搜索区域
+    // Search area
     const searchContainer = contentEl.createDiv('unsplash-search-container');
     const searchInput = searchContainer.createEl('input', {
       type: 'text',
-      placeholder: '输入关键词搜索...'
+      placeholder: this.plugin.t('vaultImageModal_searchPlaceholder')
     });
     searchInput.style.flex = '1';
     // Pre-fill search input with tags
@@ -448,28 +449,28 @@ export class UnsplashPickerModal extends Modal {
     }
 
     const searchBtn = searchContainer.createEl('button', {
-      text: '搜索',
+      text: this.plugin.t('unsplashModal_searchButton'),
       cls: 'mod-cta'
     });
 
-    // 随机加载按钮
+    // Random load button
     const randomBtn = searchContainer.createEl('button', {
-      text: '🎲 随机图片'
+      text: this.plugin.t('unsplashModal_randomButton')
     });
 
     const resultsContainer = contentEl.createDiv('unsplash-results');
 
-    // 创建加载覆盖层（避免闪烁）
+    // Create loading overlay (avoid flickering)
     const loadingOverlay = resultsContainer.createDiv('unsplash-loading-overlay');
     loadingOverlay.style.cssText = 'position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,0.8);display:flex;justify-content:center;align-items:center;z-index:10;';
-    loadingOverlay.createEl('span', { text: '加载中...', cls: 'unsplash-loading-text' });
+    loadingOverlay.createEl('span', { text: this.plugin.t('unsplashModal_loading'), cls: 'unsplash-loading-text' });
     loadingOverlay.style.display = 'none';
 
-    // 显示/隐藏加载覆盖层
+    // Show/hide loading overlay
     const showLoading = () => { loadingOverlay.style.display = 'flex'; };
     const hideLoading = () => { loadingOverlay.style.display = 'none'; };
 
-    // 加载随机图片（无闪烁）
+    // Load random images (no flickering)
     const loadRandom = async () => {
       showLoading();
       try {
@@ -480,16 +481,16 @@ export class UnsplashPickerModal extends Modal {
       } catch (error) {
         hideLoading();
         resultsContainer.createEl('p', {
-          text: `加载失败: ${error instanceof Error ? error.message : '未知错误'}`
+          text: this.plugin.t('unsplashModal_loadFailed', { error: error instanceof Error ? error.message : 'Unknown error' })
         });
       }
     };
 
-    // 搜索功能
+    // Search function
     const performSearch = async () => {
       const query = searchInput.value.trim();
       if (!query && !this.currentQuery) {
-        new Notice('请输入搜索关键词');
+        new Notice(this.plugin.t('unsplashModal_searchRequired'));
         return;
       }
 
@@ -504,7 +505,7 @@ export class UnsplashPickerModal extends Modal {
       } catch (error) {
         hideLoading();
         resultsContainer.createEl('p', {
-          text: `搜索失败: ${error instanceof Error ? error.message : '未知错误'}`
+          text: this.plugin.t('unsplashModal_searchFailed', { error: error instanceof Error ? error.message : 'Unknown error' })
         });
       }
     };
@@ -530,7 +531,7 @@ export class UnsplashPickerModal extends Modal {
     container.empty();
 
     if (this.images.length === 0) {
-      container.createEl('p', { text: '未找到相关图片' });
+      container.createEl('p', { text: this.plugin.t('unsplashModal_noResults') });
       onComplete?.();
       return;
     }
@@ -567,14 +568,14 @@ export class UnsplashPickerModal extends Modal {
       img.onerror = checkAllLoaded;
 
       item.onclick = async () => {
-        container.createEl('p', { text: '下载中...' });
+        container.createEl('p', { text: this.plugin.t('publishModal_downloading') });
         try {
           const arrayBuffer = await this.unsplashService.downloadImage(image.urls.regular);
           this.close();
           this.onSelect(image, arrayBuffer);
         } catch (error) {
           container.createEl('p', {
-            text: `下载失败: ${error instanceof Error ? error.message : '未知错误'}`
+            text: this.plugin.t('publishModal_downloadFailed', { error: error instanceof Error ? error.message : 'Unknown error' })
           });
         }
       };
@@ -618,16 +619,16 @@ class AIGenerateModal extends Modal {
     contentEl.empty();
     contentEl.addClass('ai-generate-modal');
 
-    contentEl.createEl('h2', { text: 'AI 生成图片' });
+    contentEl.createEl('h2', { text: this.plugin.t('aiImageModal_title') });
 
     // 提示词输入区域
     const promptContainer = contentEl.createDiv('ai-prompt-section');
 
     new Setting(promptContainer)
-      .setName('图片描述')
-      .setDesc('描述你想要生成的图片内容')
+      .setName(this.plugin.t('aiImageModal_descriptionName'))
+      .setDesc(this.plugin.t('aiImageModal_descriptionDesc'))
       .addTextArea(text => {
-        text.setPlaceholder('例如：一个现代化的办公室场景...');
+        text.setPlaceholder(this.plugin.t('aiImageModal_descriptionPlaceholder'));
         text.inputEl.rows = 3;
         text.inputEl.style.width = '100%';
       });
@@ -636,23 +637,23 @@ class AIGenerateModal extends Modal {
     const buttonRow = promptContainer.createDiv('ai-buttons-row');
 
     const autoBtn = buttonRow.createEl('button', {
-      text: '📝 自动生成提示词'
+      text: this.plugin.t('aiImageModal_autoGenerateButton')
     });
 
     const generateBtn = buttonRow.createEl('button', {
-      text: '🎨 生成图片',
+      text: this.plugin.t('aiImageModal_generateButton'),
       cls: 'mod-cta'
     });
 
-    // 预览区域
+    // Preview area
     const previewContainer = contentEl.createDiv('ai-preview-container');
 
     const resultContainer = previewContainer.createDiv('ai-result');
 
-    // 自动生成提示词
+    // Auto generate prompt
     autoBtn.onclick = async () => {
       resultContainer.empty();
-      resultContainer.createEl('p', { text: '生成提示词中...' });
+      resultContainer.createEl('p', { text: this.plugin.t('publishModal_generatingPrompt') });
 
       try {
         const prompt = await this.aiService.generateImagePrompt(
@@ -667,7 +668,7 @@ class AIGenerateModal extends Modal {
         resultContainer.empty();
       } catch (error) {
         resultContainer.createEl('p', {
-          text: `生成失败: ${error instanceof Error ? error.message : '未知错误'}`
+          text: this.plugin.t('publishModal_generateFailed', { error: error instanceof Error ? error.message : 'Unknown error' })
         });
       }
     };
@@ -678,23 +679,23 @@ class AIGenerateModal extends Modal {
       const prompt = textarea?.value.trim();
 
       if (!prompt) {
-        new Notice('请输入或生成图片描述');
+        new Notice(this.plugin.t('aiImageModal_descriptionRequired'));
         return;
       }
 
       resultContainer.empty();
-      resultContainer.createEl('p', { text: 'AI 正在生成图片，请稍候...' });
+      resultContainer.createEl('p', { text: this.plugin.t('publishModal_generatingImage') });
       generateBtn.setAttribute('disabled', 'true');
 
       try {
         const imageUrl = await this.aiService.generateImage(prompt);
 
-        // 下载图片
+        // Download image
         const response = await fetch(imageUrl);
         this.currentArrayBuffer = await response.arrayBuffer();
         this.currentImageUrl = imageUrl;
 
-        // 显示预览
+        // Show preview
         resultContainer.empty();
         const img = resultContainer.createEl('img', {
           attr: { src: imageUrl }
@@ -703,22 +704,22 @@ class AIGenerateModal extends Modal {
         img.style.borderRadius = '8px';
         img.style.marginTop = '16px';
 
-        // 添加操作按钮
+        // Add action buttons
         const actionRow = resultContainer.createDiv('ai-action-row');
 
         const regenerateBtn = actionRow.createEl('button', {
-          text: '🔄 重新生成'
+          text: this.plugin.t('publishModal_regenerateButton')
         });
 
         const saveBtn = actionRow.createEl('button', {
-          text: '💾 保存并使用',
+          text: this.plugin.t('publishModal_saveAndUseButton'),
           cls: 'mod-cta'
         });
 
         const originalPrompt = prompt;
         regenerateBtn.onclick = async () => {
           resultContainer.empty();
-          resultContainer.createEl('p', { text: '重新生成中...' });
+          resultContainer.createEl('p', { text: this.plugin.t('publishModal_regenerating') });
           generateBtn.setAttribute('disabled', 'true');
 
           try {
@@ -735,10 +736,10 @@ class AIGenerateModal extends Modal {
             newImg.style.borderRadius = '8px';
             newImg.style.marginTop = '16px';
 
-            // 重新添加按钮
+            // Re-add buttons
             const newActionRow = resultContainer.createDiv('ai-action-row');
-            const newRegenerateBtn = newActionRow.createEl('button', { text: '🔄 重新生成' });
-            const newSaveBtn = newActionRow.createEl('button', { text: '💾 保存并使用', cls: 'mod-cta' });
+            const newRegenerateBtn = newActionRow.createEl('button', { text: this.plugin.t('publishModal_regenerateButton') });
+            const newSaveBtn = newActionRow.createEl('button', { text: this.plugin.t('publishModal_saveAndUseButton'), cls: 'mod-cta' });
 
             newRegenerateBtn.onclick = () => regenerateBtn.click();
             newSaveBtn.onclick = () => {
@@ -749,7 +750,7 @@ class AIGenerateModal extends Modal {
             };
           } catch (error) {
             resultContainer.createEl('p', {
-              text: `生成失败: ${error instanceof Error ? error.message : '未知错误'}`
+              text: this.plugin.t('publishModal_generateFailed', { error: error instanceof Error ? error.message : 'Unknown error' })
             });
           } finally {
             generateBtn.removeAttribute('disabled');
@@ -766,15 +767,15 @@ class AIGenerateModal extends Modal {
         generateBtn.removeAttribute('disabled');
       } catch (error) {
         resultContainer.createEl('p', {
-          text: `生成失败: ${error instanceof Error ? error.message : '未知错误'}`
+          text: this.plugin.t('publishModal_generateFailed', { error: error instanceof Error ? error.message : 'Unknown error' })
         });
         generateBtn.removeAttribute('disabled');
       }
     };
 
-    // 底部按钮
+    // Footer buttons
     const footer = contentEl.createDiv('ai-footer');
-    const cancelBtn = footer.createEl('button', { text: '取消' });
+    const cancelBtn = footer.createEl('button', { text: this.plugin.t('publishModal_cancelButton') });
     cancelBtn.onclick = () => this.close();
   }
 
@@ -790,7 +791,11 @@ class AIGenerateModal extends Modal {
 export class VaultImagePickerModal extends Modal {
   private onSelect: (file: TFile, arrayBuffer: ArrayBuffer, mimeType: string) => void;
 
-  constructor(app: App, onSelect: (file: TFile, arrayBuffer: ArrayBuffer, mimeType: string) => void) {
+  constructor(
+    app: App,
+    private plugin: WordpressPlugin,
+    onSelect: (file: TFile, arrayBuffer: ArrayBuffer, mimeType: string) => void
+  ) {
     super(app);
     this.onSelect = onSelect;
   }
@@ -800,13 +805,13 @@ export class VaultImagePickerModal extends Modal {
     contentEl.empty();
     contentEl.addClass('vault-picker-modal');
 
-    contentEl.createEl('h2', { text: '从笔记库选择图片' });
+    contentEl.createEl('h2', { text: this.plugin.t('vaultImageModal_title') });
 
-    // 搜索框
+    // Search box
     const searchContainer = contentEl.createDiv('vault-search');
     const searchInput = searchContainer.createEl('input', {
       type: 'text',
-      placeholder: '搜索图片文件...'
+      placeholder: this.plugin.t('vaultImageModal_searchPlaceholder')
     });
     searchInput.style.width = '100%';
     searchInput.style.padding = '8px';
@@ -828,7 +833,7 @@ export class VaultImagePickerModal extends Modal {
       );
 
       if (imageFiles.length === 0) {
-        imageList.createEl('p', { text: '未找到图片文件' });
+        imageList.createEl('p', { text: this.plugin.t('vaultImageModal_noImages') });
         return;
       }
 
@@ -860,14 +865,14 @@ export class VaultImagePickerModal extends Modal {
         img.style.width = '100%';
         img.style.height = '100%';
 
-        // 异步加载图片预览
+        // Async load image preview
         this.app.vault.readBinary(file).then(arrayBuffer => {
           const blob = new Blob([arrayBuffer]);
           const url = URL.createObjectURL(blob);
           img.src = url;
           img.onload = () => URL.revokeObjectURL(url);
         }).catch(() => {
-          imgContainer.createEl('span', { text: '⚠️ 加载失败' });
+          imgContainer.createEl('span', { text: this.plugin.t('vaultImageModal_loadFailed') });
         });
 
         // 文件名
@@ -896,7 +901,7 @@ export class VaultImagePickerModal extends Modal {
             this.close();
             this.onSelect(file, arrayBuffer, mimeType);
           } catch (error) {
-            new Notice(`读取图片失败: ${error instanceof Error ? error.message : '未知错误'}`);
+            new Notice(this.plugin.t('vaultImageModal_readImageFailed', { error: error instanceof Error ? error.message : '未知错误' }));
           }
         };
       });
