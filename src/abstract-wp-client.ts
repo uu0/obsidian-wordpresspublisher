@@ -324,10 +324,16 @@ export abstract class AbstractWordPressClient implements WordPressClient {
             }
             // 5. slug
             fm.slug = postParams.slug || '';
-            // 6. featurePicture (set by updateMatterData callback)
-            if (!fm.featurePicture) fm.featurePicture = '';
-            // 7. featuredImageId (set by updateMatterData callback)
-            if (!fm.featuredImageId) fm.featuredImageId = '';
+            // 6. featurePicture (preserve existing value, will be updated by updateMatterData callback if new image uploaded)
+            // Only set empty string if not already present
+            if (!fm.featurePicture) {
+              fm.featurePicture = '';
+            }
+            // 7. featuredImageId (preserve existing value, will be updated by updateMatterData callback if new image uploaded)
+            // Only set empty string if not already present
+            if (!fm.featuredImageId) {
+              fm.featuredImageId = '';
+            }
             // 8. tags (formatted according to user preference)
             // Remove old 'tag' field if it exists (legacy cleanup)
             delete fm.tag;
