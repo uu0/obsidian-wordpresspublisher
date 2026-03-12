@@ -32,7 +32,8 @@ export abstract class AbstractWordPressClient implements WordPressClient {
    */
   name = 'AbstractWordPressClient';
 
-  private categoriesList: Term[] = [];
+  protected categoriesList: Term[] = [];
+  protected tagsList: Term[] = [];
   private frontmatterManager: FrontmatterManager;
 
   protected constructor(
@@ -50,6 +51,15 @@ export abstract class AbstractWordPressClient implements WordPressClient {
   ): Promise<WordPressClientResult<WordPressPublishResult>>;
 
   abstract getCategories(
+    certificate: WordPressAuthParams
+  ): Promise<Term[]>;
+
+  /**
+   * Fetch all tags from WordPress.
+   * @param certificate - Authentication parameters
+   * @returns Array of tag terms
+   */
+  abstract getTagsList(
     certificate: WordPressAuthParams
   ): Promise<Term[]>;
 
@@ -99,6 +109,21 @@ export abstract class AbstractWordPressClient implements WordPressClient {
       const post = await this.getPost(postId, auth);
       if (!post) return null;
 
+      // Fetch categories list if we have categories to extract
+      if ((post.categories && post.categories.length > 0 && this.categoriesList.length === 0) ||
+          (post.tags && post.tags.length > 0 && this.tagsList.length === 0)) {
+        try {
+          if (this.categoriesList.length === 0) {
+            this.categoriesList = await this.getCategories(auth);
+          }
+          if (post.tags && post.tags.length > 0 && this.tagsList.length === 0) {
+            this.tagsList = await this.getTagsList(auth);
+          }
+        } catch (e) {
+          console.warn('[fetchRemotePostData] Failed to fetch categories/tags list:', e);
+        }
+      }
+
       // Extract relevant fields for conflict detection
       return {
         postId: post.id || postId,
@@ -128,9 +153,10 @@ export abstract class AbstractWordPressClient implements WordPressClient {
    * Extract tag names from tag IDs
    */
   private extractTagNames(tagIds: number[]): string[] {
-    // Note: This is a simplified version. In a real implementation,
-    // you might need to fetch tag data from the API
-    return tagIds.map(id => String(id));
+    return tagIds.map(id => {
+      const term = this.tagsList.find(t => String(t.id) === String(id));
+      return term ? term.name : String(id);
+    });
   }
 
   private async getAuth(): Promise<WordPressAuthParams> {
@@ -239,7 +265,6 @@ export abstract class AbstractWordPressClient implements WordPressClient {
         message: result.error.message
       }));
     } else {
-      new Notice(this.plugin.i18n.t('message_publishSuccessfully'));
       // post id will be returned if creating, true if editing
       const postId = result.data.postId;
       if (postId) {

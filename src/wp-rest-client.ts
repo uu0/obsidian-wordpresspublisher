@@ -119,6 +119,15 @@ export class WpRestClient extends AbstractWordPressClient {
     return this.context.responseParser.toTerms(data);
   }
 
+  async getTagsList(certificate: WordPressAuthParams): Promise<Term[]> {
+    const data = await this.client.httpGet(
+      getUrl(this.context.endpoints?.getTag, 'wp-json/wp/v2/tags?per_page=100'),
+      {
+        headers: this.context.getHeaders(certificate)
+      });
+    return this.context.responseParser.toTerms(data);
+  }
+
   async getPostTypes(certificate: WordPressAuthParams): Promise<PostType[]> {
     const data: SafeAny = await this.client.httpGet(
       getUrl(this.context.endpoints?.getPostTypes, 'wp-json/wp/v2/types'),

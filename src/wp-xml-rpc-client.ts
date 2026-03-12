@@ -142,6 +142,24 @@ export class WpXmlRpcClient extends AbstractWordPressClient {
     })) ?? [];
   }
 
+  async getTagsList(certificate: WordPressAuthParams): Promise<Term[]> {
+    const response = await this.client.methodCall('wp.getTerms', [
+      0,
+      certificate.username,
+      certificate.password,
+      'post_tag'
+    ]);
+    if (isFaultResponse(response)) {
+      const fault = `${response.faultCode}: ${response.faultString}`;
+      showError(fault);
+      throw new Error(fault);
+    }
+    return (response as SafeAny).map((it: SafeAny) => ({
+      ...it,
+      id: it.term_id
+    })) ?? [];
+  }
+
   async getPostTypes(certificate: WordPressAuthParams): Promise<PostType[]> {
     const response = await this.client.methodCall('wp.getPostTypes', [
       0,

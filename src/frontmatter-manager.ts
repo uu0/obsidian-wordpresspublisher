@@ -235,12 +235,60 @@ export class FrontmatterManager {
   private normalizeToArray(value: SafeAny): string[] {
     if (!value) return [];
     if (typeof value === 'string') {
+      // Handle special cases for category names/IDs
+      const normalized = this.normalizeCategoryValue(value);
+      if (normalized) {
+        return normalized;
+      }
       return value.split(',').map(s => s.trim()).filter(s => s.length > 0);
     }
     if (Array.isArray(value)) {
+      // Handle arrays
+      if (value.length === 0) return [];
+      
+      // Special case for single-element arrays that might be category names/IDs
+      if (value.length === 1 && typeof value[0] === 'string') {
+        const normalized = this.normalizeCategoryValue(value[0]);
+        if (normalized) {
+          return normalized;
+        }
+      }
+      
       return value.map(v => String(v).trim()).filter(s => s.length > 0);
     }
     return [];
+  }
+
+  /**
+   * Normalize category value for comparison
+   * Handles common category name/ID mappings
+   */
+  private normalizeCategoryValue(value: string): string[] | null {
+    const trimmed = value.trim();
+    
+    // Default WordPress category mappings
+    const categoryMappings: Record<string, string> = {
+      // Chinese
+      '未分类': '1',
+      'Uncategorized': '1',
+      // Add other common mappings as needed
+    };
+    
+    // Check if value is a known category name
+    if (categoryMappings[trimmed]) {
+      return [categoryMappings[trimmed]];
+    }
+    
+    // Check if value is a known category ID that maps to a common name
+    const reverseMappings: Record<string, string> = {
+      '1': '未分类', // Default category ID
+    };
+    
+    if (reverseMappings[trimmed]) {
+      return [reverseMappings[trimmed]];
+    }
+    
+    return null;
   }
 
   /**

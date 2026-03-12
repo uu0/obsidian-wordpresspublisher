@@ -284,7 +284,7 @@ export class WordpressSettingTab extends PluginSettingTab {
         dropdown
           .addOption(TagFormat.Inline, t('settings_tagFormatInline'))
           .addOption(TagFormat.YAML, t('settings_tagFormatYAML'))
-          .setValue(this.plugin.settings.tagFormat || TagFormat.Inline)
+          .setValue(this.plugin.settings.tagFormat ?? TagFormat.Inline)
           .onChange(async (value) => {
             this.plugin.settings.tagFormat = value as TagFormat;
             await this.plugin.saveSettings();
