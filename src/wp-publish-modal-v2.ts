@@ -1664,20 +1664,35 @@ export class WpPublishModalV2 extends AbstractModal {
   /**
    * Normalize tags from frontmatter to string array
    * Handles both YAML array format and comma-separated string format
+   * Also splits nested tags (e.g., "项目/WordPress/发布" -> ["项目", "WordPress", "发布"])
    */
   private normalizeTags(tags: any): string[] {
     if (!tags) return [];
 
-    // If it's already an array, return it
+    let tagArray: string[] = [];
+
+    // If it's already an array, process each element
     if (Array.isArray(tags)) {
-      return tags.map(t => String(t).trim()).filter(t => t);
+      tagArray = tags.map(t => String(t).trim()).filter(t => t);
     }
-
     // If it's a string, split by comma
-    if (typeof tags === 'string') {
-      return tags.split(/[,，]/).map(t => t.trim()).filter(t => t);
+    else if (typeof tags === 'string') {
+      tagArray = tags.split(/[,，]/).map(t => t.trim()).filter(t => t);
     }
 
-    return [];
+    // Split nested tags by slash
+    const expandedTags: string[] = [];
+    for (const tag of tagArray) {
+      if (tag.includes('/')) {
+        // Split by slash and add all parts
+        const parts = tag.split('/').map(p => p.trim()).filter(p => p);
+        expandedTags.push(...parts);
+      } else {
+        expandedTags.push(tag);
+      }
+    }
+
+    // Remove duplicates
+    return [...new Set(expandedTags)];
   }
 }
