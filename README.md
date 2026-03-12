@@ -2,7 +2,7 @@
 
 [English](README.md) | [简体中文](README_zh.md)
 
-**Version**: 1.0.1
+**Version**: 1.1.0
 **Author**: uu0
 **Last Updated**: 2026-03-12
 
@@ -166,3 +166,33 @@ This project uses the following open-source projects:
 | [unsplash-js](https://github.com/unsplash/unsplash-js) | Official Unsplash JavaScript client for image search |
 
 Thanks to all open-source community contributors!
+
+## Changelog
+
+### 1.1.0 (2026-03-12)
+
+**New Features**
+- Added internationalization (i18n) support with Chinese and English interface switching
+- Added English translation file (`src/i18n/en.json`)
+- Enhanced Chinese translation file (`src/i18n/zh-cn.json`)
+
+**Improvements**
+- Optimized multi-language display in plugin interface
+- Improved user experience in settings page
+- Updated project documentation and README
+
+### 1.0.1 (2026-03-12)
+
+**Bug Fixes**
+- Fixed some interface display issues
+- Optimized code structure
+
+### 1.0.0 (2026-03-11)
+
+**Initial Release**
+- Deep refactoring based on obsidian-wordpress
+- Brand new visual publishing interface
+- Intelligent slug generation system
+- Featured image selection functionality
+- AI service integration
+- Modern UI design
