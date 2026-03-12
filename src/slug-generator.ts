@@ -52,28 +52,46 @@ export class SlugGenerator {
 
     logger.debug('SlugGenerator', `Converting Chinese title to slug: ${title}`);
 
-    // 先提取所有连续的数字，用占位符替换
-    const numberPlaceholders: string[] = [];
-    const titleWithPlaceholders = title.replace(/\d+/g, (match) => {
-      const placeholder = `XNUMX${numberPlaceholders.length}XNUMX`;
-      numberPlaceholders.push(match);
-      return placeholder;
+    // 分段处理：分离中文和数字
+    const segments: string[] = [];
+    let currentSegment = '';
+    let isNumber = false;
+
+    for (let i = 0; i < title.length; i++) {
+      const char = title[i];
+      const charIsNumber = /\d/.test(char);
+
+      if (charIsNumber !== isNumber && currentSegment) {
+        // 类型切换，保存当前段
+        segments.push(currentSegment);
+        currentSegment = '';
+      }
+
+      currentSegment += char;
+      isNumber = charIsNumber;
+    }
+
+    if (currentSegment) {
+      segments.push(currentSegment);
+    }
+
+    // 转换每个段：数字保持原样，其他转拼音
+    const convertedSegments = segments.map(segment => {
+      if (/^\d+$/.test(segment)) {
+        // 纯数字段，直接返回
+        return segment;
+      } else {
+        // 包含中文或其他字符，转拼音
+        const pinyinText = pinyin(segment, {
+          toneType: 'none',
+          type: 'array'
+        });
+        return (Array.isArray(pinyinText) ? pinyinText : [pinyinText]).join('-');
+      }
     });
 
-    // 使用 pinyin-pro 转换中文为拼音
-    const pinyinText = pinyin(titleWithPlaceholders, {
-      toneType: 'none', // 不带声调
-      type: 'array' // 返回数组
-    });
-
-    // 合并拼音
-    let pinyinStr = (Array.isArray(pinyinText) ? pinyinText : [pinyinText]).join('-');
-
-    // 还原数字占位符（pinyin 会把 XNUMX 转成 x-n-u-m-x）
-    numberPlaceholders.forEach((num, index) => {
-      const placeholderPattern = `x-n-u-m-x-${index}-x-n-u-m-x`;
-      pinyinStr = pinyinStr.replace(new RegExp(placeholderPattern, 'g'), num);
-    });
+    // 合并所有段
+    const pinyinStr = convertedSegments.join('-');
 
     // 清理 slug
     const slug = this.normalizeSlug(pinyinStr);
