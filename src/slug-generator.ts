@@ -52,14 +52,30 @@ export class SlugGenerator {
 
     logger.debug('SlugGenerator', `Converting Chinese title to slug: ${title}`);
 
+    // 先提取所有连续的数字，用占位符替换
+    const numberPlaceholders: string[] = [];
+    const titleWithPlaceholders = title.replace(/\d+/g, (match) => {
+      const placeholder = `__NUM${numberPlaceholders.length}__`;
+      numberPlaceholders.push(match);
+      return placeholder;
+    });
+
     // 使用 pinyin-pro 转换中文为拼音
-    const pinyinText = pinyin(title, {
+    const pinyinText = pinyin(titleWithPlaceholders, {
       toneType: 'none', // 不带声调
       type: 'array' // 返回数组
     });
 
-    // 合并拼音并清理
-    const pinyinStr = (Array.isArray(pinyinText) ? pinyinText : [pinyinText]).join('-');
+    // 合并拼音
+    let pinyinStr = (Array.isArray(pinyinText) ? pinyinText : [pinyinText]).join('-');
+
+    // 还原数字占位符
+    numberPlaceholders.forEach((num, index) => {
+      const placeholder = `__NUM${index}__`;
+      pinyinStr = pinyinStr.replace(new RegExp(placeholder.toLowerCase().replace(/_/g, '-'), 'g'), num);
+    });
+
+    // 清理 slug
     const slug = this.normalizeSlug(pinyinStr);
 
     logger.debug('SlugGenerator', `Generated Chinese slug: ${slug}`);
