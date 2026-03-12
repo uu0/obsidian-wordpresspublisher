@@ -17,6 +17,8 @@ import { AIService } from './ai-service';
 import { AppState } from './app-state';
 import { ImageCacheManager, CachedFeaturedImage } from './image-cache-manager';
 import { createModuleLogger } from './utils/logger';
+import { TagFormatter } from './tag-formatter';
+import { getApiCapabilities, getApiLimitations, getApiRecommendation } from './api-capability';
 
 const log = createModuleLogger('WpPublishModalV2');
 
@@ -446,8 +448,11 @@ export class WpPublishModalV2 extends AbstractModal {
       // 使用 processFrontMatter 更新 frontmatter
       await this.plugin.app.fileManager.processFrontMatter(file, (fm) => {
         if (hasGeneratedTags) {
-          // 保存为逗号分隔的字符串格式，与 WordPress 发布后的格式一致
-          fm.tags = this.currentParams!.tags.join(', ');
+          // 根据用户设置格式化标签
+          fm.tags = TagFormatter.formatTags(
+            this.currentParams!.tags,
+            this.plugin.settings.tagFormat
+          );
           log.info('Saved generated tags to frontmatter:', this.currentParams!.tags);
         }
         if (hasGeneratedExcerpt) {
@@ -476,6 +481,12 @@ export class WpPublishModalV2 extends AbstractModal {
 
     // 创建标签切换
     this.renderTabBar(contentEl, params);
+
+    // 显示API能力警告（仅限XML-RPC）
+    const profile = this.plugin.settings.profiles.find(p => p.name === params.profileName);
+    if (profile && profile.apiType === 'xml-rpc') {
+      this.renderApiWarning(contentEl, profile.apiType);
+    }
 
     const mainContainer = contentEl.createDiv('wp-publish-container');
 
@@ -917,38 +928,120 @@ export class WpPublishModalV2 extends AbstractModal {
     const validCategories = this.categories.items.filter(it => it.name && it.name.trim());
 
     if (params.postType === PostTypeConst.Post && validCategories.length > 0) {
-      new Setting(card)
+      // 创建分类选择容器
+      const categorySetting = new Setting(card)
         .setName(this.t('publishModal_categoryName'))
-        .setDesc(this.t('publishModal_categoryDesc'))
-        .addDropdown((dropdown) => {
+        .setDesc(this.t('publishModal_categoryDesc'));
 
-          // Find "Uncategorized" category
-          const uncategorized = validCategories.find(it =>
-            it.name === this.plugin.t('publishModal_uncategorized') ||
-            it.name === 'Uncategorized' ||
-            it.name === '未分类'
-          );
+      // 创建分类标签容器
+      const tagsContainer = document.createElement('div');
+      tagsContainer.className = 'wp-category-tags-container';
 
-          validCategories.forEach(it => {
-            dropdown.addOption(String(it.id), it.name);
-          });
+      // 可用分类列表（排除已选中的）
+      const getAvailableCategories = () => {
+        return validCategories.filter(cat =>
+          !params.categories.includes(Number(cat.id))
+        );
+      };
 
-          // If no category selected, default to "Uncategorized"
-          const selectedCategory = params.categories[0]
-            ? String(params.categories[0])
-            : (uncategorized ? String(uncategorized.id) : String(validCategories[0]?.id || ''));
+      // 渲染已选分类标签
+      const renderCategoryTags = () => {
+        tagsContainer.empty();
 
-          dropdown
-            .setValue(selectedCategory)
-            .onChange((value) => {
-              params.categories = [toNumber(value)];
+        // 显示已选分类
+        params.categories.forEach(catId => {
+          const cat = validCategories.find(c => Number(c.id) === catId);
+          if (cat) {
+            const tag = tagsContainer.createEl('span', {
+              cls: 'wp-category-tag',
+              text: cat.name
             });
 
-          // 更新 params.categories 为默认值
-          if (!params.categories[0] && uncategorized) {
-            params.categories = [toNumber(uncategorized.id)];
+            // 删除按钮
+            const removeBtn = tag.createEl('span', {
+              cls: 'wp-category-tag-remove',
+              text: '×'
+            });
+            removeBtn.onclick = (e) => {
+              e.stopPropagation();
+              params.categories = params.categories.filter(id => id !== catId);
+              renderCategoryTags();
+              renderAddDropdown();
+            };
           }
         });
+      };
+
+      // 渲染添加下拉框
+      const renderAddDropdown = () => {
+        // 移除旧的添加控件
+        const oldAddControl = tagsContainer.querySelector('.wp-category-add-control');
+        if (oldAddControl) oldAddControl.remove();
+
+        const available = getAvailableCategories();
+        if (available.length > 0) {
+          const addControl = tagsContainer.createEl('div', {
+            cls: 'wp-category-add-control'
+          });
+
+          const addBtn = addControl.createEl('button', {
+            cls: 'wp-category-add-btn',
+            text: '+'
+          });
+
+          addBtn.onclick = () => {
+            // 创建下拉选择
+            const select = addControl.createEl('select', {
+              cls: 'wp-category-dropdown'
+            });
+
+            // 添加占位选项
+            select.createEl('option', {
+              value: '',
+              text: this.t('publishModal_selectCategory') || '选择分类...'
+            });
+
+            available.forEach(cat => {
+              select.createEl('option', {
+                value: String(cat.id),
+                text: cat.name
+              });
+            });
+
+            select.onchange = () => {
+              if (select.value) {
+                params.categories.push(Number(select.value));
+                renderCategoryTags();
+                renderAddDropdown();
+              }
+            };
+
+            select.focus();
+            addBtn.style.display = 'none';
+          };
+        }
+      };
+
+      // 初始渲染
+      renderCategoryTags();
+      renderAddDropdown();
+
+      // 添加到设置项
+      categorySetting.settingEl.appendChild(tagsContainer);
+
+      // 如果没有选择分类，默认选中"未分类"
+      if (params.categories.length === 0) {
+        const uncategorized = validCategories.find(it =>
+          it.name === this.plugin.t('publishModal_uncategorized') ||
+          it.name === 'Uncategorized' ||
+          it.name === '未分类'
+        );
+        if (uncategorized) {
+          params.categories = [Number(uncategorized.id)];
+          renderCategoryTags();
+          renderAddDropdown();
+        }
+      }
     }
 
     // 发布状态 - preserve slug on state change
@@ -1009,6 +1102,20 @@ export class WpPublishModalV2 extends AbstractModal {
             (params as SafeAny).contentFormat = value;
           });
       });
+
+    // 发布为新文章选项（仅当已有关联文章时显示）
+    if (this.matterData.postId) {
+      new Setting(card)
+        .setName(this.t('publishModal_publishAsNewName'))
+        .setDesc(this.t('publishModal_publishAsNewDesc'))
+        .addToggle((toggle) => {
+          toggle
+            .setValue(params.publishAsNew || false)
+            .onChange((value) => {
+              params.publishAsNew = value;
+            });
+        });
+    }
   }
 
   private setupDateMask(inputEl: HTMLInputElement, params: WordPressPostParams): void {
@@ -1287,6 +1394,98 @@ export class WpPublishModalV2 extends AbstractModal {
       });
   }
 
+  // ==================== API Warning Display ====================
+  private renderApiWarning(container: HTMLElement, apiType: string): void {
+    const warningContainer = container.createDiv('wp-api-warning');
+    warningContainer.addClass('mod-warning');
+    
+    const capabilities = getApiCapabilities(apiType as any);
+    const limitations = getApiLimitations(apiType as any);
+    const recommendation = getApiRecommendation(apiType as any);
+    
+    // 警告标题
+    const title = warningContainer.createDiv('wp-api-warning-title');
+    title.createEl('strong', { text: '⚠️ API Limitations: Using XML-RPC' });
+    
+    // 限制列表
+    if (limitations.length > 0) {
+      const list = warningContainer.createEl('ul', { cls: 'wp-api-limitations' });
+      limitations.forEach(limitation => {
+        list.createEl('li', { text: limitation });
+      });
+    }
+    
+    // 推荐
+    const rec = warningContainer.createDiv('wp-api-recommendation');
+    rec.createEl('p', { text: `Recommendation: ${recommendation}` });
+    
+    // 了解更多链接
+    const learnMore = warningContainer.createDiv('wp-api-learn-more');
+    learnMore.createEl('a', {
+      text: 'Learn more about API differences',
+      href: '#',
+      cls: 'external-link'
+    }).onclick = (e) => {
+      e.preventDefault();
+      this.showApiInfoModal(apiType);
+    };
+  }
+  
+  private showApiInfoModal(apiType: string): void {
+    const capabilities = getApiCapabilities(apiType as any);
+    const limitations = getApiLimitations(apiType as any);
+    const recommendation = getApiRecommendation(apiType as any);
+    
+    const message = `
+# API Capabilities: ${apiType}
+
+## Supported Features
+${capabilities.supportsCategoryCreation ? '✅ Category Creation' : '❌ Category Creation'}
+${capabilities.supportsTagCreation ? '✅ Tag Creation' : '❌ Tag Creation'}
+${capabilities.supportsRichCategoryProperties ? '✅ Rich Category Properties' : '❌ Rich Category Properties'}
+${capabilities.supportsBatchOperations ? '✅ Batch Operations' : '❌ Batch Operations'}
+${capabilities.supportsCustomPostTypes ? '✅ Custom Post Types' : '❌ Custom Post Types'}
+
+## Limitations
+${limitations.map(l => `• ${l}`).join('\n')}
+
+## Recommendation
+${recommendation}
+
+## Security Note
+XML-RPC uses basic authentication which may be less secure than REST API with Application Passwords.
+Consider migrating to REST API for better security and feature support.
+    `;
+    
+    // 使用内置的confirm modal显示信息
+    const modal = this.plugin.app.workspace.activeLeaf?.view.containerEl.createEl('div');
+    if (modal) {
+      modal.innerHTML = `
+        <div class="modal-bg" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;">
+          <div class="modal" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--background-primary);padding:20px;border-radius:8px;max-width:600px;max-height:80vh;overflow:auto;">
+            <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
+              <h3 style="margin:0;">API Information</h3>
+              <button class="modal-close" style="background:none;border:none;font-size:20px;cursor:pointer;">×</button>
+            </div>
+            <div class="modal-content">${message}</div>
+            <div class="modal-footer" style="margin-top:15px;text-align:right;">
+              <button class="mod-cta" style="padding:5px 15px;">Close</button>
+            </div>
+          </div>
+        </div>
+      `;
+      
+      // 添加关闭事件
+      modal.querySelector('.modal-close')?.addEventListener('click', () => modal.remove());
+      modal.querySelector('.mod-cta')?.addEventListener('click', () => modal.remove());
+      modal.querySelector('.modal-bg')?.addEventListener('click', (e) => {
+        if (e.target === modal.querySelector('.modal-bg')) {
+          modal.remove();
+        }
+      });
+    }
+  }
+
   // ==================== Bottom Action Bar ====================
   private renderBottomBar(container: HTMLElement, params: WordPressPostParams): void {
     const bottomContainer = container.createDiv('wp-publish-bottom-bar');
@@ -1469,8 +1668,11 @@ export class WpPublishModalV2 extends AbstractModal {
                 fm.excerpt = params.excerpt;
               }
               if (params.tags && params.tags.length > 0) {
-                // 保存为逗号分隔的字符串格式
-                fm.tags = params.tags.join(', ');
+                // 根据用户设置格式化标签
+                fm.tags = TagFormatter.formatTags(
+                  params.tags,
+                  this.plugin.settings.tagFormat
+                );
               }
             }, this.featuredImage || undefined);
             resolve();
@@ -1663,36 +1865,10 @@ export class WpPublishModalV2 extends AbstractModal {
 
   /**
    * Normalize tags from frontmatter to string array
-   * Handles both YAML array format and comma-separated string format
-   * Also splits nested tags (e.g., "项目/WordPress/发布" -> ["项目", "WordPress", "发布"])
+   * Handles YAML array, inline tags (#tag), and comma-separated string formats
    */
   private normalizeTags(tags: any): string[] {
-    if (!tags) return [];
-
-    let tagArray: string[] = [];
-
-    // If it's already an array, process each element
-    if (Array.isArray(tags)) {
-      tagArray = tags.map(t => String(t).trim()).filter(t => t);
-    }
-    // If it's a string, split by comma
-    else if (typeof tags === 'string') {
-      tagArray = tags.split(/[,，]/).map(t => t.trim()).filter(t => t);
-    }
-
-    // Split nested tags by slash
-    const expandedTags: string[] = [];
-    for (const tag of tagArray) {
-      if (tag.includes('/')) {
-        // Split by slash and add all parts
-        const parts = tag.split('/').map(p => p.trim()).filter(p => p);
-        expandedTags.push(...parts);
-      } else {
-        expandedTags.push(tag);
-      }
-    }
-
-    // Remove duplicates
-    return [...new Set(expandedTags)];
+    // Use TagFormatter to parse tags (supports YAML array, inline tags, and comma-separated)
+    return TagFormatter.parseToArray(tags);
   }
 }

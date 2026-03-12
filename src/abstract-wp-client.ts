@@ -23,6 +23,7 @@ import { openLoginModal } from './wp-login-modal';
 import { isFunction } from 'lodash-es';
 import { FrontmatterManager, RemotePostData } from './frontmatter-manager';
 import { openConflictModal } from './frontmatter-conflict-modal';
+import { TagFormatter } from './tag-formatter';
 
 export abstract class AbstractWordPressClient implements WordPressClient {
 
@@ -31,7 +32,8 @@ export abstract class AbstractWordPressClient implements WordPressClient {
    */
   name = 'AbstractWordPressClient';
 
-  private categoriesList: Term[] = [];
+  protected categoriesList: Term[] = [];
+  protected tagsList: Term[] = [];
   private frontmatterManager: FrontmatterManager;
 
   protected constructor(
@@ -49,6 +51,15 @@ export abstract class AbstractWordPressClient implements WordPressClient {
   ): Promise<WordPressClientResult<WordPressPublishResult>>;
 
   abstract getCategories(
+    certificate: WordPressAuthParams
+  ): Promise<Term[]>;
+
+  /**
+   * Fetch all tags from WordPress.
+   * @param certificate - Authentication parameters
+   * @returns Array of tag terms
+   */
+  abstract getTagsList(
     certificate: WordPressAuthParams
   ): Promise<Term[]>;
 
@@ -98,6 +109,21 @@ export abstract class AbstractWordPressClient implements WordPressClient {
       const post = await this.getPost(postId, auth);
       if (!post) return null;
 
+      // Fetch categories list if we have categories to extract
+      if ((post.categories && post.categories.length > 0 && this.categoriesList.length === 0) ||
+          (post.tags && post.tags.length > 0 && this.tagsList.length === 0)) {
+        try {
+          if (this.categoriesList.length === 0) {
+            this.categoriesList = await this.getCategories(auth);
+          }
+          if (post.tags && post.tags.length > 0 && this.tagsList.length === 0) {
+            this.tagsList = await this.getTagsList(auth);
+          }
+        } catch (e) {
+          console.warn('[fetchRemotePostData] Failed to fetch categories/tags list:', e);
+        }
+      }
+
       // Extract relevant fields for conflict detection
       return {
         postId: post.id || postId,
@@ -127,9 +153,10 @@ export abstract class AbstractWordPressClient implements WordPressClient {
    * Extract tag names from tag IDs
    */
   private extractTagNames(tagIds: number[]): string[] {
-    // Note: This is a simplified version. In a real implementation,
-    // you might need to fetch tag data from the API
-    return tagIds.map(id => String(id));
+    return tagIds.map(id => {
+      const term = this.tagsList.find(t => String(t.id) === String(id));
+      return term ? term.name : String(id);
+    });
   }
 
   private async getAuth(): Promise<WordPressAuthParams> {
@@ -196,6 +223,8 @@ export abstract class AbstractWordPressClient implements WordPressClient {
 
     // Create any local-only categories (negative IDs) on the remote before publishing
     const resolvedCategories: number[] = [];
+    const failedCategories: string[] = [];
+    
     for (const catId of postParams.categories) {
       if (catId < 0) {
         // This is a local-only category, create it on the remote now
@@ -210,16 +239,27 @@ export abstract class AbstractWordPressClient implements WordPressClient {
             console.log(`[tryToPublish] Created remote category: ${term.name} -> ID ${newTerm.id}`);
           } catch (e) {
             console.error(`[tryToPublish] Failed to create category: ${term.name}`, e);
-            new Notice(this.plugin.t('notice_createCategoryFailed', {
-              name: term.name,
-              error: e instanceof Error ? e.message : 'Unknown error'
-            }));
+            failedCategories.push(term.name);
+            // Continue to try other categories, but collect failed ones
           }
         }
       } else {
         resolvedCategories.push(catId);
       }
     }
+    
+    // If any categories failed to create, show an error and stop publishing
+    if (failedCategories.length > 0) {
+      throw new Error(this.plugin.i18n.t('error_categoriesCreationFailed', {
+        names: failedCategories.join(', ')
+      }));
+    }
+    
+    // If all categories are local-only and all failed, we should have at least one category
+    if (resolvedCategories.length === 0 && postParams.categories.length > 0) {
+      throw new Error(this.plugin.i18n.t('error_noCategoriesAvailable'));
+    }
+    
     postParams.categories = resolvedCategories;
 
     await this.updatePostImages({
@@ -238,7 +278,6 @@ export abstract class AbstractWordPressClient implements WordPressClient {
         message: result.error.message
       }));
     } else {
-      new Notice(this.plugin.i18n.t('message_publishSuccessfully'));
       // post id will be returned if creating, true if editing
       const postId = result.data.postId;
       if (postId) {
@@ -285,17 +324,28 @@ export abstract class AbstractWordPressClient implements WordPressClient {
             }
             // 5. slug
             fm.slug = postParams.slug || '';
-            // 6. featurePicture (set by updateMatterData callback)
-            if (!fm.featurePicture) fm.featurePicture = '';
-            // 7. featuredImageId (set by updateMatterData callback)
-            if (!fm.featuredImageId) fm.featuredImageId = '';
-            // 8. tags (array format)
+            // 6. featurePicture (preserve existing value, will be updated by updateMatterData callback if new image uploaded)
+            // Only set empty string if not already present
+            if (!fm.featurePicture) {
+              fm.featurePicture = '';
+            }
+            // 7. featuredImageId (preserve existing value, will be updated by updateMatterData callback if new image uploaded)
+            // Only set empty string if not already present
+            if (!fm.featuredImageId) {
+              fm.featuredImageId = '';
+            }
+            // 8. tags (formatted according to user preference)
             // Remove old 'tag' field if it exists (legacy cleanup)
             delete fm.tag;
             if (tagNames && tagNames.length > 0) {
-              fm.tags = tagNames;
+              // Format tags according to user preference (YAML array or inline)
+              fm.tags = TagFormatter.formatTags(
+                tagNames,
+                this.plugin.settings.tagFormat
+              );
             } else if (!fm.tags) {
-              fm.tags = [];
+              // Default empty value based on format preference
+              fm.tags = this.plugin.settings.tagFormat === 'inline' ? '' : [];
             }
 
             // Add excerpt below tag
@@ -370,13 +420,12 @@ export abstract class AbstractWordPressClient implements WordPressClient {
                   postParams.content = postParams.content.replace(img.original, `![[${result.data.url}]]`);
               }
             } else {
-              if (result.error.code === WordPressClientReturnCode.ServerInternalError) {
-                new Notice(result.error.message, ERROR_NOTICE_TIMEOUT);
-              } else {
-                new Notice(this.plugin.i18n.t('error_mediaUploadFailed', {
-                  name: imgFile.name,
-                }), ERROR_NOTICE_TIMEOUT);
-              }
+              // Show detailed error message from upload result
+              const errorMsg = result.error?.message || this.plugin.i18n.t('error_mediaUploadFailed', {
+                name: imgFile.name,
+              });
+              console.error('[updatePostImages] Image upload failed:', imgFile.name, errorMsg);
+              new Notice(errorMsg, ERROR_NOTICE_TIMEOUT);
             }
           }
         } else {
@@ -472,18 +521,27 @@ export abstract class AbstractWordPressClient implements WordPressClient {
         } else if (Array.isArray(rawFmCats)) {
           fmCatArray = rawFmCats;
         }
+
+        console.log('[publishPost] Raw frontmatter categories:', rawFmCats, 'Normalized:', fmCatArray);
+
         if (fmCatArray.length > 0 && typeof fmCatArray[0] === 'string') {
           // New format: category names
           const newCategoryNames: string[] = [];
           selectedCategories = [];
           for (const name of fmCatArray as string[]) {
-            const existing = categories.find(c => c.name === name);
+            // Try exact match first, then case-insensitive match
+            let existing = categories.find(c => c.name === name);
+            if (!existing) {
+              existing = categories.find(c => c.name.toLowerCase() === name.toLowerCase());
+            }
             if (existing) {
               selectedCategories.push(Number(existing.id));
+              console.log(`[publishPost] Matched category "${name}" to ID ${existing.id}`);
             } else {
               // Category not found in remote - add it as a local-only category for the UI
               // It will be created on the remote only when user clicks publish
               newCategoryNames.push(name);
+              console.log(`[publishPost] Category "${name}" not found in remote, will add as local-only`);
             }
           }
 
@@ -505,14 +563,16 @@ export abstract class AbstractWordPressClient implements WordPressClient {
             console.log(`[publishPost] Added local-only category: ${name} (temp ID ${tempId})`);
           }
 
-          if (selectedCategories.length === 0) {
-            selectedCategories = this.profile.lastSelectedCategories ?? [1];
-          }
+          // Only fall back to lastSelectedCategories if frontmatter was empty (not when match failed)
+          // This preserves user's category selection from frontmatter
         } else if (fmCatArray.length > 0 && typeof fmCatArray[0] === 'number') {
           // Old format: numeric IDs - convert to names for consistency
           selectedCategories = fmCatArray as number[];
+          console.log('[publishPost] Using numeric IDs from frontmatter:', selectedCategories);
         } else {
+          // No categories in frontmatter, use last selected or default
           selectedCategories = this.profile.lastSelectedCategories ?? [1];
+          console.log('[publishPost] No categories in frontmatter, using lastSelectedCategories:', selectedCategories);
         }
         const postTypes = await this.getPostTypes(auth);
         if (postTypes.length === 0) {
@@ -526,9 +586,27 @@ export abstract class AbstractWordPressClient implements WordPressClient {
             { items: categories, selected: selectedCategories },
             { items: postTypes, selected: selectedPostType },
             async (postParams: WordPressPostParams, updateMatterData: (matter: MatterData) => void, featuredImage) => {
-              // Save edited content from modal before readFromFrontMatter overwrites it
+              // Save user-selected values from modal before readFromFrontMatter overwrites them
+              const userSelectedCategories = postParams.categories;
+              const userSelectedTags = postParams.tags;
               const editedContent = postParams.content;
+              const publishAsNew = postParams.publishAsNew; // Save publishAsNew flag
+              
               postParams = this.readFromFrontMatter(title, matterData, postParams);
+              
+              // Handle "publish as new" option - remove postId to create new post instead of updating
+              if (publishAsNew) {
+                console.log('[WpPublishModalV2] Publish as new post requested, removing postId');
+                delete postParams.postId;
+              }
+              
+              // Restore user-selected values from modal (they take priority over frontmatter)
+              if (userSelectedCategories && userSelectedCategories.length > 0) {
+                postParams.categories = userSelectedCategories;
+              }
+              if (userSelectedTags && userSelectedTags.length > 0) {
+                postParams.tags = userSelectedTags;
+              }
               // Use edited content from modal if available, otherwise use original file content
               postParams.content = editedContent || content;
 
@@ -553,9 +631,12 @@ export abstract class AbstractWordPressClient implements WordPressClient {
                     featuredImageId = uploadResult.data.id;
                     console.log('[WpPublishModalV2] Featured image uploaded, media ID:', uploadResult.data.id);
                   } else {
-                    new Notice(this.plugin.i18n.t('error_mediaUploadFailed', {
+                    // Show detailed error message from upload result
+                    const errorMsg = uploadResult.error?.message || this.plugin.i18n.t('error_mediaUploadFailed', {
                       name: featuredImage.fileName,
-                    }), ERROR_NOTICE_TIMEOUT);
+                    });
+                    console.error('[WpPublishModalV2] Featured image upload failed:', errorMsg);
+                    new Notice(errorMsg, ERROR_NOTICE_TIMEOUT);
                   }
                 }
 

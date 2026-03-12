@@ -131,3 +131,24 @@ __snapshots__/
 
 # Build artifacts
 *.map
+
+# macOS
+.DS_Store
+.DS_Store?
+
+# Temporary directories and projects
+.cowork-temp/
+temp-ai-db/
+temp-wp-slug/
+wp-slug-translate/
+ai-content-generator/
+ai-content-generator-database-fix/
+ai-content-generator-database-fix-updated.zip
+obsidian-wordpresspublisher/
+
+# Output directory (build artifacts) - except main.js which is required for plugin
+output/*.js
+!output/main.js
+
+# Documentation
+AI内容生成器使用手册.md

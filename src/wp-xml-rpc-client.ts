@@ -142,6 +142,24 @@ export class WpXmlRpcClient extends AbstractWordPressClient {
     })) ?? [];
   }
 
+  async getTagsList(certificate: WordPressAuthParams): Promise<Term[]> {
+    const response = await this.client.methodCall('wp.getTerms', [
+      0,
+      certificate.username,
+      certificate.password,
+      'post_tag'
+    ]);
+    if (isFaultResponse(response)) {
+      const fault = `${response.faultCode}: ${response.faultString}`;
+      showError(fault);
+      throw new Error(fault);
+    }
+    return (response as SafeAny).map((it: SafeAny) => ({
+      ...it,
+      id: it.term_id
+    })) ?? [];
+  }
+
   async getPostTypes(certificate: WordPressAuthParams): Promise<PostType[]> {
     const response = await this.client.methodCall('wp.getPostTypes', [
       0,
@@ -180,20 +198,109 @@ export class WpXmlRpcClient extends AbstractWordPressClient {
     }
   }
 
-  getTag(name: string, certificate: WordPressAuthParams): Promise<Term> {
-    return Promise.resolve({
-      id: name,
-      name,
-      slug: name,
-      taxonomy: 'post_tag',
-      description: name,
-      count: 0
-    });
+  async getTag(name: string, certificate: WordPressAuthParams): Promise<Term> {
+    try {
+      // First, try to search for the tag by name
+      const searchResponse = await this.client.methodCall('wp.getTerms', [
+        0,
+        certificate.username,
+        certificate.password,
+        'post_tag',
+        {
+          search: name,
+          number: 1
+        }
+      ]);
+      
+      if (isFaultResponse(searchResponse)) {
+        throw new Error(`${searchResponse.faultCode}: ${searchResponse.faultString}`);
+      }
+      
+      const terms = searchResponse as SafeAny[];
+      if (terms && terms.length > 0) {
+        // Found existing tag
+        const term = terms[0];
+        return {
+          id: String(term.term_id),
+          name: term.name,
+          slug: term.slug,
+          taxonomy: 'post_tag',
+          description: term.description || '',
+          count: term.count || 0
+        };
+      }
+      
+      // Tag doesn't exist, create it using wp.newTerm
+      const createResponse = await this.client.methodCall('wp.newTerm', [
+        0,
+        certificate.username,
+        certificate.password,
+        {
+          taxonomy: 'post_tag',
+          name: name,
+          slug: name.toLowerCase().replace(/\s+/g, '-'),
+          description: ''
+        }
+      ]);
+      
+      if (isFaultResponse(createResponse)) {
+        throw new Error(`${createResponse.faultCode}: ${createResponse.faultString}`);
+      }
+      
+      // wp.newTerm returns the term ID
+      const termId = createResponse;
+      console.log('[wp-xml-rpc-client] Created tag:', name, 'ID:', termId);
+      
+      return {
+        id: String(termId),
+        name: name,
+        slug: name.toLowerCase().replace(/\s+/g, '-'),
+        taxonomy: 'post_tag',
+        description: '',
+        count: 0
+      };
+    } catch (error) {
+      console.error('[wp-xml-rpc-client] Failed to get/create tag:', name, error);
+      throw new Error(`Failed to get/create tag "${name}" via XML-RPC: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   async createCategory(name: string, certificate: WordPressAuthParams): Promise<Term> {
     // XML-RPC category creation - use wp.newCategory
-    throw new Error('Creating categories is not supported via XML-RPC. Please use REST API.');
+    try {
+      const response = await this.client.methodCall('wp.newCategory', [
+        0, // blogId, usually 0 for single site
+        certificate.username,
+        certificate.password,
+        {
+          name: name,
+          slug: name.toLowerCase().replace(/\s+/g, '-'),
+          parent_id: 0,
+          description: ''
+        }
+      ]);
+      
+      if (isFaultResponse(response)) {
+        throw new Error(`${response.faultCode}: ${response.faultString}`);
+      }
+      
+      // wp.newCategory returns the category ID
+      const categoryId = response;
+      console.log('[wp-xml-rpc-client] Created category:', name, 'ID:', categoryId);
+      
+      // Return a Term object matching the expected format
+      return {
+        id: String(categoryId),
+        name: name,
+        slug: name.toLowerCase().replace(/\s+/g, '-'),
+        taxonomy: 'category',
+        description: '',
+        count: 0
+      };
+    } catch (error) {
+      console.error('[wp-xml-rpc-client] Failed to create category:', name, error);
+      throw new Error(`Failed to create category "${name}" via XML-RPC: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   async uploadMedia(media: Media, certificate: WordPressAuthParams): Promise<WordPressClientResult<WordPressMediaUploadResult>> {

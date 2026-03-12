@@ -2,6 +2,7 @@ import { App, Notice, TFile } from 'obsidian';
 import { MatterData } from './types';
 import { SafeAny } from './utils';
 import type WordpressPlugin from './main';
+import { TagFormatter } from './tag-formatter';
 
 /**
  * Standard frontmatter fields in fixed order
@@ -54,6 +55,26 @@ export class FrontmatterManager {
   constructor(private app: App, private plugin: WordpressPlugin) {}
 
   /**
+   * Get default value for a frontmatter field
+   * Note: categories and tags default to empty to avoid conflicts with remote data
+   */
+  private getDefaultValue(field: StandardFrontmatterField): SafeAny {
+    switch (field) {
+      case 'categories':
+        // Return empty string to avoid conflict with remote category
+        // User will select category when publishing
+        return '';
+      case 'tags':
+        // 根据设置选择默认格式
+        return this.plugin.settings.tagFormat === 'inline'
+          ? ''   // 行内标签默认空字符串
+          : [];  // YAML 标签默认空数组
+      default:
+        return '';
+    }
+  }
+
+  /**
    * Initialize or normalize frontmatter fields
    * @param file - File to process
    * @returns Promise resolving to normalized frontmatter
@@ -64,10 +85,10 @@ export class FrontmatterManager {
     await this.app.fileManager.processFrontMatter(file, (fm) => {
       const existingKeys = Object.keys(fm);
 
-      // Case 1: Empty frontmatter - add all standard fields with empty values
+      // Case 1: Empty frontmatter - add all standard fields with default values
       if (existingKeys.length === 0) {
         for (const field of STANDARD_FRONTMATTER_FIELDS) {
-          fm[field] = field === 'categories' ? this.plugin.t('frontmatter_defaultCategory') : '';
+          fm[field] = this.getDefaultValue(field);
         }
         frontmatter = { ...fm };
         return;
@@ -103,7 +124,7 @@ export class FrontmatterManager {
 
       // 2. Standard fields in fixed order
       for (const field of STANDARD_FRONTMATTER_FIELDS) {
-        fm[field] = existingValues[field] ?? (field === 'categories' ? this.plugin.t('frontmatter_defaultCategory') : '');
+        fm[field] = existingValues[field] ?? this.getDefaultValue(field);
       }
 
       frontmatter = { ...fm };
@@ -187,17 +208,90 @@ export class FrontmatterManager {
   }
 
   /**
+   * Get tags from frontmatter (always returns array)
+   * @param frontmatter - Frontmatter data
+   * @returns Array of tag strings
+   */
+  getTags(frontmatter: MatterData): string[] {
+    return TagFormatter.parseToArray(frontmatter.tags);
+  }
+
+  /**
+   * Set tags to frontmatter with user preferred format
+   * @param file - File to update
+   * @param tags - Array of tag strings
+   */
+  async setTags(file: TFile, tags: string[]): Promise<void> {
+    const formattedTags = TagFormatter.formatTags(
+      tags,
+      this.plugin.settings.tagFormat
+    );
+
+    await this.app.fileManager.processFrontMatter(file, (fm) => {
+      fm.tags = formattedTags;
+    });
+  }
+
+  /**
    * Normalize value to array (handles string, array, or empty)
    */
   private normalizeToArray(value: SafeAny): string[] {
     if (!value) return [];
     if (typeof value === 'string') {
+      // Handle special cases for category names/IDs
+      const normalized = this.normalizeCategoryValue(value);
+      if (normalized) {
+        return normalized;
+      }
       return value.split(',').map(s => s.trim()).filter(s => s.length > 0);
     }
     if (Array.isArray(value)) {
+      // Handle arrays
+      if (value.length === 0) return [];
+      
+      // Special case for single-element arrays that might be category names/IDs
+      if (value.length === 1 && typeof value[0] === 'string') {
+        const normalized = this.normalizeCategoryValue(value[0]);
+        if (normalized) {
+          return normalized;
+        }
+      }
+      
       return value.map(v => String(v).trim()).filter(s => s.length > 0);
     }
     return [];
+  }
+
+  /**
+   * Normalize category value for comparison
+   * Handles common category name/ID mappings
+   */
+  private normalizeCategoryValue(value: string): string[] | null {
+    const trimmed = value.trim();
+    
+    // Default WordPress category mappings
+    const categoryMappings: Record<string, string> = {
+      // Chinese
+      '未分类': '1',
+      'Uncategorized': '1',
+      // Add other common mappings as needed
+    };
+    
+    // Check if value is a known category name
+    if (categoryMappings[trimmed]) {
+      return [categoryMappings[trimmed]];
+    }
+    
+    // Check if value is a known category ID that maps to a common name
+    const reverseMappings: Record<string, string> = {
+      '1': '未分类', // Default category ID
+    };
+    
+    if (reverseMappings[trimmed]) {
+      return [reverseMappings[trimmed]];
+    }
+    
+    return null;
   }
 
   /**

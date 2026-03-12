@@ -86,6 +86,12 @@ export interface WordPressPostParams {
    * Featured media ID (WordPress media library ID).
    */
   featuredMedia?: number;
+
+  /**
+   * If true, create a new post instead of updating existing one.
+   * This allows publishing the same content as different posts.
+   */
+  publishAsNew?: boolean;
 }
 
 export interface WordPressPublishParams extends WordPressAuthParams {

@@ -119,6 +119,15 @@ export class WpRestClient extends AbstractWordPressClient {
     return this.context.responseParser.toTerms(data);
   }
 
+  async getTagsList(certificate: WordPressAuthParams): Promise<Term[]> {
+    const data = await this.client.httpGet(
+      getUrl(this.context.endpoints?.getTag, 'wp-json/wp/v2/tags?per_page=100'),
+      {
+        headers: this.context.getHeaders(certificate)
+      });
+    return this.context.responseParser.toTerms(data);
+  }
+
   async getPostTypes(certificate: WordPressAuthParams): Promise<PostType[]> {
     const data: SafeAny = await this.client.httpGet(
       getUrl(this.context.endpoints?.getPostTypes, 'wp-json/wp/v2/types'),
@@ -208,11 +217,54 @@ export class WpRestClient extends AbstractWordPressClient {
       };
     } catch (e: SafeAny) {
       console.error('uploadMedia', e);
+      
+      // Extract more specific error message
+      let errorMessage = e.toString();
+      if (e.message) {
+        errorMessage = e.message;
+      }
+      
+      // Check for common upload errors
+      if (errorMessage.includes('400') || errorMessage.includes('Bad Request')) {
+        // Try to parse WordPress error response
+        let detailedError = errorMessage;
+        try {
+          if (e.response && e.response.json) {
+            const wpError = e.response.json;
+            if (wpError.message) {
+              detailedError = wpError.message;
+            } else if (wpError.code) {
+              detailedError = `WordPress error: ${wpError.code}`;
+            }
+          }
+        } catch (parseError) {
+          // Ignore parsing errors
+        }
+        
+        // Provide helpful hints for common issues
+        const fileName = media.fileName.toLowerCase();
+        const unsupportedFormats = ['.pic', '.bmp', '.tiff', '.tif', '.webp'];
+        const isUnsupported = unsupportedFormats.some(ext => fileName.endsWith(ext));
+        
+        if (isUnsupported) {
+          detailedError = `Unsupported file format "${media.fileName}". WordPress supports: JPG, PNG, GIF, MP4, MOV, PDF, etc.`;
+        }
+        
+        return {
+          code: WordPressClientReturnCode.Error,
+          error: {
+            code: WordPressClientReturnCode.ServerInternalError,
+            message: detailedError
+          },
+          response: undefined
+        };
+      }
+      
       return {
         code: WordPressClientReturnCode.Error,
         error: {
           code: WordPressClientReturnCode.ServerInternalError,
-          message: e.toString()
+          message: errorMessage
         },
         response: undefined
       };
