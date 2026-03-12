@@ -55,7 +55,7 @@ export class SlugGenerator {
     // 先提取所有连续的数字，用占位符替换
     const numberPlaceholders: string[] = [];
     const titleWithPlaceholders = title.replace(/\d+/g, (match) => {
-      const placeholder = `__NUM${numberPlaceholders.length}__`;
+      const placeholder = `XNUMX${numberPlaceholders.length}XNUMX`;
       numberPlaceholders.push(match);
       return placeholder;
     });
@@ -69,10 +69,10 @@ export class SlugGenerator {
     // 合并拼音
     let pinyinStr = (Array.isArray(pinyinText) ? pinyinText : [pinyinText]).join('-');
 
-    // 还原数字占位符
+    // 还原数字占位符（pinyin 会把 XNUMX 转成 x-n-u-m-x）
     numberPlaceholders.forEach((num, index) => {
-      const placeholder = `__NUM${index}__`;
-      pinyinStr = pinyinStr.replace(new RegExp(placeholder.toLowerCase().replace(/_/g, '-'), 'g'), num);
+      const placeholderPattern = `x-n-u-m-x-${index}-x-n-u-m-x`;
+      pinyinStr = pinyinStr.replace(new RegExp(placeholderPattern, 'g'), num);
     });
 
     // 清理 slug
