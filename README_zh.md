@@ -150,7 +150,7 @@ manifest.json                  # 插件配置
 
 ## 许可证
 
-MIT License
+GPL-3.0 License
 
 ## 致谢
 
