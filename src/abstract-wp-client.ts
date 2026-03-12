@@ -569,9 +569,20 @@ export abstract class AbstractWordPressClient implements WordPressClient {
             { items: categories, selected: selectedCategories },
             { items: postTypes, selected: selectedPostType },
             async (postParams: WordPressPostParams, updateMatterData: (matter: MatterData) => void, featuredImage) => {
-              // Save edited content from modal before readFromFrontMatter overwrites it
+              // Save user-selected values from modal before readFromFrontMatter overwrites them
+              const userSelectedCategories = postParams.categories;
+              const userSelectedTags = postParams.tags;
               const editedContent = postParams.content;
+              
               postParams = this.readFromFrontMatter(title, matterData, postParams);
+              
+              // Restore user-selected values from modal (they take priority over frontmatter)
+              if (userSelectedCategories && userSelectedCategories.length > 0) {
+                postParams.categories = userSelectedCategories;
+              }
+              if (userSelectedTags && userSelectedTags.length > 0) {
+                postParams.tags = userSelectedTags;
+              }
               // Use edited content from modal if available, otherwise use original file content
               postParams.content = editedContent || content;
 
