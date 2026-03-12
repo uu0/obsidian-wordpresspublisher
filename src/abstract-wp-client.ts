@@ -414,13 +414,12 @@ export abstract class AbstractWordPressClient implements WordPressClient {
                   postParams.content = postParams.content.replace(img.original, `![[${result.data.url}]]`);
               }
             } else {
-              if (result.error.code === WordPressClientReturnCode.ServerInternalError) {
-                new Notice(result.error.message, ERROR_NOTICE_TIMEOUT);
-              } else {
-                new Notice(this.plugin.i18n.t('error_mediaUploadFailed', {
-                  name: imgFile.name,
-                }), ERROR_NOTICE_TIMEOUT);
-              }
+              // Show detailed error message from upload result
+              const errorMsg = result.error?.message || this.plugin.i18n.t('error_mediaUploadFailed', {
+                name: imgFile.name,
+              });
+              console.error('[updatePostImages] Image upload failed:', imgFile.name, errorMsg);
+              new Notice(errorMsg, ERROR_NOTICE_TIMEOUT);
             }
           }
         } else {
@@ -597,9 +596,12 @@ export abstract class AbstractWordPressClient implements WordPressClient {
                     featuredImageId = uploadResult.data.id;
                     console.log('[WpPublishModalV2] Featured image uploaded, media ID:', uploadResult.data.id);
                   } else {
-                    new Notice(this.plugin.i18n.t('error_mediaUploadFailed', {
+                    // Show detailed error message from upload result
+                    const errorMsg = uploadResult.error?.message || this.plugin.i18n.t('error_mediaUploadFailed', {
                       name: featuredImage.fileName,
-                    }), ERROR_NOTICE_TIMEOUT);
+                    });
+                    console.error('[WpPublishModalV2] Featured image upload failed:', errorMsg);
+                    new Notice(errorMsg, ERROR_NOTICE_TIMEOUT);
                   }
                 }
 
