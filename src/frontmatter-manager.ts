@@ -54,6 +54,20 @@ export class FrontmatterManager {
   constructor(private app: App, private plugin: WordpressPlugin) {}
 
   /**
+   * Get default value for a frontmatter field
+   */
+  private getDefaultValue(field: StandardFrontmatterField): SafeAny {
+    switch (field) {
+      case 'categories':
+        return this.plugin.t('frontmatter_defaultCategory');
+      case 'tags':
+        return [];
+      default:
+        return '';
+    }
+  }
+
+  /**
    * Initialize or normalize frontmatter fields
    * @param file - File to process
    * @returns Promise resolving to normalized frontmatter
@@ -64,10 +78,10 @@ export class FrontmatterManager {
     await this.app.fileManager.processFrontMatter(file, (fm) => {
       const existingKeys = Object.keys(fm);
 
-      // Case 1: Empty frontmatter - add all standard fields with empty values
+      // Case 1: Empty frontmatter - add all standard fields with default values
       if (existingKeys.length === 0) {
         for (const field of STANDARD_FRONTMATTER_FIELDS) {
-          fm[field] = field === 'categories' ? this.plugin.t('frontmatter_defaultCategory') : '';
+          fm[field] = this.getDefaultValue(field);
         }
         frontmatter = { ...fm };
         return;
@@ -103,7 +117,7 @@ export class FrontmatterManager {
 
       // 2. Standard fields in fixed order
       for (const field of STANDARD_FRONTMATTER_FIELDS) {
-        fm[field] = existingValues[field] ?? (field === 'categories' ? this.plugin.t('frontmatter_defaultCategory') : '');
+        fm[field] = existingValues[field] ?? this.getDefaultValue(field);
       }
 
       frontmatter = { ...fm };

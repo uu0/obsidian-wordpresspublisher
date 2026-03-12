@@ -446,8 +446,8 @@ export class WpPublishModalV2 extends AbstractModal {
       // 使用 processFrontMatter 更新 frontmatter
       await this.plugin.app.fileManager.processFrontMatter(file, (fm) => {
         if (hasGeneratedTags) {
-          // 保存为逗号分隔的字符串格式，与 WordPress 发布后的格式一致
-          fm.tags = this.currentParams!.tags.join(', ');
+          // 保存为数组格式，统一 frontmatter 标签格式
+          fm.tags = this.currentParams!.tags;
           log.info('Saved generated tags to frontmatter:', this.currentParams!.tags);
         }
         if (hasGeneratedExcerpt) {
@@ -1469,8 +1469,8 @@ export class WpPublishModalV2 extends AbstractModal {
                 fm.excerpt = params.excerpt;
               }
               if (params.tags && params.tags.length > 0) {
-                // 保存为逗号分隔的字符串格式
-                fm.tags = params.tags.join(', ');
+                // 保存为数组格式，统一 frontmatter 标签格式
+                fm.tags = params.tags;
               }
             }, this.featuredImage || undefined);
             resolve();
