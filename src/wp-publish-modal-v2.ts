@@ -18,6 +18,7 @@ import { AppState } from './app-state';
 import { ImageCacheManager, CachedFeaturedImage } from './image-cache-manager';
 import { createModuleLogger } from './utils/logger';
 import { TagFormatter } from './tag-formatter';
+import { getApiCapabilities, getApiLimitations, getApiRecommendation } from './api-capability';
 
 const log = createModuleLogger('WpPublishModalV2');
 
@@ -480,6 +481,12 @@ export class WpPublishModalV2 extends AbstractModal {
 
     // 创建标签切换
     this.renderTabBar(contentEl, params);
+
+    // 显示API能力警告（仅限XML-RPC）
+    const profile = this.plugin.settings.profiles.find(p => p.name === params.profileName);
+    if (profile && profile.apiType === 'xml-rpc') {
+      this.renderApiWarning(contentEl, profile.apiType);
+    }
 
     const mainContainer = contentEl.createDiv('wp-publish-container');
 
@@ -1289,6 +1296,98 @@ export class WpPublishModalV2 extends AbstractModal {
             new Notice(this.t('publishModal_settingsSaved'));
           });
       });
+  }
+
+  // ==================== API Warning Display ====================
+  private renderApiWarning(container: HTMLElement, apiType: string): void {
+    const warningContainer = container.createDiv('wp-api-warning');
+    warningContainer.addClass('mod-warning');
+    
+    const capabilities = getApiCapabilities(apiType as any);
+    const limitations = getApiLimitations(apiType as any);
+    const recommendation = getApiRecommendation(apiType as any);
+    
+    // 警告标题
+    const title = warningContainer.createDiv('wp-api-warning-title');
+    title.createEl('strong', { text: '⚠️ API Limitations: Using XML-RPC' });
+    
+    // 限制列表
+    if (limitations.length > 0) {
+      const list = warningContainer.createEl('ul', { cls: 'wp-api-limitations' });
+      limitations.forEach(limitation => {
+        list.createEl('li', { text: limitation });
+      });
+    }
+    
+    // 推荐
+    const rec = warningContainer.createDiv('wp-api-recommendation');
+    rec.createEl('p', { text: `Recommendation: ${recommendation}` });
+    
+    // 了解更多链接
+    const learnMore = warningContainer.createDiv('wp-api-learn-more');
+    learnMore.createEl('a', {
+      text: 'Learn more about API differences',
+      href: '#',
+      cls: 'external-link'
+    }).onclick = (e) => {
+      e.preventDefault();
+      this.showApiInfoModal(apiType);
+    };
+  }
+  
+  private showApiInfoModal(apiType: string): void {
+    const capabilities = getApiCapabilities(apiType as any);
+    const limitations = getApiLimitations(apiType as any);
+    const recommendation = getApiRecommendation(apiType as any);
+    
+    const message = `
+# API Capabilities: ${apiType}
+
+## Supported Features
+${capabilities.supportsCategoryCreation ? '✅ Category Creation' : '❌ Category Creation'}
+${capabilities.supportsTagCreation ? '✅ Tag Creation' : '❌ Tag Creation'}
+${capabilities.supportsRichCategoryProperties ? '✅ Rich Category Properties' : '❌ Rich Category Properties'}
+${capabilities.supportsBatchOperations ? '✅ Batch Operations' : '❌ Batch Operations'}
+${capabilities.supportsCustomPostTypes ? '✅ Custom Post Types' : '❌ Custom Post Types'}
+
+## Limitations
+${limitations.map(l => `• ${l}`).join('\n')}
+
+## Recommendation
+${recommendation}
+
+## Security Note
+XML-RPC uses basic authentication which may be less secure than REST API with Application Passwords.
+Consider migrating to REST API for better security and feature support.
+    `;
+    
+    // 使用内置的confirm modal显示信息
+    const modal = this.plugin.app.workspace.activeLeaf?.view.containerEl.createEl('div');
+    if (modal) {
+      modal.innerHTML = `
+        <div class="modal-bg" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;">
+          <div class="modal" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--background-primary);padding:20px;border-radius:8px;max-width:600px;max-height:80vh;overflow:auto;">
+            <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
+              <h3 style="margin:0;">API Information</h3>
+              <button class="modal-close" style="background:none;border:none;font-size:20px;cursor:pointer;">×</button>
+            </div>
+            <div class="modal-content">${message}</div>
+            <div class="modal-footer" style="margin-top:15px;text-align:right;">
+              <button class="mod-cta" style="padding:5px 15px;">Close</button>
+            </div>
+          </div>
+        </div>
+      `;
+      
+      // 添加关闭事件
+      modal.querySelector('.modal-close')?.addEventListener('click', () => modal.remove());
+      modal.querySelector('.mod-cta')?.addEventListener('click', () => modal.remove());
+      modal.querySelector('.modal-bg')?.addEventListener('click', (e) => {
+        if (e.target === modal.querySelector('.modal-bg')) {
+          modal.remove();
+        }
+      });
+    }
   }
 
   // ==================== Bottom Action Bar ====================
