@@ -231,6 +231,7 @@
   "publishModal_slugTranslateFailed": "翻译失败: <%= error %>",
   "publishModal_categoryName": "分类",
   "publishModal_categoryDesc": "选择文章分类",
+  "publishModal_selectCategory": "选择分类...",
   "publishModal_statusName": "状态",
   "publishModal_statusDesc": "选择发布状态",
   "publishModal_postDateTimeName": "发布时间",

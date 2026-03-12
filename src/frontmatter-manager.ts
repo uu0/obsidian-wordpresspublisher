@@ -56,11 +56,14 @@ export class FrontmatterManager {
 
   /**
    * Get default value for a frontmatter field
+   * Note: categories and tags default to empty to avoid conflicts with remote data
    */
   private getDefaultValue(field: StandardFrontmatterField): SafeAny {
     switch (field) {
       case 'categories':
-        return this.plugin.t('frontmatter_defaultCategory');
+        // Return empty string to avoid conflict with remote category
+        // User will select category when publishing
+        return '';
       case 'tags':
         // 根据设置选择默认格式
         return this.plugin.settings.tagFormat === 'inline'

@@ -521,18 +521,27 @@ export abstract class AbstractWordPressClient implements WordPressClient {
         } else if (Array.isArray(rawFmCats)) {
           fmCatArray = rawFmCats;
         }
+
+        console.log('[publishPost] Raw frontmatter categories:', rawFmCats, 'Normalized:', fmCatArray);
+
         if (fmCatArray.length > 0 && typeof fmCatArray[0] === 'string') {
           // New format: category names
           const newCategoryNames: string[] = [];
           selectedCategories = [];
           for (const name of fmCatArray as string[]) {
-            const existing = categories.find(c => c.name === name);
+            // Try exact match first, then case-insensitive match
+            let existing = categories.find(c => c.name === name);
+            if (!existing) {
+              existing = categories.find(c => c.name.toLowerCase() === name.toLowerCase());
+            }
             if (existing) {
               selectedCategories.push(Number(existing.id));
+              console.log(`[publishPost] Matched category "${name}" to ID ${existing.id}`);
             } else {
               // Category not found in remote - add it as a local-only category for the UI
               // It will be created on the remote only when user clicks publish
               newCategoryNames.push(name);
+              console.log(`[publishPost] Category "${name}" not found in remote, will add as local-only`);
             }
           }
 
@@ -554,14 +563,16 @@ export abstract class AbstractWordPressClient implements WordPressClient {
             console.log(`[publishPost] Added local-only category: ${name} (temp ID ${tempId})`);
           }
 
-          if (selectedCategories.length === 0) {
-            selectedCategories = this.profile.lastSelectedCategories ?? [1];
-          }
+          // Only fall back to lastSelectedCategories if frontmatter was empty (not when match failed)
+          // This preserves user's category selection from frontmatter
         } else if (fmCatArray.length > 0 && typeof fmCatArray[0] === 'number') {
           // Old format: numeric IDs - convert to names for consistency
           selectedCategories = fmCatArray as number[];
+          console.log('[publishPost] Using numeric IDs from frontmatter:', selectedCategories);
         } else {
+          // No categories in frontmatter, use last selected or default
           selectedCategories = this.profile.lastSelectedCategories ?? [1];
+          console.log('[publishPost] No categories in frontmatter, using lastSelectedCategories:', selectedCategories);
         }
         const postTypes = await this.getPostTypes(auth);
         if (postTypes.length === 0) {

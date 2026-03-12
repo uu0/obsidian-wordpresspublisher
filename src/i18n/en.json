@@ -231,6 +231,7 @@
   "publishModal_slugTranslateFailed": "Translation failed: <%= error %>",
   "publishModal_categoryName": "Category",
   "publishModal_categoryDesc": "Select post category",
+  "publishModal_selectCategory": "Select category...",
   "publishModal_statusName": "Status",
   "publishModal_statusDesc": "Select publish status",
   "publishModal_postDateTimeName": "Publish Date",

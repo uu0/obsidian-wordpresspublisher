@@ -928,38 +928,120 @@ export class WpPublishModalV2 extends AbstractModal {
     const validCategories = this.categories.items.filter(it => it.name && it.name.trim());
 
     if (params.postType === PostTypeConst.Post && validCategories.length > 0) {
-      new Setting(card)
+      // 创建分类选择容器
+      const categorySetting = new Setting(card)
         .setName(this.t('publishModal_categoryName'))
-        .setDesc(this.t('publishModal_categoryDesc'))
-        .addDropdown((dropdown) => {
+        .setDesc(this.t('publishModal_categoryDesc'));
 
-          // Find "Uncategorized" category
-          const uncategorized = validCategories.find(it =>
-            it.name === this.plugin.t('publishModal_uncategorized') ||
-            it.name === 'Uncategorized' ||
-            it.name === '未分类'
-          );
+      // 创建分类标签容器
+      const tagsContainer = document.createElement('div');
+      tagsContainer.className = 'wp-category-tags-container';
 
-          validCategories.forEach(it => {
-            dropdown.addOption(String(it.id), it.name);
-          });
+      // 可用分类列表（排除已选中的）
+      const getAvailableCategories = () => {
+        return validCategories.filter(cat =>
+          !params.categories.includes(Number(cat.id))
+        );
+      };
 
-          // If no category selected, default to "Uncategorized"
-          const selectedCategory = params.categories[0]
-            ? String(params.categories[0])
-            : (uncategorized ? String(uncategorized.id) : String(validCategories[0]?.id || ''));
+      // 渲染已选分类标签
+      const renderCategoryTags = () => {
+        tagsContainer.empty();
 
-          dropdown
-            .setValue(selectedCategory)
-            .onChange((value) => {
-              params.categories = [toNumber(value)];
+        // 显示已选分类
+        params.categories.forEach(catId => {
+          const cat = validCategories.find(c => Number(c.id) === catId);
+          if (cat) {
+            const tag = tagsContainer.createEl('span', {
+              cls: 'wp-category-tag',
+              text: cat.name
             });
 
-          // 更新 params.categories 为默认值
-          if (!params.categories[0] && uncategorized) {
-            params.categories = [toNumber(uncategorized.id)];
+            // 删除按钮
+            const removeBtn = tag.createEl('span', {
+              cls: 'wp-category-tag-remove',
+              text: '×'
+            });
+            removeBtn.onclick = (e) => {
+              e.stopPropagation();
+              params.categories = params.categories.filter(id => id !== catId);
+              renderCategoryTags();
+              renderAddDropdown();
+            };
           }
         });
+      };
+
+      // 渲染添加下拉框
+      const renderAddDropdown = () => {
+        // 移除旧的添加控件
+        const oldAddControl = tagsContainer.querySelector('.wp-category-add-control');
+        if (oldAddControl) oldAddControl.remove();
+
+        const available = getAvailableCategories();
+        if (available.length > 0) {
+          const addControl = tagsContainer.createEl('div', {
+            cls: 'wp-category-add-control'
+          });
+
+          const addBtn = addControl.createEl('button', {
+            cls: 'wp-category-add-btn',
+            text: '+'
+          });
+
+          addBtn.onclick = () => {
+            // 创建下拉选择
+            const select = addControl.createEl('select', {
+              cls: 'wp-category-dropdown'
+            });
+
+            // 添加占位选项
+            select.createEl('option', {
+              value: '',
+              text: this.t('publishModal_selectCategory') || '选择分类...'
+            });
+
+            available.forEach(cat => {
+              select.createEl('option', {
+                value: String(cat.id),
+                text: cat.name
+              });
+            });
+
+            select.onchange = () => {
+              if (select.value) {
+                params.categories.push(Number(select.value));
+                renderCategoryTags();
+                renderAddDropdown();
+              }
+            };
+
+            select.focus();
+            addBtn.style.display = 'none';
+          };
+        }
+      };
+
+      // 初始渲染
+      renderCategoryTags();
+      renderAddDropdown();
+
+      // 添加到设置项
+      categorySetting.settingEl.appendChild(tagsContainer);
+
+      // 如果没有选择分类，默认选中"未分类"
+      if (params.categories.length === 0) {
+        const uncategorized = validCategories.find(it =>
+          it.name === this.plugin.t('publishModal_uncategorized') ||
+          it.name === 'Uncategorized' ||
+          it.name === '未分类'
+        );
+        if (uncategorized) {
+          params.categories = [Number(uncategorized.id)];
+          renderCategoryTags();
+          renderAddDropdown();
+        }
+      }
     }
 
     // 发布状态 - preserve slug on state change
