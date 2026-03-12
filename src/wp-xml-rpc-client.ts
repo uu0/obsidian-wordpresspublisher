@@ -211,7 +211,40 @@ export class WpXmlRpcClient extends AbstractWordPressClient {
 
   async createCategory(name: string, certificate: WordPressAuthParams): Promise<Term> {
     // XML-RPC category creation - use wp.newCategory
-    throw new Error('Creating categories is not supported via XML-RPC. Please use REST API.');
+    try {
+      const response = await this.client.methodCall('wp.newCategory', [
+        0, // blogId, usually 0 for single site
+        certificate.username,
+        certificate.password,
+        {
+          name: name,
+          slug: name.toLowerCase().replace(/\s+/g, '-'),
+          parent_id: 0,
+          description: ''
+        }
+      ]);
+      
+      if (isFaultResponse(response)) {
+        throw new Error(`${response.faultCode}: ${response.faultString}`);
+      }
+      
+      // wp.newCategory returns the category ID
+      const categoryId = response;
+      console.log('[wp-xml-rpc-client] Created category:', name, 'ID:', categoryId);
+      
+      // Return a Term object matching the expected format
+      return {
+        id: String(categoryId),
+        name: name,
+        slug: name.toLowerCase().replace(/\s+/g, '-'),
+        taxonomy: 'category',
+        description: '',
+        count: 0
+      };
+    } catch (error) {
+      console.error('[wp-xml-rpc-client] Failed to create category:', name, error);
+      throw new Error(`Failed to create category "${name}" via XML-RPC: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   async uploadMedia(media: Media, certificate: WordPressAuthParams): Promise<WordPressClientResult<WordPressMediaUploadResult>> {

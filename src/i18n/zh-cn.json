@@ -298,6 +298,8 @@
   "notice_duplicateFrontmatter": "⚠️ Frontmatter 中存在重复字段: <%= fields %>，请手动检查",
   "notice_publishCancelled": "❌ 发布已取消",
   "error_userCancelledPublish": "用户取消发布",
+  "error_categoriesCreationFailed": "无法创建分类: <%= names %>。请在 WordPress 中手动创建这些分类或选择现有分类。",
+  "error_noCategoriesAvailable": "没有可用的分类用于发布。请至少选择一个分类。",
   "frontmatter_defaultCategory": "未分类",
   "publishModal_basicSettings": "基本设置",
   "publishModal_statusDraft": "草稿",

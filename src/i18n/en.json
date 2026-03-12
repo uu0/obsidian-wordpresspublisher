@@ -298,6 +298,8 @@
   "notice_duplicateFrontmatter": "⚠️ Duplicate fields in frontmatter: <%= fields %>, please check manually",
   "notice_publishCancelled": "❌ Publishing cancelled",
   "error_userCancelledPublish": "User cancelled publishing",
+  "error_categoriesCreationFailed": "Failed to create categories: <%= names %>. Please create them manually in WordPress or choose existing categories.",
+  "error_noCategoriesAvailable": "No categories available for publishing. Please select at least one category.",
   "frontmatter_defaultCategory": "Uncategorized",
   "publishModal_basicSettings": "Basic Settings",
   "publishModal_statusDraft": "Draft",

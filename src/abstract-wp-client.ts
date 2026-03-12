@@ -223,6 +223,8 @@ export abstract class AbstractWordPressClient implements WordPressClient {
 
     // Create any local-only categories (negative IDs) on the remote before publishing
     const resolvedCategories: number[] = [];
+    const failedCategories: string[] = [];
+    
     for (const catId of postParams.categories) {
       if (catId < 0) {
         // This is a local-only category, create it on the remote now
@@ -237,16 +239,27 @@ export abstract class AbstractWordPressClient implements WordPressClient {
             console.log(`[tryToPublish] Created remote category: ${term.name} -> ID ${newTerm.id}`);
           } catch (e) {
             console.error(`[tryToPublish] Failed to create category: ${term.name}`, e);
-            new Notice(this.plugin.t('notice_createCategoryFailed', {
-              name: term.name,
-              error: e instanceof Error ? e.message : 'Unknown error'
-            }));
+            failedCategories.push(term.name);
+            // Continue to try other categories, but collect failed ones
           }
         }
       } else {
         resolvedCategories.push(catId);
       }
     }
+    
+    // If any categories failed to create, show an error and stop publishing
+    if (failedCategories.length > 0) {
+      throw new Error(this.plugin.i18n.t('error_categoriesCreationFailed', {
+        names: failedCategories.join(', ')
+      }));
+    }
+    
+    // If all categories are local-only and all failed, we should have at least one category
+    if (resolvedCategories.length === 0 && postParams.categories.length > 0) {
+      throw new Error(this.plugin.i18n.t('error_noCategoriesAvailable'));
+    }
+    
     postParams.categories = resolvedCategories;
 
     await this.updatePostImages({
