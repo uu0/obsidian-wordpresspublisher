@@ -16,6 +16,9 @@ import { UnsplashService, UnsplashImage } from './unsplash-service';
 import { AIService } from './ai-service';
 import { AppState } from './app-state';
 import { ImageCacheManager, CachedFeaturedImage } from './image-cache-manager';
+import { createModuleLogger } from './utils/logger';
+
+const log = createModuleLogger('WpPublishModalV2');
 
 // Default prompt templates - used as both defaults and placeholders
 const DEFAULT_SUMMARY_PROMPT = '请根据以下文章内容，生成一段100-200字的简洁摘要。\n要求：\n1. 概括文章核心内容和主要观点\n2. 语言流畅自然\n3. 只返回摘要文本，不要添加任何前缀或说明\n\n文章内容：\n{content}';
@@ -82,7 +85,7 @@ export class WpPublishModalV2 extends AbstractModal {
     notePath: string = ''
   ) {
     super(plugin);
-    console.log('[WpPublishModalV2] Constructor called');
+    log.info('Constructor called');
 
     // 初始化图片缓存管理器
     this.imageCacheManager = new ImageCacheManager(plugin.app);
@@ -98,7 +101,7 @@ export class WpPublishModalV2 extends AbstractModal {
 
     // 检查 frontmatter 中是否已有特色图片链接
     if (matterData.featurePicture) {
-      console.log('[WpPublishModalV2] Found featured image in frontmatter:', matterData.featurePicture);
+      log.info('Found featured image in frontmatter:', matterData.featurePicture);
       this.featurePictureUrl = matterData.featurePicture as string;
       // 加载已有的特色图片
       this.loadFeaturePictureFromUrl(matterData.featurePicture as string);
@@ -111,7 +114,7 @@ export class WpPublishModalV2 extends AbstractModal {
   // 从 URL 加载已有的特色图片
   private async loadFeaturePictureFromUrl(url: string): Promise<void> {
     try {
-      console.log('[WpPublishModalV2] Loading featured image from URL:', url);
+      log.info('Loading featured image from URL:', url);
       const response = await fetch(url);
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
@@ -131,9 +134,9 @@ export class WpPublishModalV2 extends AbstractModal {
         content: arrayBuffer,
         width: 1200
       };
-      console.log('[WpPublishModalV2] Successfully loaded featured image:', fileName);
+      log.info('Successfully loaded featured image:', fileName);
     } catch (e) {
-      console.log('[WpPublishModalV2] Failed to load featured image from URL:', e);
+      log.info('Failed to load featured image from URL:', e);
       // 加载失败，尝试从缓存恢复
       await this.loadCachedImage();
     }
@@ -152,7 +155,7 @@ export class WpPublishModalV2 extends AbstractModal {
     try {
       const cachedImage = await this.imageCacheManager.loadImage(this.notePath);
       if (cachedImage) {
-        console.log('[WpPublishModalV2] Restored featured image from cache:', cachedImage.fileName);
+        log.info('Restored featured image from cache:', cachedImage.fileName);
         this.featuredImage = {
           fileName: cachedImage.fileName,
           mimeType: cachedImage.mimeType,
@@ -165,7 +168,7 @@ export class WpPublishModalV2 extends AbstractModal {
         await this.detectFirstImage();
       }
     } catch (e) {
-      console.log('[WpPublishModalV2] Failed to load cached image:', e);
+      log.info('Failed to load cached image:', e);
       await this.detectFirstImage();
     }
   }
@@ -180,7 +183,7 @@ export class WpPublishModalV2 extends AbstractModal {
     sourceType: 'local' | 'unsplash' | 'ai' | 'vault'
   ): Promise<void> {
     if (!this.notePath) {
-      console.log('[WpPublishModalV2] No note path, skipping cache save');
+      log.info('No note path, skipping cache save');
       return;
     }
 
@@ -192,9 +195,9 @@ export class WpPublishModalV2 extends AbstractModal {
         mimeType,
         sourceType
       );
-      console.log('[WpPublishModalV2] Image saved to cache:', fileName);
+      log.info('Image saved to cache:', fileName);
     } catch (e) {
-      console.error('[WpPublishModalV2] Failed to save image to cache:', e);
+      log.error('Failed to save image to cache:', e);
     }
   }
 
@@ -206,9 +209,9 @@ export class WpPublishModalV2 extends AbstractModal {
     
     try {
       await this.imageCacheManager.clearCache(this.notePath);
-      console.log('[WpPublishModalV2] Image cache cleared for:', this.notePath);
+      log.info('Image cache cleared for:', this.notePath);
     } catch (e) {
-      console.error('[WpPublishModalV2] Failed to clear image cache:', e);
+      log.error('Failed to clear image cache:', e);
     }
   }
 
@@ -243,7 +246,7 @@ export class WpPublishModalV2 extends AbstractModal {
         await this.loadLocalImage(imagePath);
       }
     } catch (e) {
-      console.log('[WpPublishModalV2] Error detecting first image:', e);
+      log.info('Error detecting first image:', e);
       await this.loadEmptyImage();
     }
   }
@@ -265,7 +268,7 @@ export class WpPublishModalV2 extends AbstractModal {
         content: binaryContent,
         width: 1200
       };
-      console.log('[WpPublishModalV2] Auto-detected first image:', file.name);
+      log.info('Auto-detected first image:', file.name);
     }
   }
 
@@ -280,7 +283,7 @@ export class WpPublishModalV2 extends AbstractModal {
         width: 1200
       };
     } catch (e) {
-      console.log('[WpPublishModalV2] Failed to download online image:', e);
+      log.info('Failed to download online image:', e);
     }
   }
 
@@ -297,7 +300,7 @@ export class WpPublishModalV2 extends AbstractModal {
         };
       }
     } catch (e) {
-      console.log('[WpPublishModalV2] Could not load empty.png:', e);
+      log.info('Could not load empty.png:', e);
     }
   }
 
@@ -313,7 +316,7 @@ export class WpPublishModalV2 extends AbstractModal {
   }
 
   onOpen() {
-    console.log('[WpPublishModalV2] onOpen called');
+    log.info('onOpen called');
     const params: WordPressPostParams = {
       status: this.plugin.settings.defaultPostStatus,
       commentStatus: this.plugin.settings.defaultCommentStatus,
@@ -619,7 +622,7 @@ export class WpPublishModalV2 extends AbstractModal {
       this.display(params);
       new Notice('AI 图片已生成');
     } catch (error) {
-      console.error('[WpPublishModalV2] AI image generation error:', error);
+      log.error('AI image generation error:', error);
       new Notice(`生成图片失败: ${error instanceof Error ? error.message : '未知错误'}`);
     }
   }
@@ -656,7 +659,7 @@ export class WpPublishModalV2 extends AbstractModal {
       this.display(params);
       return params.excerpt;
     } catch (error) {
-      console.error('[WpPublishModalV2] Generate summary for image error:', error);
+      log.error('Generate summary for image error:', error);
       new Notice(`生成摘要失败: ${error instanceof Error ? error.message : '未知错误'}`);
       return null;
     }
@@ -1235,14 +1238,14 @@ export class WpPublishModalV2 extends AbstractModal {
     try {
       new Notice('正在生成摘要...');
       const cleanContent = this.sanitizeContentForAI(contentToUse, 2000);
-      console.log('[WpPublishModalV2] Generating summary from content length:', cleanContent.length);
+      log.info('Generating summary from content length:', cleanContent.length);
       const prompt = this.summaryPrompt.replace('{content}', cleanContent);
       const summary = await this.aiService.generateText(prompt);
       params.excerpt = summary.trim();
       new Notice('摘要已生成: ' + params.excerpt.substring(0, 50) + '...');
       this.display(params);
     } catch (error) {
-      console.error('[WpPublishModalV2] Generate summary error:', error);
+      log.error('Generate summary error:', error);
       new Notice(`生成摘要失败: ${error instanceof Error ? error.message : '未知错误'}`);
     }
   }
@@ -1262,14 +1265,14 @@ export class WpPublishModalV2 extends AbstractModal {
     try {
       new Notice('正在生成标签...');
       const cleanContent = this.sanitizeContentForAI(contentToUse, 2000);
-      console.log('[WpPublishModalV2] Generating tags from content length:', cleanContent.length);
+      log.info('Generating tags from content length:', cleanContent.length);
       const prompt = this.tagsPrompt.replace('{content}', cleanContent);
       const tags = await this.aiService.generateText(prompt);
       params.tags = tags.split(/[,，]/).map(t => t.trim()).filter(t => t).slice(0, 4);
       new Notice('标签已生成: ' + params.tags.join(', '));
       this.display(params);
     } catch (error) {
-      console.error('[WpPublishModalV2] Generate tags error:', error);
+      log.error('Generate tags error:', error);
       new Notice(`生成标签失败: ${error instanceof Error ? error.message : '未知错误'}`);
     }
   }
@@ -1277,7 +1280,7 @@ export class WpPublishModalV2 extends AbstractModal {
   private doPublish(params: WordPressPostParams, btn?: HTMLButtonElement): void {
     // 防止重复点击
     if (this.isPublishing) {
-      console.log('[WpPublishModalV2] Already publishing, ignoring click');
+      log.info('Already publishing, ignoring click');
       return;
     }
 
@@ -1339,7 +1342,7 @@ export class WpPublishModalV2 extends AbstractModal {
         this.showSuccessNotice();
       })
       .catch(err => {
-        console.error('[WpPublishModalV2] Publish error:', err);
+        log.error('Publish error:', err);
         progressOverlay.remove();
         if (err instanceof Error && err.message !== 'User cancelled') {
           // 显示失败提示卡片
@@ -1505,7 +1508,7 @@ export class WpPublishModalV2 extends AbstractModal {
         this.slugGenerated = true;
       }
     } catch (error) {
-      console.error('Slug generation failed:', error);
+      log.error('Slug generation failed:', error);
     }
   }
 }

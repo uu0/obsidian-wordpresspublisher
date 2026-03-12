@@ -1,6 +1,9 @@
 import { Plugin } from 'obsidian';
 import { WordpressSettingTab } from './settings';
 import { addIcons } from './icons';
+import { createModuleLogger } from './utils/logger';
+
+const log = createModuleLogger('WordpressPlugin');
 import { WordPressPostParams } from './wp-client';
 import { I18n } from './i18n';
 import { EventType, WP_OAUTH2_REDIRECT_URI, WP_OAUTH2_URL_ACTION } from './consts';
@@ -114,10 +117,10 @@ export default class WordpressPlugin extends Plugin {
       const cacheManager = new ImageCacheManager(this.app);
       const cleanedCount = await cacheManager.cleanupOrphanCaches();
       if (cleanedCount > 0) {
-        console.log('[WordpressPlugin] Cleaned up', cleanedCount, 'orphan image caches');
+        log.info(`Cleaned up ${cleanedCount} orphan image caches`);
       }
     } catch (error) {
-      console.error('[WordpressPlugin] Failed to cleanup orphan caches:', error);
+      log.error('Failed to cleanup orphan caches', error);
     }
   }
 

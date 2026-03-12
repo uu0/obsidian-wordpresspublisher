@@ -2,6 +2,9 @@ import { App, Modal, Setting, Notice, TFile } from 'obsidian';
 import { UnsplashService, UnsplashImage } from './unsplash-service';
 import { AIService } from './ai-service';
 import WordpressPlugin from './main';
+import { createModuleLogger } from './utils/logger';
+
+const log = createModuleLogger('FeaturedImageModal');
 
 export interface FeaturedImageResult {
   fileName: string;
@@ -67,7 +70,7 @@ export async function resizeFeaturedImage(
     new Notice(`图片已裁剪为 ${targetWidth}x${targetHeight}px (${aspectRatio})`);
     return await outputBlob.arrayBuffer();
   } catch (error) {
-    console.error('Image resize failed:', error);
+    log.error('Image resize failed', error);
     return null;
   }
 }
@@ -382,7 +385,7 @@ export class FeaturedImageModal extends Modal {
       new Notice(`图片已裁剪为 ${targetWidth}x${targetHeight}px (${ratio})`);
       return await outputBlob.arrayBuffer();
     } catch (error) {
-      console.error('Image resize failed:', error);
+      log.error('Image resize failed', error);
       return null;
     }
   }

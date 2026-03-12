@@ -1,5 +1,8 @@
 import { App, TFile, normalizePath } from 'obsidian';
 import { SafeAny } from './utils';
+import { createModuleLogger } from './utils/logger';
+
+const log = createModuleLogger('ImageCacheManager');
 
 /**
  * Cache entry for a single note's featured image
@@ -80,9 +83,9 @@ export class ImageCacheManager {
       await this.loadIndex();
 
       this.initialized = true;
-      console.log('[ImageCacheManager] Initialized successfully');
+      log.info('Initialized successfully');
     } catch (error) {
-      console.error('[ImageCacheManager] Initialization failed:', error);
+      log.error('Initialization failed:', error);
       // Create empty index if loading failed
       this.index = {};
       this.initialized = true;
@@ -138,7 +141,7 @@ export class ImageCacheManager {
     this.index[normalizedPath] = entry;
     await this.saveIndex();
 
-    console.log('[ImageCacheManager] Image cached:', normalizedPath, '→', imageFileName);
+    log.info(`Image cached: ${normalizedPath} → ${imageFileName}`);
     return entry;
   }
 
@@ -164,7 +167,7 @@ export class ImageCacheManager {
       // Check if file exists
       const exists = await this.app.vault.adapter.exists(imagePath);
       if (!exists) {
-        console.warn('[ImageCacheManager] Cached image file not found:', imagePath);
+        log.warn('Cached image file not found:', imagePath);
         // Clean up stale entry
         delete this.index[normalizedPath];
         await this.saveIndex();
@@ -181,7 +184,7 @@ export class ImageCacheManager {
         sourceType: entry.sourceType,
       };
     } catch (error) {
-      console.error('[ImageCacheManager] Failed to load cached image:', error);
+      log.error('Failed to load cached image:', error);
       return null;
     }
   }
@@ -220,7 +223,7 @@ export class ImageCacheManager {
       await this.deleteImageFile(entry.cacheId);
       delete this.index[normalizedPath];
       await this.saveIndex();
-      console.log('[ImageCacheManager] Cache cleared for:', normalizedPath);
+      log.info('Cache cleared for:', normalizedPath);
     }
   }
 
@@ -238,7 +241,7 @@ export class ImageCacheManager {
     // Clear index
     this.index = {};
     await this.saveIndex();
-    console.log('[ImageCacheManager] All caches cleared');
+    log.info('All caches cleared');
   }
 
   /**
@@ -267,7 +270,7 @@ export class ImageCacheManager {
 
     if (cleanedCount > 0) {
       await this.saveIndex();
-      console.log('[ImageCacheManager] Cleaned up', cleanedCount, 'orphan caches');
+      log.info(`Cleaned up ${cleanedCount} orphan caches`);
     }
 
     return cleanedCount;
@@ -301,7 +304,7 @@ export class ImageCacheManager {
 
     if (cleanedCount > 0) {
       await this.saveIndex();
-      console.log('[ImageCacheManager] Cleaned up', cleanedCount, 'old caches (>', maxAgeDays, 'days)');
+      log.info(`Cleaned up ${cleanedCount} old caches (> ${maxAgeDays} days)`);
     }
 
     return cleanedCount;
@@ -379,7 +382,7 @@ export class ImageCacheManager {
         this.index = JSON.parse(content);
       }
     } catch (error) {
-      console.warn('[ImageCacheManager] Failed to load index, starting fresh:', error);
+      log.warn('Failed to load index, starting fresh:', error);
       this.index = {};
     }
   }
