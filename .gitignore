@@ -1,3 +1,8 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
 # Logs
 logs
 *.log
@@ -105,6 +110,10 @@ dist
 
 # IDE
 .idea/
+.vscode/
+*.swp
+*.swo
+*~
 
 # Compiled files
 dist/
@@ -115,3 +124,10 @@ dist/
 
 # obsidian
 data.json
+
+# Test files
+*.test.js.snap
+__snapshots__/
+
+# Build artifacts
+*.map
