@@ -52,37 +52,48 @@ export class SlugGenerator {
 
     logger.debug('SlugGenerator', `Converting Chinese title to slug: ${title}`);
 
-    // 分段处理：分离中文和数字
-    const segments: string[] = [];
+    // 分段处理：分离中文、英文、数字
+    const segments: { text: string; type: 'chinese' | 'english' | 'number' }[] = [];
     let currentSegment = '';
-    let isNumber = false;
+    let currentType: 'chinese' | 'english' | 'number' | null = null;
 
     for (let i = 0; i < title.length; i++) {
       const char = title[i];
-      const charIsNumber = /\d/.test(char);
+      let charType: 'chinese' | 'english' | 'number';
 
-      if (charIsNumber !== isNumber && currentSegment) {
+      if (/\d/.test(char)) {
+        charType = 'number';
+      } else if (/[a-zA-Z]/.test(char)) {
+        charType = 'english';
+      } else {
+        charType = 'chinese';
+      }
+
+      if (charType !== currentType && currentSegment) {
         // 类型切换，保存当前段
-        segments.push(currentSegment);
+        segments.push({ text: currentSegment, type: currentType! });
         currentSegment = '';
       }
 
       currentSegment += char;
-      isNumber = charIsNumber;
+      currentType = charType;
     }
 
-    if (currentSegment) {
-      segments.push(currentSegment);
+    if (currentSegment && currentType) {
+      segments.push({ text: currentSegment, type: currentType });
     }
 
-    // 转换每个段：数字保持原样，其他转拼音
+    // 转换每个段
     const convertedSegments = segments.map(segment => {
-      if (/^\d+$/.test(segment)) {
-        // 纯数字段，直接返回
-        return segment;
+      if (segment.type === 'number') {
+        // 数字保持原样
+        return segment.text;
+      } else if (segment.type === 'english') {
+        // 英文转小写
+        return segment.text.toLowerCase();
       } else {
-        // 包含中文或其他字符，转拼音
-        const pinyinText = pinyin(segment, {
+        // 中文转拼音
+        const pinyinText = pinyin(segment.text, {
           toneType: 'none',
           type: 'array'
         });
