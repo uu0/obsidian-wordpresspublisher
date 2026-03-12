@@ -2,9 +2,9 @@
 
 [English](README.md) | [简体中文](README_zh.md)
 
-**Version**: 1.1.0
+**Version**: 1.2.0
 **Author**: uu0
-**Last Updated**: 2026-03-12
+**Last Updated**: 2026-03-13
 
 ## About This Project
 
@@ -168,6 +168,21 @@ This project uses the following open-source projects:
 Thanks to all open-source community contributors!
 
 ## Changelog
+
+### 1.2.0 (2026-03-13)
+
+**New Features**
+- Added inline tags support, using #tag# format in notes
+- Added "Publish as New" feature, allows choosing between updating remote posts or publishing as a completely new article
+- Enhanced API capability analysis with XML-RPC protocol support
+- Changed default tag format to YAML array format
+
+**Bug Fixes**
+- Fixed category selection being overwritten when publishing posts
+- Fixed posts becoming uncategorized after publishing when different category was selected
+- Fixed featurePicture and featuredImageId being lost in frontmatter during republish
+- Improved category handling logic and user interface
+- Improved media upload error handling with clearer error messages
 
 ### 1.1.0 (2026-03-12)
 
