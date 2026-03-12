@@ -96,6 +96,73 @@
   font-style: italic;
 }
 
+/* Frontmatter Conflict Modal Styles */
+.wp-conflict-modal {
+  padding: 20px;
+}
+
+.wp-conflict-modal h2 {
+  margin-top: 0;
+  color: var(--text-error);
+}
+
+.wp-conflicts-list {
+  margin: 20px 0;
+  padding: 16px;
+  background: var(--background-secondary);
+  border-radius: 8px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.wp-conflict-item {
+  padding: 12px;
+  margin-bottom: 12px;
+  background: var(--background-primary);
+  border-left: 4px solid var(--text-error);
+  border-radius: 4px;
+}
+
+.wp-conflict-item:last-child {
+  margin-bottom: 0;
+}
+
+.wp-conflict-field {
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: var(--text-normal);
+}
+
+.wp-conflict-values {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.9em;
+}
+
+.wp-conflict-value {
+  padding: 6px 8px;
+  background: var(--background-secondary);
+  border-radius: 4px;
+}
+
+.wp-conflict-value strong {
+  color: var(--text-muted);
+}
+
+.wp-conflict-options {
+  margin-top: 20px;
+}
+
+.wp-conflict-options .setting-item {
+  border-top: 1px solid var(--background-modifier-border);
+  padding: 12px 0;
+}
+
+.wp-conflict-options .setting-item:first-child {
+  border-top: none;
+}
+
 .featured-image-remove {
   background: var(--interactive-accent);
   color: var(--text-on-accent);

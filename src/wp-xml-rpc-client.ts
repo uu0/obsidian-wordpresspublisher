@@ -217,15 +217,33 @@ export class WpXmlRpcClient extends AbstractWordPressClient {
         },
         response
       };
-    } else {
-      return {
-        code: WordPressClientReturnCode.OK,
-        data: {
-          url: (response as SafeAny).url,
-          id: Number((response as SafeAny).id ?? (response as SafeAny).attachment_id) || undefined
-        },
-        response
-      };
+    }
+    return {
+      code: WordPressClientReturnCode.OK,
+      data: {
+        id: (response as SafeAny).id,
+        url: (response as SafeAny).url
+      },
+      response
+    };
+  }
+
+  async getPost(postId: string | number, certificate: WordPressAuthParams): Promise<SafeAny | null> {
+    try {
+      const response = await this.client.methodCall('wp.getPost', [
+        0,
+        certificate.username,
+        certificate.password,
+        postId
+      ]);
+      if (isFaultResponse(response)) {
+        console.error('getPost fault:', response);
+        return null;
+      }
+      return response;
+    } catch (e: SafeAny) {
+      console.error('getPost error:', e);
+      return null;
     }
   }
 
