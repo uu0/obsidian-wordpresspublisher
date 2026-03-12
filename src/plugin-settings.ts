@@ -148,7 +148,7 @@ export const DEFAULT_SETTINGS: WordpressPluginSettings = {
   slugGenerationMode: 'pinyin',
   imageCropRatio: '16:9',
   imageCropWidth: 1200,
-  tagFormat: TagFormat.Inline,
+  tagFormat: TagFormat.YAML,
 }
 
 export async function upgradeSettings(
