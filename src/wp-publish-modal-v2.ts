@@ -1295,24 +1295,28 @@ export class WpPublishModalV2 extends AbstractModal {
   }
 
   private renderTagsPreview(card: HTMLElement, params: WordPressPostParams): void {
-    // 清空之前的标签容器
-    if (this.tagsContainer) {
-      this.tagsContainer.remove();
+    // 如果容器已存在，清空内容复用；否则创建新容器
+    let section: HTMLElement;
+    if (this.tagsContainer && this.tagsContainer.parentElement === card) {
+      // 容器存在且父元素正确，清空内容复用
+      section = this.tagsContainer;
+      section.empty();
+    } else {
+      // 容器不存在或父元素不对，创建新容器
+      section = card.createDiv('wp-preview-tags-editable');
+      this.tagsContainer = section;
+      Object.assign(section.style, {
+        marginBottom: '16px',
+        display: 'flex',
+        flexWrap: 'wrap',
+        gap: '8px',
+        alignItems: 'center',
+        padding: '12px',
+        backgroundColor: 'var(--background-primary)',
+        borderRadius: '6px',
+        border: '1px solid var(--background-modifier-border)'
+      });
     }
-
-    const section = card.createDiv('wp-preview-tags-editable');
-    this.tagsContainer = section;
-    Object.assign(section.style, {
-      marginBottom: '16px',
-      display: 'flex',
-      flexWrap: 'wrap',
-      gap: '8px',
-      alignItems: 'center',
-      padding: '12px',
-      backgroundColor: 'var(--background-primary)',
-      borderRadius: '6px',
-      border: '1px solid var(--background-modifier-border)'
-    });
 
     const label = section.createEl('span', { text: this.plugin.t('publishModal_previewTags') });
     Object.assign(label.style, {
