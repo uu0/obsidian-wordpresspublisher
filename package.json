@@ -1,7 +1,7 @@
 {
 	"name": "obsidian-wordpresspublisher",
 	"version": "1.2.1",
-	"description": "一键将 Obsidian 笔记发布到 WordPress，支持文章/页面发布、智能 Slug 生成、特色图片选择和 AI 功能集成。",
+	"description": "Publish Obsidian notes to WordPress with one click. Supports post/page publishing, smart slug generation, featured image selection, and AI integration.",
 	"main": "main.js",
 	"scripts": {
 		"dev": "node esbuild.config.mjs",
