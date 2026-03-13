@@ -129,6 +129,7 @@ export class WpPublishModalV2 extends AbstractModal {
   private editableTags: string[] = []; // 可编辑的标签数组（预览标签页使用）
   private tagsContainer: HTMLElement | null = null; // 标签容器的引用
   private cachedFeaturedImageId: number | undefined; // 从缓存或远程获取的特色图片 ID
+  private isLoadingRemoteImage: boolean = false; // 是否正在加载远程图片
 
   // Prompt templates from settings, with proper defaults
   private get imageGenerationPrompt(): string {
@@ -223,6 +224,10 @@ export class WpPublishModalV2 extends AbstractModal {
     try {
       log.info('Fetching featured image from remote WordPress:', postId);
 
+      // 设置加载状态
+      this.isLoadingRemoteImage = true;
+      this.display(this.currentParams!); // 刷新 UI 显示加载状态
+
       // 获取当前配置文件
       const profile = this.plugin.settings.profiles.find(p => p.isDefault);
       if (!profile) {
@@ -285,6 +290,10 @@ export class WpPublishModalV2 extends AbstractModal {
     } catch (e) {
       log.error('Failed to load featured image from remote:', e);
       return false;
+    } finally {
+      // 清除加载状态
+      this.isLoadingRemoteImage = false;
+      this.display(this.currentParams!); // 刷新 UI
     }
   }
 
@@ -686,42 +695,80 @@ export class WpPublishModalV2 extends AbstractModal {
 
     const previewContainer = card.createDiv('featured-image-preview-large');
 
-    // 优先显示用户选择的图片，否则显示自动检测的图片
-    const imageToDisplay = this.featuredImage || this.autoFeaturedImage;
+    // 如果正在加载远程图片，显示加载状态
+    if (this.isLoadingRemoteImage) {
+      const loadingDiv = previewContainer.createDiv('featured-image-loading');
+      loadingDiv.style.display = 'flex';
+      loadingDiv.style.flexDirection = 'column';
+      loadingDiv.style.alignItems = 'center';
+      loadingDiv.style.justifyContent = 'center';
+      loadingDiv.style.padding = '40px 20px';
+      loadingDiv.style.color = 'var(--text-muted)';
 
-    if (imageToDisplay) {
-      const blob = new Blob([imageToDisplay.content], { type: imageToDisplay.mimeType });
-      const url = URL.createObjectURL(blob);
+      const spinner = loadingDiv.createDiv('featured-image-spinner');
+      spinner.style.width = '32px';
+      spinner.style.height = '32px';
+      spinner.style.border = '3px solid var(--background-modifier-border)';
+      spinner.style.borderTop = '3px solid var(--interactive-accent)';
+      spinner.style.borderRadius = '50%';
+      spinner.style.animation = 'spin 1s linear infinite';
+      spinner.style.marginBottom = '12px';
 
-      const img = previewContainer.createEl('img', {
-        attr: { src: url },
-        cls: 'featured-image-full'
+      loadingDiv.createEl('p', {
+        text: this.t('publishModal_loadingRemoteImage') || '正在加载远程图片...',
+        cls: 'featured-image-loading-text'
       });
-      // Constrain image height for better text readability
-      img.style.maxWidth = '100%';
-      img.style.maxHeight = '160px';
-      img.style.objectFit = 'cover';
-      img.style.borderRadius = '6px';
 
-      const info = previewContainer.createDiv('featured-image-info');
-      info.createSpan({ text: imageToDisplay.fileName });
-
-      // 只有当用户手动选择了图片时才显示移除按钮
-      if (this.featuredImage) {
-        const removeBtn = previewContainer.createEl('button', {
-          text: this.t('confirmModal_cancel'),
-          cls: 'featured-image-remove-btn'
-        });
-        removeBtn.onclick = () => {
-          this.featuredImage = null;
-          this.display(params);
-        };
+      // 添加 CSS 动画（如果还没有）
+      if (!document.getElementById('featured-image-spinner-style')) {
+        const style = document.createElement('style');
+        style.id = 'featured-image-spinner-style';
+        style.textContent = `
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        `;
+        document.head.appendChild(style);
       }
     } else {
-      previewContainer.createEl('p', {
-        text: this.t('publishModal_noFeaturedImage'),
-        cls: 'featured-image-placeholder-text'
-      });
+      // 优先显示用户选择的图片，否则显示自动检测的图片
+      const imageToDisplay = this.featuredImage || this.autoFeaturedImage;
+
+      if (imageToDisplay) {
+        const blob = new Blob([imageToDisplay.content], { type: imageToDisplay.mimeType });
+        const url = URL.createObjectURL(blob);
+
+        const img = previewContainer.createEl('img', {
+          attr: { src: url },
+          cls: 'featured-image-full'
+        });
+        // Constrain image height for better text readability
+        img.style.maxWidth = '100%';
+        img.style.maxHeight = '160px';
+        img.style.objectFit = 'cover';
+        img.style.borderRadius = '6px';
+
+        const info = previewContainer.createDiv('featured-image-info');
+        info.createSpan({ text: imageToDisplay.fileName });
+
+        // 只有当用户手动选择了图片时才显示移除按钮
+        if (this.featuredImage) {
+          const removeBtn = previewContainer.createEl('button', {
+            text: this.t('confirmModal_cancel'),
+            cls: 'featured-image-remove-btn'
+          });
+          removeBtn.onclick = () => {
+            this.featuredImage = null;
+            this.display(params);
+          };
+        }
+      } else {
+        previewContainer.createEl('p', {
+          text: this.t('publishModal_noFeaturedImage'),
+          cls: 'featured-image-placeholder-text'
+        });
+      }
     }
 
     // 四个按钮

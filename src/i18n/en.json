@@ -191,6 +191,7 @@
   "publishModal_featuredImage": "Featured Image",
   "publishModal_featuredImageUploaded": "Featured Image (Uploaded to WordPress)",
   "publishModal_noFeaturedImage": "No featured image selected",
+  "publishModal_loadingRemoteImage": "Loading remote image...",
   "publishModal_generateSummary": "📝 Generate Summary",
   "publishModal_generateTags": "🏷️ Generate Tags",
   "publishModal_generatingSummary": "Generating summary...",
