@@ -128,6 +128,7 @@ export class WpPublishModalV2 extends AbstractModal {
   private currentParams: WordPressPostParams | null = null; // 当前的发布参数，用于在关闭时保存生成的内容
   private editableTags: string[] = []; // 可编辑的标签数组（预览标签页使用）
   private tagsContainer: HTMLElement | null = null; // 标签容器的引用
+  private cachedFeaturedImageId: number | undefined; // 从缓存或远程获取的特色图片 ID
 
   // Prompt templates from settings, with proper defaults
   private get imageGenerationPrompt(): string {
@@ -192,6 +193,8 @@ export class WpPublishModalV2 extends AbstractModal {
       const cached = this.plugin.featurePictureCacheManager.get(postId);
       if (cached) {
         log.info('Loading featured image from cache:', cached.url);
+        // 保存缓存的 featuredImageId
+        this.cachedFeaturedImageId = cached.featuredImageId;
         await this.loadFeaturePictureFromUrl(cached.url);
         return;
       }
@@ -299,13 +302,20 @@ export class WpPublishModalV2 extends AbstractModal {
    */
   async clearImageCache(): Promise<void> {
     if (!this.notePath) return;
-    
+
     try {
       await this.imageCacheManager.clearCache(this.notePath);
       log.info('Image cache cleared for:', this.notePath);
     } catch (e) {
       log.error('Failed to clear image cache:', e);
     }
+  }
+
+  /**
+   * 获取从缓存中加载的特色图片 ID
+   */
+  getCachedFeaturedImageId(): number | undefined {
+    return this.cachedFeaturedImageId;
   }
 
   private getMimeTypeFromResponse(contentType: string | null, url: string): string {

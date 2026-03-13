@@ -665,6 +665,13 @@ export abstract class AbstractWordPressClient implements WordPressClient {
                     console.error('[WpPublishModalV2] Featured image upload failed:', errorMsg);
                     new Notice(errorMsg, ERROR_NOTICE_TIMEOUT);
                   }
+                } else {
+                  // 没有上传新图片，检查是否有缓存的 featuredImageId
+                  const cachedImageId = publishModal.getCachedFeaturedImageId();
+                  if (cachedImageId) {
+                    featuredImageId = cachedImageId;
+                    console.log('[WpPublishModalV2] Using cached featured image ID:', cachedImageId);
+                  }
                 }
 
                 // Wrap updateMatterData to also save featured image info
