@@ -194,6 +194,28 @@ export class WpPublishModalV2 extends AbstractModal {
   // 从缓存加载特色图片
   private async loadFeaturePictureFromCache(postId: string | number): Promise<void> {
     try {
+      // 优先检查本地是否有用户选择的图片缓存
+      if (this.notePath) {
+        const localCachedImage = await this.imageCacheManager.loadImage(this.notePath);
+        if (localCachedImage) {
+          log.info('Found local cached image, using it instead of remote:', localCachedImage.fileName);
+          this.featuredImage = {
+            fileName: localCachedImage.fileName,
+            mimeType: localCachedImage.mimeType,
+            content: localCachedImage.content,
+            width: localCachedImage.width
+          };
+          this.imageSource = 'cached';
+
+          // 图片加载完成后，刷新 UI 显示
+          if (this.currentParams) {
+            this.display(this.currentParams);
+          }
+          return;
+        }
+      }
+
+      // 本地无缓存，检查 featurePicture 缓存
       const cached = this.plugin.featurePictureCacheManager.get(postId);
       if (cached) {
         log.info('Loading featured image from cache:', cached.url);
@@ -859,7 +881,9 @@ export class WpPublishModalV2 extends AbstractModal {
             text: this.t('confirmModal_cancel'),
             cls: 'featured-image-remove-btn'
           });
-          removeBtn.onclick = () => {
+          removeBtn.onclick = async () => {
+            // 清除本地图片缓存
+            await this.clearImageCache();
             this.featuredImage = null;
             this.display(params);
           };
@@ -1462,12 +1486,11 @@ export class WpPublishModalV2 extends AbstractModal {
       this.editableTags = params.tags ? [...params.tags] : [];
     }
 
-    // Check for featuredImageId and featurePicture inconsistency
+    // Check if featuredImageId exists but no image is loaded
     const hasImageId = this.matterData.featuredImageId && this.matterData.featuredImageId !== '';
-    const hasImageUrl = this.matterData.featurePicture && this.matterData.featurePicture !== '';
 
-    if (hasImageId && !hasImageUrl && !this.featuredImage) {
-      // Warning: ID exists but URL is missing
+    if (hasImageId && !this.featuredImage && !this.autoFeaturedImage) {
+      // Warning: featuredImageId exists but no image loaded
       const warningDiv = card.createDiv('wp-preview-warning');
       warningDiv.createEl('strong', { text: '⚠️ ' + this.plugin.t('publishModal_previewInconsistencyWarning') });
       warningDiv.createEl('p', {
