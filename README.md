@@ -2,7 +2,7 @@
 
 [English](README.md) | [简体中文](README_zh.md)
 
-**Version**: 1.2.1
+**Version**: 1.2.2
 **Author**: uu0
 **Last Updated**: 2026-03-14
 
@@ -146,7 +146,7 @@ manifest.json                  # Plugin manifest
 - Unsplash API is free but has rate limits
 - OpenAI/Claude APIs are billed by usage
 - Stable network connection recommended
-- API keys are encrypted; regular rotation recommended
+- API keys are encrypted with AES-256-GCM; regular rotation recommended
 
 ## License
 
@@ -168,6 +168,15 @@ This project uses the following open-source projects:
 Thanks to all open-source community contributors!
 
 ## Changelog
+
+### 1.2.2 (2026-03-14)
+
+**Security**
+- AI API Keys (Text AI / Image AI) and Unsplash API Key are now encrypted with AES-256-GCM before being written to disk, consistent with how WordPress passwords are handled; existing plaintext keys are automatically migrated on first save
+
+**Bug Fixes**
+- Fixed AI feature entry points (generate summary, generate tags, slug AI translate, AI image generation) bypassing guards and sending HTTP 401 requests when `apiKey` was empty
+- Summary, tags, and slug translate buttons now render as disabled with a friendly notice when the corresponding API Key is not configured
 
 ### 1.2.1 (2026-03-14)
 
