@@ -1,7 +1,7 @@
 import esbuild from "esbuild";
 import process from "process";
 import builtins from "builtin-modules";
-import { copyFileSync, mkdirSync, existsSync } from "fs";
+import { copyFileSync, mkdirSync, existsSync, readFileSync } from "fs";
 
 const banner =
 `/*
@@ -52,6 +52,14 @@ if (prod) {
 
 	// Copy manifest.json and styles.css to output directory
 	copyFileSync("manifest.json", `${outputDir}/manifest.json`);
+
+	// Guard: manifest.json must not contain Chinese characters
+	const manifestContent = readFileSync("manifest.json", "utf8");
+	if (/[\u4e00-\u9fa5]/.test(manifestContent)) {
+		console.error("❌ Build aborted: manifest.json contains Chinese characters. Please use English only.");
+		process.exit(1);
+	}
+
 	if (existsSync("styles.css")) {
 		copyFileSync("styles.css", `${outputDir}/styles.css`);
 	}
