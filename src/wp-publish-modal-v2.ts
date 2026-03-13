@@ -1208,8 +1208,10 @@ export class WpPublishModalV2 extends AbstractModal {
   }
 
   private renderPreviewContent(card: HTMLElement, params: WordPressPostParams): void {
-    // 初始化可编辑标签数组（从 params 复制）
-    this.editableTags = params.tags ? [...params.tags] : [];
+    // 初始化可编辑标签数组（从 params 复制）- 只在第一次渲染时初始化
+    if (!this.editableTags || this.editableTags.length === 0) {
+      this.editableTags = params.tags ? [...params.tags] : [];
+    }
 
     // 特色图片
     if (this.featuredImage) {
@@ -1224,7 +1226,7 @@ export class WpPublishModalV2 extends AbstractModal {
     }
 
     // 标签（使用可编辑的标签数组）
-    this.renderTagsPreview(card, this.editableTags);
+    this.renderTagsPreview(card, params);
 
     // 文章内容
     this.renderArticlePreview(card);
@@ -1289,7 +1291,7 @@ export class WpPublishModalV2 extends AbstractModal {
     section.createSpan({ text: excerpt });
   }
 
-  private renderTagsPreview(card: HTMLElement, tags: string[]): void {
+  private renderTagsPreview(card: HTMLElement, params: WordPressPostParams): void {
     // 清空之前的标签容器
     if (this.tagsContainer) {
       this.tagsContainer.remove();
@@ -1317,18 +1319,18 @@ export class WpPublishModalV2 extends AbstractModal {
     });
 
     // 渲染现有标签
-    tags.forEach((tag, index) => {
-      this.renderTagItem(section, tag, index);
+    this.editableTags.forEach((tag, index) => {
+      this.renderTagItem(section, tag, index, params);
     });
 
     // 添加"+"按钮
-    this.renderAddTagButton(section);
+    this.renderAddTagButton(section, params);
   }
 
   /**
    * 渲染单个标签项（带删除按钮）
    */
-  private renderTagItem(container: HTMLElement, tag: string, index: number): void {
+  private renderTagItem(container: HTMLElement, tag: string, index: number, params: WordPressPostParams): void {
     const tagEl = container.createEl('span');
     tagEl.addClass('wp-tag-item');
     const bgColor = getTagColor(tag);
@@ -1372,7 +1374,7 @@ export class WpPublishModalV2 extends AbstractModal {
 
     removeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      this.removeTag(index);
+      this.removeTag(tag, params);
     });
 
     // 标签悬停效果
@@ -1390,7 +1392,7 @@ export class WpPublishModalV2 extends AbstractModal {
   /**
    * 渲染添加标签按钮
    */
-  private renderAddTagButton(container: HTMLElement): void {
+  private renderAddTagButton(container: HTMLElement, params: WordPressPostParams): void {
     const addBtn = container.createEl('span', { text: '+' });
     addBtn.addClass('wp-tag-add-btn');
     Object.assign(addBtn.style, {
@@ -1420,14 +1422,14 @@ export class WpPublishModalV2 extends AbstractModal {
     });
 
     addBtn.addEventListener('click', () => {
-      this.showTagInput(container, addBtn);
+      this.showTagInput(container, addBtn, params);
     });
   }
 
   /**
    * 显示标签输入框
    */
-  private showTagInput(container: HTMLElement, addBtn: HTMLElement): void {
+  private showTagInput(container: HTMLElement, addBtn: HTMLElement, params: WordPressPostParams): void {
     // 隐藏加号按钮
     addBtn.style.display = 'none';
 
@@ -1455,7 +1457,7 @@ export class WpPublishModalV2 extends AbstractModal {
         e.preventDefault();
         const tagName = input.value.trim();
         if (tagName) {
-          this.addTag(tagName);
+          this.addTag(tagName, params);
         }
         input.remove();
         addBtn.style.display = 'inline-flex';
@@ -1470,7 +1472,7 @@ export class WpPublishModalV2 extends AbstractModal {
       setTimeout(() => {
         const tagName = input.value.trim();
         if (tagName) {
-          this.addTag(tagName);
+          this.addTag(tagName, params);
         }
         input.remove();
         addBtn.style.display = 'inline-flex';
@@ -1479,17 +1481,22 @@ export class WpPublishModalV2 extends AbstractModal {
   }
 
   /**
-   * 删除标签
+   * 删除标签（通过标签名而不是索引）
    */
-  private removeTag(index: number): void {
-    this.editableTags.splice(index, 1);
-    this.refreshTagsPreview();
+  private removeTag(tagName: string, params: WordPressPostParams): void {
+    const index = this.editableTags.indexOf(tagName);
+    if (index > -1) {
+      this.editableTags.splice(index, 1);
+      // 同步到 params
+      params.tags = [...this.editableTags];
+      this.refreshTagsPreview(params);
+    }
   }
 
   /**
    * 添加标签
    */
-  private addTag(tagName: string): void {
+  private addTag(tagName: string, params: WordPressPostParams): void {
     const trimmed = tagName.trim();
     if (!trimmed) return;
 
@@ -1500,17 +1507,19 @@ export class WpPublishModalV2 extends AbstractModal {
     }
 
     this.editableTags.push(trimmed);
-    this.refreshTagsPreview();
+    // 同步到 params
+    params.tags = [...this.editableTags];
+    this.refreshTagsPreview(params);
   }
 
   /**
    * 刷新标签预览
    */
-  private refreshTagsPreview(): void {
+  private refreshTagsPreview(params: WordPressPostParams): void {
     if (!this.tagsContainer) return;
     const card = this.tagsContainer.parentElement;
     if (!card) return;
-    this.renderTagsPreview(card, this.editableTags);
+    this.renderTagsPreview(card, params);
   }
 
   private renderArticlePreview(card: HTMLElement): void {
