@@ -3,7 +3,7 @@ name: Release Obsidian plugin
 on:
   push:
     tags:
-      - "*.*.*"
+      - "*"
 
 permissions:
   contents: write
@@ -41,6 +41,8 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.ref }}
+          name: ${{ github.ref_name }}
           generate_release_notes: true
           files: |
             ${{ env.PLUGIN_NAME }}.zip
