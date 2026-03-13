@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.2.0](https://github.com/devbean/obsidian-wordpress/compare/1.1.0...1.2.0) (2026-03-14)
+
+### Features
+
+* **Category Selector**: New tag-based category selector UI with current category display, delete functionality, and +button for adding categories via dropdown
+* **Publish As New**: Added option to publish the same content as a new article (allows publishing same content as different posts)
+* **Featured Image Sync**: Added featured image synchronization and conflict detection between local and remote
+* **Remote Image Loading**: Added timeout and retry functionality for remote featured image loading with loading status indicator
+* **Featured Image from Remote**: Fetch featured image from remote WordPress when article was previously published
+
+### Bug Fixes
+
+* **Featured Image Display**: Fixed featured image not displaying on initial modal open due to async loading timing issue
+* **FeaturePicture Cleared**: Fixed bug where featurePicture and featuredImageId in frontmatter were cleared when remote article was modified and republished
+* **Category Display**: Fixed category showing "Uncategorized" after conflict resolution when selecting local version
+* **Category Default**: Changed local frontmatter category default to empty string to avoid conflict with remote
+* **Preview Tab Position**: Fixed preview tab position changing after deletion
+
 ## [0.18.0](https://github.com/devbean/obsidian-wordpress/compare/0.17.0...0.18.0) (2023-12-20)
 
 

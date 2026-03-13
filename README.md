@@ -2,9 +2,9 @@
 
 [English](README.md) | [简体中文](README_zh.md)
 
-**Version**: 1.1.0
+**Version**: 1.2.0
 **Author**: uu0
-**Last Updated**: 2026-03-12
+**Last Updated**: 2026-03-14
 
 ## About This Project
 
@@ -168,6 +168,20 @@ This project uses the following open-source projects:
 Thanks to all open-source community contributors!
 
 ## Changelog
+
+### 1.2.0 (2026-03-14)
+
+**New Features**
+- Category Selector: New tag-based category selector UI with current category display, delete functionality, and +button for adding categories
+- Publish As New: Added option to publish the same content as a new article
+- Featured Image Sync: Added featured image synchronization and conflict detection
+- Remote Image Loading: Added timeout and retry functionality with loading status indicator
+
+**Bug Fixes**
+- Fixed featured image not displaying on initial modal open
+- Fixed featurePicture/featuredImageId being cleared on republish
+- Fixed category showing "Uncategorized" after conflict resolution
+- Fixed preview tab position changing after deletion
 
 ### 1.1.0 (2026-03-12)
 
