@@ -686,8 +686,11 @@ export class WpPublishModalV2 extends AbstractModal {
 
     const previewContainer = card.createDiv('featured-image-preview-large');
 
-    if (this.featuredImage) {
-      const blob = new Blob([this.featuredImage.content], { type: this.featuredImage.mimeType });
+    // 优先显示用户选择的图片，否则显示自动检测的图片
+    const imageToDisplay = this.featuredImage || this.autoFeaturedImage;
+
+    if (imageToDisplay) {
+      const blob = new Blob([imageToDisplay.content], { type: imageToDisplay.mimeType });
       const url = URL.createObjectURL(blob);
 
       const img = previewContainer.createEl('img', {
@@ -701,16 +704,19 @@ export class WpPublishModalV2 extends AbstractModal {
       img.style.borderRadius = '6px';
 
       const info = previewContainer.createDiv('featured-image-info');
-      info.createSpan({ text: this.featuredImage.fileName });
+      info.createSpan({ text: imageToDisplay.fileName });
 
-      const removeBtn = previewContainer.createEl('button', {
-        text: this.t('confirmModal_cancel'),
-        cls: 'featured-image-remove-btn'
-      });
-      removeBtn.onclick = () => {
-        this.featuredImage = this.autoFeaturedImage;
-        this.display(params);
-      };
+      // 只有当用户手动选择了图片时才显示移除按钮
+      if (this.featuredImage) {
+        const removeBtn = previewContainer.createEl('button', {
+          text: this.t('confirmModal_cancel'),
+          cls: 'featured-image-remove-btn'
+        });
+        removeBtn.onclick = () => {
+          this.featuredImage = null;
+          this.display(params);
+        };
+      }
     } else {
       previewContainer.createEl('p', {
         text: this.t('publishModal_noFeaturedImage'),

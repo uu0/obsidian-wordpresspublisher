@@ -669,6 +669,7 @@ export abstract class AbstractWordPressClient implements WordPressClient {
                   // 没有上传新图片，检查是否有缓存的 featuredImageId
                   const cachedImageId = publishModal.getCachedFeaturedImageId();
                   if (cachedImageId) {
+                    postParams.featuredMedia = cachedImageId;
                     featuredImageId = cachedImageId;
                     console.log('[WpPublishModalV2] Using cached featured image ID:', cachedImageId);
                   }
