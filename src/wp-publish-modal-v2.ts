@@ -1375,9 +1375,10 @@ export class WpPublishModalV2 extends AbstractModal {
       });
     }
 
-    // 特色图片
-    if (this.featuredImage) {
-      this.renderFeaturedImagePreview(card, this.featuredImage);
+    // 特色图片 - 优先显示用户选择的图片，否则显示自动检测的图片
+    const imageToDisplay = this.featuredImage || this.autoFeaturedImage;
+    if (imageToDisplay) {
+      this.renderFeaturedImagePreview(card, imageToDisplay);
     } else if (this.matterData.featurePicture) {
       this.renderUploadedImagePreview(card, this.matterData.featurePicture as string);
     }
