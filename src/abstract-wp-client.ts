@@ -91,6 +91,11 @@ export abstract class AbstractWordPressClient implements WordPressClient {
     certificate: WordPressAuthParams
   ): Promise<SafeAny | null>;
 
+  abstract getMediaUrl(
+    mediaId: number | string,
+    certificate: WordPressAuthParams
+  ): Promise<string | null>;
+
   protected needLogin(): boolean {
     return true;
   }
@@ -131,7 +136,9 @@ export abstract class AbstractWordPressClient implements WordPressClient {
         categories: this.extractCategoryNames(post.categories || []),
         slug: post.slug || '',
         tags: this.extractTagNames(post.tags || []),
-        excerpt: post.excerpt?.rendered || post.excerpt || ''
+        excerpt: post.excerpt?.rendered || post.excerpt || '',
+        featuredImageId: post.featured_media || undefined,
+        featurePicture: post._embedded?.['wp:featuredmedia']?.[0]?.source_url || undefined
       };
     } catch (error) {
       console.error('[fetchRemotePostData] Error fetching remote post:', error);
@@ -281,6 +288,21 @@ export abstract class AbstractWordPressClient implements WordPressClient {
       // post id will be returned if creating, true if editing
       const postId = result.data.postId;
       if (postId) {
+        // Sync featured image URL if featuredImageId exists but featurePicture is missing
+        let syncedFeaturePictureUrl: string | null = null;
+        if (postParams.featuredMedia && !updateMatterData) {
+          // Only sync if no custom updateMatterData callback (which handles new uploads)
+          try {
+            const mediaUrl = await this.getMediaUrl(postParams.featuredMedia, auth);
+            if (mediaUrl) {
+              syncedFeaturePictureUrl = mediaUrl;
+              console.log('[tryToPublish] Synced featurePicture from featuredImageId:', postParams.featuredMedia, '->', mediaUrl);
+            }
+          } catch (e) {
+            console.warn('[tryToPublish] Failed to sync featurePicture:', e);
+          }
+        }
+
         // const modified = matter.stringify(postParams.content, matterData, matterOptions);
         // this.updateFrontMatter(modified);
         const file = this.plugin.app.workspace.getActiveFile();
@@ -324,17 +346,12 @@ export abstract class AbstractWordPressClient implements WordPressClient {
             }
             // 5. slug
             fm.slug = postParams.slug || '';
-            // 6. featurePicture (preserve existing value, will be updated by updateMatterData callback if new image uploaded)
-            // Only set empty string if not already present
-            if (!fm.featurePicture) {
-              fm.featurePicture = '';
-            }
-            // 7. featuredImageId (preserve existing value, will be updated by updateMatterData callback if new image uploaded)
+            // 6. featuredImageId (preserve existing value, will be updated by updateMatterData callback if new image uploaded)
             // Only set empty string if not already present
             if (!fm.featuredImageId) {
               fm.featuredImageId = '';
             }
-            // 8. tags (formatted according to user preference)
+            // 7. tags (formatted according to user preference)
             // Remove old 'tag' field if it exists (legacy cleanup)
             delete fm.tag;
             if (tagNames && tagNames.length > 0) {
@@ -463,6 +480,16 @@ export abstract class AbstractWordPressClient implements WordPressClient {
       if (matterData.postId) {
         const remoteData = await this.fetchRemotePostData(matterData.postId, auth);
         if (remoteData) {
+          // Update feature picture cache with remote data
+          if (remoteData.featurePicture && remoteData.featuredImageId) {
+            await this.plugin.featurePictureCacheManager.set(
+              remoteData.postId,
+              remoteData.featurePicture,
+              remoteData.featuredImageId
+            );
+            console.log('[publishPost] Updated feature picture cache from remote');
+          }
+
           const conflicts = this.frontmatterManager.detectConflicts(matterData, remoteData);
           if (conflicts.length > 0) {
             const resolution = await openConflictModal(this.plugin.app, this.plugin, conflicts);
@@ -638,13 +665,18 @@ export abstract class AbstractWordPressClient implements WordPressClient {
                     console.error('[WpPublishModalV2] Featured image upload failed:', errorMsg);
                     new Notice(errorMsg, ERROR_NOTICE_TIMEOUT);
                   }
+                } else {
+                  // 没有上传新图片，检查是否有缓存的 featuredImageId
+                  const cachedImageId = publishModal.getCachedFeaturedImageId();
+                  if (cachedImageId) {
+                    postParams.featuredMedia = cachedImageId;
+                    featuredImageId = cachedImageId;
+                    console.log('[WpPublishModalV2] Using cached featured image ID:', cachedImageId);
+                  }
                 }
 
                 // Wrap updateMatterData to also save featured image info
                 const wrappedUpdateMatterData = (fm: MatterData) => {
-                  if (featuredImageUrl) {
-                    fm.featurePicture = featuredImageUrl;
-                  }
                   if (featuredImageId) {
                     fm.featuredImageId = featuredImageId;
                   }
@@ -659,7 +691,16 @@ export abstract class AbstractWordPressClient implements WordPressClient {
                   updateMatterData: wrappedUpdateMatterData
                 });
                 if (r.code === WordPressClientReturnCode.OK) {
-                  // 发布成功，清理图片缓存
+                  // 发布成功，更新特色图片缓存
+                  if (featuredImageUrl && featuredImageId && postParams.postId) {
+                    await this.plugin.featurePictureCacheManager.set(
+                      postParams.postId,
+                      featuredImageUrl,
+                      featuredImageId
+                    );
+                    console.log('[WpPublishModalV2] Updated feature picture cache');
+                  }
+                  // 清理图片缓存
                   await publishModal.clearImageCache();
                   publishModal.close();
                   resolve(r);
@@ -794,8 +835,14 @@ export abstract class AbstractWordPressClient implements WordPressClient {
       postParams.slug = matterData.slug;
     }
     // Read featured image ID from frontmatter if not already set
+    // Also validate consistency between featuredImageId and featurePicture
     if (!postParams.featuredMedia && matterData.featuredImageId) {
       postParams.featuredMedia = matterData.featuredImageId;
+
+      // Validate and sync featurePicture if inconsistent
+      if (matterData.featuredImageId && !matterData.featurePicture) {
+        console.warn('[readPostParamsFromFrontmatter] featuredImageId exists but featurePicture is empty. Will attempt to sync during publish.');
+      }
     }
     return postParams;
   }

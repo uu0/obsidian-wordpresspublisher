@@ -16,6 +16,7 @@ import { PassCrypto } from './pass-crypto';
 import { doClientPublish, setupMarkdownParser, showError } from './utils';
 import { cloneDeep } from 'lodash-es';
 import { ImageCacheManager } from './image-cache-manager';
+import { FeaturePictureCacheManager } from './feature-picture-cache-manager';
 
 /**
  * Main plugin class for WordPress Publisher
@@ -52,6 +53,17 @@ export default class WordpressPlugin extends Plugin {
 
   /** Ribbon icon element reference */
   private ribbonWpIcon: HTMLElement | null = null;
+
+  /** Feature picture cache manager */
+  private _featurePictureCacheManager: FeaturePictureCacheManager | undefined;
+
+  /** Getter for feature picture cache manager */
+  get featurePictureCacheManager(): FeaturePictureCacheManager {
+    if (!this._featurePictureCacheManager) {
+      throw new Error('FeaturePictureCacheManager not initialized');
+    }
+    return this._featurePictureCacheManager;
+  }
 
   /**
    * Plugin initialization - called when plugin is loaded
@@ -110,8 +122,14 @@ export default class WordpressPlugin extends Plugin {
     // Add settings tab
     this.addSettingTab(new WordpressSettingTab(this));
 
+    // Initialize feature picture cache manager
+    this._featurePictureCacheManager = new FeaturePictureCacheManager(this.app, this);
+
     // Clean up orphan image caches (notes that no longer exist)
     this.cleanupOrphanCaches();
+
+    // Clean up expired feature picture caches
+    this.cleanupExpiredFeaturePictureCaches();
   }
 
   /**
@@ -126,6 +144,17 @@ export default class WordpressPlugin extends Plugin {
       }
     } catch (error) {
       log.error('Failed to cleanup orphan caches', error);
+    }
+  }
+
+  /**
+   * Clean up expired feature picture caches in background
+   */
+  private async cleanupExpiredFeaturePictureCaches(): Promise<void> {
+    try {
+      await this.featurePictureCacheManager.cleanExpired();
+    } catch (error) {
+      log.error('Failed to cleanup expired feature picture caches', error);
     }
   }
 

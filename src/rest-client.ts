@@ -1,9 +1,12 @@
 import { requestUrl } from 'obsidian';
 import { getBoundary, SafeAny } from './utils';
 import { FormItemNameMapper, FormItems } from './types';
+import { HTTP_CONFIG } from './constants';
+import { logger } from './utils/logger';
 
 interface RestOptions {
   url: URL;
+  timeout?: number;
 }
 
 export class RestClient {
@@ -13,22 +16,26 @@ export class RestClient {
    * @private
    */
   private readonly href: string;
+  private readonly timeout: number;
+  private readonly moduleName = 'RestClient';
 
   constructor(
     private readonly options: RestOptions
   ) {
-    console.log(options);
+    logger.debug(this.moduleName, 'Initializing RestClient', { url: options.url.href });
 
     this.href = this.options.url.href;
     if (this.href.endsWith('/')) {
       this.href = this.href.substring(0, this.href.length - 1);
     }
+    this.timeout = options.timeout ?? HTTP_CONFIG.DEFAULT_TIMEOUT;
   }
 
   async httpGet(
     path: string,
     options?: {
-      headers: Record<string, string>
+      headers: Record<string, string>;
+      timeout?: number;
     }
   ): Promise<unknown> {
     let realPath = path;
@@ -41,18 +48,36 @@ export class RestClient {
       headers: {},
       ...options
     };
-    console.log('REST GET', endpoint, opts);
-    const response = await requestUrl({
-      url: endpoint,
-      method: 'GET',
-      headers: {
-        'content-type': 'application/json',
-        'user-agent': 'obsidian.md',
-        ...opts.headers
-      }
-    });
-    console.log('GET response', response);
-    return response.json;
+
+    logger.debug(this.moduleName, 'HTTP GET request', { endpoint, headers: opts.headers });
+
+    const timeoutMs = options?.timeout ?? this.timeout;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const response = await requestUrl({
+        url: endpoint,
+        method: 'GET',
+        headers: {
+          'content-type': 'application/json',
+          'user-agent': 'obsidian.md',
+          ...opts.headers
+        }
+      });
+
+      logger.debug(this.moduleName, 'HTTP GET response received', {
+        status: response.status,
+        endpoint
+      });
+
+      return response.json;
+    } catch (error) {
+      logger.error(this.moduleName, 'HTTP GET request failed', error);
+      throw error;
+    } finally {
+      clearTimeout(timeoutId);
+    }
   }
 
   async httpPost(
@@ -61,6 +86,7 @@ export class RestClient {
     options: {
       headers?: Record<string, string>;
       formItemNameMapper?: FormItemNameMapper;
+      timeout?: number;
     }): Promise<unknown> {
     let realPath = path;
     if (realPath.startsWith('/')) {
@@ -83,18 +109,40 @@ export class RestClient {
       requestBody = JSON.stringify(body);
       predefinedHeaders['content-type'] = 'application/json';
     }
-    const response = await requestUrl({
-      url: endpoint,
-      method: 'POST',
-      headers: {
-        'user-agent': 'obsidian.md',
-        ...predefinedHeaders,
-        ...options.headers
-      },
-      body: requestBody
+
+    logger.debug(this.moduleName, 'HTTP POST request', {
+      endpoint,
+      contentType: predefinedHeaders['content-type']
     });
-    console.log('POST response', response);
-    return response.json;
+
+    const timeoutMs = options?.timeout ?? this.timeout;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const response = await requestUrl({
+        url: endpoint,
+        method: 'POST',
+        headers: {
+          'user-agent': 'obsidian.md',
+          ...predefinedHeaders,
+          ...options.headers
+        },
+        body: requestBody
+      });
+
+      logger.debug(this.moduleName, 'HTTP POST response received', {
+        status: response.status,
+        endpoint
+      });
+
+      return response.json;
+    } catch (error) {
+      logger.error(this.moduleName, 'HTTP POST request failed', error);
+      throw error;
+    } finally {
+      clearTimeout(timeoutId);
+    }
   }
 
 }

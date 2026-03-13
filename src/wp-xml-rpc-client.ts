@@ -354,4 +354,23 @@ export class WpXmlRpcClient extends AbstractWordPressClient {
     }
   }
 
+  async getMediaUrl(mediaId: number | string, certificate: WordPressAuthParams): Promise<string | null> {
+    try {
+      const response: SafeAny = await this.client.methodCall('wp.getMediaItem', [
+        0,
+        certificate.username,
+        certificate.password,
+        mediaId
+      ]);
+      if (isFaultResponse(response)) {
+        console.error('[getMediaUrl] fault:', response);
+        return null;
+      }
+      return response?.link || response?.source_url || null;
+    } catch (e: SafeAny) {
+      console.error('[getMediaUrl] error:', e);
+      return null;
+    }
+  }
+
 }
