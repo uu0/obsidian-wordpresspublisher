@@ -1242,14 +1242,15 @@ export class WpPublishModalV2 extends AbstractModal {
     const validCategories = this.categories.items.filter(it => it.name && it.name.trim());
 
     if (params.postType === PostTypeConst.Post && validCategories.length > 0) {
-      // 创建分类选择容器
-      const categorySetting = new Setting(card)
-        .setName(this.t('publishModal_categoryName'))
-        .setDesc(this.t('publishModal_categoryDesc'));
+      // 创建分类设置标题（不使用 Setting 组件，避免移动端布局问题）
+      const categoryHeader = card.createDiv('wp-category-header');
+      categoryHeader.createEl('div', { cls: 'setting-item-name', text: this.t('publishModal_categoryName') });
+      categoryHeader.createEl('div', { cls: 'setting-item-description', text: this.t('publishModal_categoryDesc') });
 
       // 创建分类标签容器
       const tagsContainer = document.createElement('div');
       tagsContainer.className = 'wp-category-tags-container';
+      categoryHeader.appendChild(tagsContainer);
 
       // 可用分类列表（排除已选中的）
       const getAvailableCategories = () => {
@@ -1339,9 +1340,6 @@ export class WpPublishModalV2 extends AbstractModal {
       // 初始渲染
       renderCategoryTags();
       renderAddDropdown();
-
-      // 添加到设置项
-      categorySetting.settingEl.appendChild(tagsContainer);
 
       // 如果没有选择分类，默认选中"未分类"
       if (params.categories.length === 0) {
