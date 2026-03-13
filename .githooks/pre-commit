@@ -1,0 +1,11 @@
+#!/bin/sh
+# Pre-commit hook: ensure manifest.json contains no Chinese characters
+
+if git diff --cached --name-only | grep -q "manifest.json"; then
+  if git show :manifest.json | grep -Pq '[\x{4e00}-\x{9fa5}]'; then
+    echo "❌ manifest.json contains Chinese characters. Please use English only."
+    exit 1
+  fi
+fi
+
+exit 0
