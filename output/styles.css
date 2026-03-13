@@ -531,11 +531,13 @@
 
 /* Tab Bar (Settings/Preview/Advanced) */
 .wp-publish-tabs {
-  display: flex;
+  display: flex !important;
   gap: 4px;
   margin-bottom: 12px;
   border-bottom: 2px solid var(--background-modifier-border);
   padding-bottom: 0;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .wp-publish-tab-item {
@@ -551,6 +553,9 @@
   background: transparent;
   border: none;
   font-size: 14px;
+  flex: 1;
+  justify-content: center;
+  min-width: 0;
 }
 
 .wp-publish-tab-item:hover {
@@ -1171,6 +1176,23 @@
 
 /* ==================== 分类标签选择器样式 ==================== */
 
+/* 分类标题容器 */
+.wp-category-header {
+  margin-bottom: 12px;
+}
+
+.wp-category-header .setting-item-name {
+  font-weight: 500;
+  color: var(--text-normal);
+  margin-bottom: 4px;
+}
+
+.wp-category-header .setting-item-description {
+  font-size: 0.85em;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
 .wp-category-tags-container {
   display: flex;
   flex-wrap: wrap;
@@ -1178,6 +1200,16 @@
   align-items: center;
   padding: 8px 0;
   min-height: 36px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* 分类选择器在 Setting 内部时，确保占据整行 */
+.setting-item + .wp-category-tags-container,
+.wp-category-tags-container {
+  display: flex;
+  flex-wrap: wrap;
+  width: 100%;
 }
 
 .wp-category-tag {
@@ -1418,6 +1450,7 @@
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
+    display: flex !important;
   }
 
   .wp-publish-tabs::-webkit-scrollbar {
@@ -1425,10 +1458,11 @@
   }
 
   .wp-publish-tab-item {
-    padding: 8px 12px;
+    padding: 10px 8px;
     font-size: var(--font-ui-small, 12px);
     white-space: nowrap;
     flex-shrink: 0;
+    flex: 0 0 auto;
   }
 
   /* 特色图片按钮 - 单列 */
