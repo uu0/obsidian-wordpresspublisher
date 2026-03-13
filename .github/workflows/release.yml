@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - "*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g. 1.2.2)'
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -17,6 +23,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
 
       - name: Use Node.js
         uses: actions/setup-node@v4
