@@ -192,6 +192,8 @@
   "publishModal_featuredImageUploaded": "特色图片（已上传到 WordPress）",
   "publishModal_noFeaturedImage": "未选择特色图片",
   "publishModal_loadingRemoteImage": "正在加载远程图片...",
+  "publishModal_remoteImageLoadFailed": "远程图片加载失败",
+  "publishModal_retry": "重试",
   "publishModal_generateSummary": "📝 生成摘要",
   "publishModal_generateTags": "🏷️ 生成标签",
   "publishModal_generatingSummary": "正在生成摘要...",

@@ -130,6 +130,8 @@ export class WpPublishModalV2 extends AbstractModal {
   private tagsContainer: HTMLElement | null = null; // 标签容器的引用
   private cachedFeaturedImageId: number | undefined; // 从缓存或远程获取的特色图片 ID
   private isLoadingRemoteImage: boolean = false; // 是否正在加载远程图片
+  private remoteImageLoadFailed: boolean = false; // 远程图片加载是否失败
+  private remoteImagePostId: string | number | null = null; // 需要加载远程图片的 postId
 
   // Prompt templates from settings, with proper defaults
   private get imageGenerationPrompt(): string {
@@ -226,7 +228,18 @@ export class WpPublishModalV2 extends AbstractModal {
 
       // 设置加载状态
       this.isLoadingRemoteImage = true;
-      this.display(this.currentParams!); // 刷新 UI 显示加载状态
+      this.remoteImageLoadFailed = false;
+      this.remoteImagePostId = postId;
+
+      // 如果 UI 已经初始化，刷新显示加载状态
+      if (this.currentParams) {
+        this.display(this.currentParams);
+      }
+
+      // 设置超时（10秒）
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Request timeout')), 10000);
+      });
 
       // 获取当前配置文件
       const profile = this.plugin.settings.profiles.find(p => p.isDefault);
@@ -255,8 +268,12 @@ export class WpPublishModalV2 extends AbstractModal {
         password: profile.password || null
       };
 
-      // 获取文章信息
-      const post = await (client as any).getPost(postId, auth);
+      // 获取文章信息（带超时）
+      const post = await Promise.race([
+        (client as any).getPost(postId, auth),
+        timeoutPromise
+      ]);
+
       if (!post) {
         log.info('Post not found on remote');
         return false;
@@ -283,17 +300,25 @@ export class WpPublishModalV2 extends AbstractModal {
       // 保存 featuredImageId
       this.cachedFeaturedImageId = featuredImageId;
 
-      // 加载图片
-      await this.loadFeaturePictureFromUrl(featurePictureUrl);
+      // 加载图片（带超时）
+      await Promise.race([
+        this.loadFeaturePictureFromUrl(featurePictureUrl),
+        timeoutPromise
+      ]);
 
       return true;
     } catch (e) {
       log.error('Failed to load featured image from remote:', e);
+      this.remoteImageLoadFailed = true;
       return false;
     } finally {
       // 清除加载状态
       this.isLoadingRemoteImage = false;
-      this.display(this.currentParams!); // 刷新 UI
+
+      // 如果 UI 已经初始化，刷新显示
+      if (this.currentParams) {
+        this.display(this.currentParams);
+      }
     }
   }
 
@@ -731,6 +756,32 @@ export class WpPublishModalV2 extends AbstractModal {
         `;
         document.head.appendChild(style);
       }
+    } else if (this.remoteImageLoadFailed) {
+      // 如果加载失败，显示错误信息和重试按钮
+      const errorDiv = previewContainer.createDiv('featured-image-error');
+      errorDiv.style.display = 'flex';
+      errorDiv.style.flexDirection = 'column';
+      errorDiv.style.alignItems = 'center';
+      errorDiv.style.justifyContent = 'center';
+      errorDiv.style.padding = '40px 20px';
+      errorDiv.style.color = 'var(--text-error)';
+
+      errorDiv.createEl('p', {
+        text: '⚠️ ' + (this.t('publishModal_remoteImageLoadFailed') || '远程图片加载失败'),
+        cls: 'featured-image-error-text'
+      });
+
+      const retryBtn = errorDiv.createEl('button', {
+        text: this.t('publishModal_retry') || '重试',
+        cls: 'mod-cta'
+      });
+      retryBtn.style.marginTop = '12px';
+      retryBtn.onclick = async () => {
+        if (this.remoteImagePostId) {
+          this.remoteImageLoadFailed = false;
+          await this.loadFeaturePictureFromRemote(this.remoteImagePostId);
+        }
+      };
     } else {
       // 优先显示用户选择的图片，否则显示自动检测的图片
       const imageToDisplay = this.featuredImage || this.autoFeaturedImage;
