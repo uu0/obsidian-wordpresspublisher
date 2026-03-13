@@ -347,6 +347,11 @@ export class WpPublishModalV2 extends AbstractModal {
         width: 1200
       };
       log.info('Successfully loaded featured image:', fileName);
+
+      // 图片加载完成后，刷新 UI 显示
+      if (this.currentParams) {
+        this.display(this.currentParams);
+      }
     } catch (e) {
       log.info('Failed to load featured image from URL:', e);
       // 加载失败，尝试从缓存恢复
@@ -375,6 +380,11 @@ export class WpPublishModalV2 extends AbstractModal {
           width: cachedImage.width
         };
         this.imageSource = 'cached';
+
+        // 图片加载完成后，刷新 UI 显示
+        if (this.currentParams) {
+          this.display(this.currentParams);
+        }
       } else {
         // 没有缓存，自动检测文章第一张图片
         await this.detectFirstImage();
@@ -464,6 +474,11 @@ export class WpPublishModalV2 extends AbstractModal {
       } else {
         await this.loadLocalImage(imagePath);
       }
+
+      // 图片检测完成后，刷新 UI 显示
+      if (this.currentParams && this.autoFeaturedImage) {
+        this.display(this.currentParams);
+      }
     } catch (e) {
       log.info('Error detecting first image:', e);
       await this.loadEmptyImage();
@@ -488,6 +503,11 @@ export class WpPublishModalV2 extends AbstractModal {
         width: 1200
       };
       log.info('Auto-detected first image:', file.name);
+
+      // 图片加载完成后，刷新 UI 显示
+      if (this.currentParams) {
+        this.display(this.currentParams);
+      }
     }
   }
 
@@ -501,6 +521,11 @@ export class WpPublishModalV2 extends AbstractModal {
         content: arrayBuffer,
         width: 1200
       };
+
+      // 图片加载完成后，刷新 UI 显示
+      if (this.currentParams) {
+        this.display(this.currentParams);
+      }
     } catch (e) {
       log.info('Failed to download online image:', e);
     }
