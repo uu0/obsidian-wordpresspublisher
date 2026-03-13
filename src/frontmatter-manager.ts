@@ -32,6 +32,7 @@ export interface RemotePostData {
   tags: string[];
   excerpt?: string;
   featuredImageId?: number;
+  featurePicture?: string;
 }
 
 /**
@@ -199,6 +200,16 @@ export class FrontmatterManager {
         field: 'featuredImageId',
         localValue: localMatter.featuredImageId,
         remoteValue: remoteData.featuredImageId
+      });
+    }
+
+    // Check featured image URL
+    if (localMatter.featurePicture && remoteData.featurePicture &&
+        localMatter.featurePicture !== remoteData.featurePicture) {
+      conflicts.push({
+        field: 'featurePicture',
+        localValue: localMatter.featurePicture,
+        remoteValue: remoteData.featurePicture
       });
     }
 

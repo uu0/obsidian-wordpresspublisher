@@ -91,6 +91,11 @@ export abstract class AbstractWordPressClient implements WordPressClient {
     certificate: WordPressAuthParams
   ): Promise<SafeAny | null>;
 
+  abstract getMediaUrl(
+    mediaId: number | string,
+    certificate: WordPressAuthParams
+  ): Promise<string | null>;
+
   protected needLogin(): boolean {
     return true;
   }
@@ -132,7 +137,8 @@ export abstract class AbstractWordPressClient implements WordPressClient {
         slug: post.slug || '',
         tags: this.extractTagNames(post.tags || []),
         excerpt: post.excerpt?.rendered || post.excerpt || '',
-        featuredImageId: post.featured_media || undefined
+        featuredImageId: post.featured_media || undefined,
+        featurePicture: post._embedded?.['wp:featuredmedia']?.[0]?.source_url || undefined
       };
     } catch (error) {
       console.error('[fetchRemotePostData] Error fetching remote post:', error);
@@ -282,6 +288,21 @@ export abstract class AbstractWordPressClient implements WordPressClient {
       // post id will be returned if creating, true if editing
       const postId = result.data.postId;
       if (postId) {
+        // Sync featured image URL if featuredImageId exists but featurePicture is missing
+        let syncedFeaturePictureUrl: string | null = null;
+        if (postParams.featuredMedia && !updateMatterData) {
+          // Only sync if no custom updateMatterData callback (which handles new uploads)
+          try {
+            const mediaUrl = await this.getMediaUrl(postParams.featuredMedia, auth);
+            if (mediaUrl) {
+              syncedFeaturePictureUrl = mediaUrl;
+              console.log('[tryToPublish] Synced featurePicture from featuredImageId:', postParams.featuredMedia, '->', mediaUrl);
+            }
+          } catch (e) {
+            console.warn('[tryToPublish] Failed to sync featurePicture:', e);
+          }
+        }
+
         // const modified = matter.stringify(postParams.content, matterData, matterOptions);
         // this.updateFrontMatter(modified);
         const file = this.plugin.app.workspace.getActiveFile();
@@ -356,6 +377,12 @@ export abstract class AbstractWordPressClient implements WordPressClient {
 
             // Clean up content field from frontmatter (should not be stored there)
             delete fm.content;
+
+            // Apply synced featurePicture if available
+            if (syncedFeaturePictureUrl && !fm.featurePicture) {
+              fm.featurePicture = syncedFeaturePictureUrl;
+              console.log('[tryToPublish] Applied synced featurePicture to frontmatter');
+            }
 
             if (isFunction(updateMatterData)) {
               updateMatterData(fm);
@@ -795,8 +822,14 @@ export abstract class AbstractWordPressClient implements WordPressClient {
       postParams.slug = matterData.slug;
     }
     // Read featured image ID from frontmatter if not already set
+    // Also validate consistency between featuredImageId and featurePicture
     if (!postParams.featuredMedia && matterData.featuredImageId) {
       postParams.featuredMedia = matterData.featuredImageId;
+
+      // Validate and sync featurePicture if inconsistent
+      if (matterData.featuredImageId && !matterData.featurePicture) {
+        console.warn('[readPostParamsFromFrontmatter] featuredImageId exists but featurePicture is empty. Will attempt to sync during publish.');
+      }
     }
     return postParams;
   }

@@ -408,6 +408,11 @@ export class WpPublishModalV2 extends AbstractModal {
       excerpt: this.matterData.excerpt || ''
     };
 
+    // 从 frontmatter 恢复特色图片 ID（如果存在）
+    if (this.matterData.featuredImageId) {
+      params.featuredMedia = Number(this.matterData.featuredImageId);
+    }
+
     this.editableContent = this.articleContent;
     this.currentTab = 'settings';
 
@@ -1216,6 +1221,20 @@ export class WpPublishModalV2 extends AbstractModal {
       this.editableTags = params.tags ? [...params.tags] : [];
     }
 
+    // Check for featuredImageId and featurePicture inconsistency
+    const hasImageId = this.matterData.featuredImageId && this.matterData.featuredImageId !== '';
+    const hasImageUrl = this.matterData.featurePicture && this.matterData.featurePicture !== '';
+
+    if (hasImageId && !hasImageUrl && !this.featuredImage) {
+      // Warning: ID exists but URL is missing
+      const warningDiv = card.createDiv('wp-preview-warning');
+      warningDiv.createEl('strong', { text: '⚠️ ' + this.plugin.t('publishModal_previewInconsistencyWarning') });
+      warningDiv.createEl('p', {
+        text: this.plugin.t('publishModal_previewInconsistencyDesc'),
+        cls: 'wp-preview-warning-desc'
+      });
+    }
+
     // 特色图片
     if (this.featuredImage) {
       this.renderFeaturedImagePreview(card, this.featuredImage);
@@ -1458,17 +1477,22 @@ export class WpPublishModalV2 extends AbstractModal {
 
     input.focus();
 
+    // 标志位，防止重复添加
+    let tagAdded = false;
+
     // 监听 Enter 键
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
         const tagName = input.value.trim();
-        if (tagName) {
+        if (tagName && !tagAdded) {
           this.addTag(tagName, params);
+          tagAdded = true;
         }
         input.remove();
         addBtn.style.display = 'inline-flex';
       } else if (e.key === 'Escape') {
+        tagAdded = true; // 取消时也设置标志，防止 blur 触发
         input.remove();
         addBtn.style.display = 'inline-flex';
       }
@@ -1477,9 +1501,12 @@ export class WpPublishModalV2 extends AbstractModal {
     // 监听失焦事件
     input.addEventListener('blur', () => {
       setTimeout(() => {
-        const tagName = input.value.trim();
-        if (tagName) {
-          this.addTag(tagName, params);
+        if (!tagAdded) {
+          const tagName = input.value.trim();
+          if (tagName) {
+            this.addTag(tagName, params);
+            tagAdded = true;
+          }
         }
         input.remove();
         addBtn.style.display = 'inline-flex';
@@ -1517,6 +1544,9 @@ export class WpPublishModalV2 extends AbstractModal {
     // 同步到 params
     params.tags = [...this.editableTags];
     this.refreshTagsPreview(params);
+
+    // 提示标签已添加
+    new Notice(this.plugin.t('publishModal_tagAdded') || '标签已添加');
   }
 
   /**

@@ -308,12 +308,33 @@ export class WpRestClient extends AbstractWordPressClient {
       const url = getUrl(this.context.endpoints?.editPost, 'wp-json/wp/v2/posts/<%= postId %>', {
         postId: String(postId)
       });
-      const data = await this.client.httpGet(url, {
+      // Add _embed parameter to get featured media info
+      const fullUrl = url.includes('?') ? `${url}&_embed` : `${url}?_embed`;
+      const data = await this.client.httpGet(fullUrl, {
         headers: this.context.getHeaders(certificate)
       });
       return data;
     } catch (e: SafeAny) {
       console.error('getPost', e);
+      return null;
+    }
+  }
+
+  /**
+   * Get media URL by media ID
+   * @param mediaId WordPress media ID
+   * @param certificate Authentication credentials
+   * @returns Media URL or null if not found
+   */
+  async getMediaUrl(mediaId: number | string, certificate: WordPressAuthParams): Promise<string | null> {
+    try {
+      const url = `wp-json/wp/v2/media/${mediaId}`;
+      const data: SafeAny = await this.client.httpGet(url, {
+        headers: this.context.getHeaders(certificate)
+      });
+      return data?.source_url || data?.url || null;
+    } catch (e: SafeAny) {
+      console.error('[getMediaUrl] Failed to fetch media:', e);
       return null;
     }
   }
