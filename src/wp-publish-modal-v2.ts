@@ -25,6 +25,30 @@ const log = createModuleLogger('WpPublishModalV2');
 // Default prompt templates will be loaded from i18n
 
 /**
+ * 预定义的标签颜色池
+ */
+const TAG_COLORS = [
+  '#5B8FF9', // 蓝色
+  '#5AD8A6', // 绿色
+  '#F6BD16', // 黄色
+  '#E86452', // 红色
+  '#6DC8EC', // 青色
+  '#945FB9', // 紫色
+  '#FF9845', // 橙色
+  '#1E9493', // 深青
+  '#FF99C3', // 粉色
+];
+
+/**
+ * 根据标签名称哈希分配颜色（确保同名标签颜色一致）
+ */
+function getTagColor(tagName: string): string {
+  const hash = tagName.split('').reduce((acc, char) =>
+    acc + char.charCodeAt(0), 0);
+  return TAG_COLORS[hash % TAG_COLORS.length];
+}
+
+/**
  * 检测文本的主要语言
  */
 function detectLanguage(text: string): 'zh' | 'en' | 'other' {
@@ -103,6 +127,8 @@ export class WpPublishModalV2 extends AbstractModal {
   private notePath: string; // 当前笔记路径，用于缓存关联
   private imageSource: 'local' | 'unsplash' | 'ai' | 'vault' | 'cached' | 'auto' = 'auto'; // 图片来源类型
   private currentParams: WordPressPostParams | null = null; // 当前的发布参数，用于在关闭时保存生成的内容
+  private editableTags: string[] = []; // 可编辑的标签数组（预览标签页使用）
+  private tagsContainer: HTMLElement | null = null; // 标签容器的引用
 
   // Prompt templates from settings, with proper defaults
   private get imageGenerationPrompt(): string {
@@ -1182,6 +1208,9 @@ export class WpPublishModalV2 extends AbstractModal {
   }
 
   private renderPreviewContent(card: HTMLElement, params: WordPressPostParams): void {
+    // 初始化可编辑标签数组（从 params 复制）
+    this.editableTags = params.tags ? [...params.tags] : [];
+
     // 特色图片
     if (this.featuredImage) {
       this.renderFeaturedImagePreview(card, this.featuredImage);
@@ -1194,10 +1223,8 @@ export class WpPublishModalV2 extends AbstractModal {
       this.renderExcerptPreview(card, params.excerpt);
     }
 
-    // 标签
-    if (params.tags?.length) {
-      this.renderTagsPreview(card, params.tags);
-    }
+    // 标签（使用可编辑的标签数组）
+    this.renderTagsPreview(card, this.editableTags);
 
     // 文章内容
     this.renderArticlePreview(card);
@@ -1263,29 +1290,227 @@ export class WpPublishModalV2 extends AbstractModal {
   }
 
   private renderTagsPreview(card: HTMLElement, tags: string[]): void {
-    const section = card.createDiv('wp-preview-tags');
+    // 清空之前的标签容器
+    if (this.tagsContainer) {
+      this.tagsContainer.remove();
+    }
+
+    const section = card.createDiv('wp-preview-tags-editable');
+    this.tagsContainer = section;
     Object.assign(section.style, {
       marginBottom: '16px',
       display: 'flex',
       flexWrap: 'wrap',
-      gap: '6px',
-      alignItems: 'center'
+      gap: '8px',
+      alignItems: 'center',
+      padding: '12px',
+      backgroundColor: 'var(--background-primary)',
+      borderRadius: '6px',
+      border: '1px solid var(--background-modifier-border)'
     });
 
     const label = section.createEl('span', { text: this.plugin.t('publishModal_previewTags') });
-    label.style.fontSize = '12px';
-    label.style.color = 'var(--text-muted)';
-
-    tags.forEach(tag => {
-      const tagEl = section.createEl('span', { text: tag });
-      Object.assign(tagEl.style, {
-        padding: '2px 8px',
-        backgroundColor: 'var(--interactive-accent)',
-        color: 'var(--text-on-accent)',
-        borderRadius: '10px',
-        fontSize: '11px'
-      });
+    Object.assign(label.style, {
+      fontSize: '12px',
+      color: 'var(--text-muted)',
+      fontWeight: '500'
     });
+
+    // 渲染现有标签
+    tags.forEach((tag, index) => {
+      this.renderTagItem(section, tag, index);
+    });
+
+    // 添加"+"按钮
+    this.renderAddTagButton(section);
+  }
+
+  /**
+   * 渲染单个标签项（带删除按钮）
+   */
+  private renderTagItem(container: HTMLElement, tag: string, index: number): void {
+    const tagEl = container.createEl('span');
+    tagEl.addClass('wp-tag-item');
+    const bgColor = getTagColor(tag);
+    Object.assign(tagEl.style, {
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: '4px',
+      padding: '4px 10px',
+      backgroundColor: bgColor,
+      color: '#fff',
+      borderRadius: '12px',
+      fontSize: '12px',
+      fontWeight: '500',
+      cursor: 'default',
+      transition: 'all 0.2s ease'
+    });
+
+    // 标签文本
+    const textSpan = tagEl.createEl('span', { text: tag });
+    textSpan.addClass('wp-tag-text');
+
+    // 删除按钮
+    const removeBtn = tagEl.createEl('span', { text: '×' });
+    removeBtn.addClass('wp-tag-remove');
+    Object.assign(removeBtn.style, {
+      cursor: 'pointer',
+      fontSize: '16px',
+      fontWeight: 'bold',
+      lineHeight: '1',
+      opacity: '0.7',
+      transition: 'opacity 0.2s ease'
+    });
+
+    removeBtn.addEventListener('mouseenter', () => {
+      removeBtn.style.opacity = '1';
+    });
+
+    removeBtn.addEventListener('mouseleave', () => {
+      removeBtn.style.opacity = '0.7';
+    });
+
+    removeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.removeTag(index);
+    });
+
+    // 标签悬停效果
+    tagEl.addEventListener('mouseenter', () => {
+      tagEl.style.transform = 'translateY(-1px)';
+      tagEl.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.2)';
+    });
+
+    tagEl.addEventListener('mouseleave', () => {
+      tagEl.style.transform = 'translateY(0)';
+      tagEl.style.boxShadow = 'none';
+    });
+  }
+
+  /**
+   * 渲染添加标签按钮
+   */
+  private renderAddTagButton(container: HTMLElement): void {
+    const addBtn = container.createEl('span', { text: '+' });
+    addBtn.addClass('wp-tag-add-btn');
+    Object.assign(addBtn.style, {
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      width: '24px',
+      height: '24px',
+      backgroundColor: 'var(--interactive-accent)',
+      color: 'var(--text-on-accent)',
+      borderRadius: '50%',
+      fontSize: '18px',
+      fontWeight: 'bold',
+      cursor: 'pointer',
+      transition: 'all 0.2s ease',
+      lineHeight: '1'
+    });
+
+    addBtn.addEventListener('mouseenter', () => {
+      addBtn.style.transform = 'scale(1.1)';
+      addBtn.style.backgroundColor = 'var(--interactive-accent-hover)';
+    });
+
+    addBtn.addEventListener('mouseleave', () => {
+      addBtn.style.transform = 'scale(1)';
+      addBtn.style.backgroundColor = 'var(--interactive-accent)';
+    });
+
+    addBtn.addEventListener('click', () => {
+      this.showTagInput(container, addBtn);
+    });
+  }
+
+  /**
+   * 显示标签输入框
+   */
+  private showTagInput(container: HTMLElement, addBtn: HTMLElement): void {
+    // 隐藏加号按钮
+    addBtn.style.display = 'none';
+
+    // 创建输入框
+    const input = container.createEl('input');
+    input.addClass('wp-tag-input');
+    input.type = 'text';
+    input.placeholder = this.plugin.t('publishModal_tagInputPlaceholder') || '输入标签名...';
+    Object.assign(input.style, {
+      padding: '4px 10px',
+      fontSize: '12px',
+      border: '1px solid var(--interactive-accent)',
+      borderRadius: '12px',
+      outline: 'none',
+      minWidth: '120px',
+      backgroundColor: 'var(--background-primary)',
+      color: 'var(--text-normal)'
+    });
+
+    input.focus();
+
+    // 监听 Enter 键
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const tagName = input.value.trim();
+        if (tagName) {
+          this.addTag(tagName);
+        }
+        input.remove();
+        addBtn.style.display = 'inline-flex';
+      } else if (e.key === 'Escape') {
+        input.remove();
+        addBtn.style.display = 'inline-flex';
+      }
+    });
+
+    // 监听失焦事件
+    input.addEventListener('blur', () => {
+      setTimeout(() => {
+        const tagName = input.value.trim();
+        if (tagName) {
+          this.addTag(tagName);
+        }
+        input.remove();
+        addBtn.style.display = 'inline-flex';
+      }, 200);
+    });
+  }
+
+  /**
+   * 删除标签
+   */
+  private removeTag(index: number): void {
+    this.editableTags.splice(index, 1);
+    this.refreshTagsPreview();
+  }
+
+  /**
+   * 添加标签
+   */
+  private addTag(tagName: string): void {
+    const trimmed = tagName.trim();
+    if (!trimmed) return;
+
+    // 去重检查
+    if (this.editableTags.includes(trimmed)) {
+      new Notice(this.plugin.t('publishModal_tagExists') || '标签已存在');
+      return;
+    }
+
+    this.editableTags.push(trimmed);
+    this.refreshTagsPreview();
+  }
+
+  /**
+   * 刷新标签预览
+   */
+  private refreshTagsPreview(): void {
+    if (!this.tagsContainer) return;
+    const card = this.tagsContainer.parentElement;
+    if (!card) return;
+    this.renderTagsPreview(card, this.editableTags);
   }
 
   private renderArticlePreview(card: HTMLElement): void {
@@ -1637,6 +1862,11 @@ Consider migrating to REST API for better security and feature support.
 
     // Pass edited content via params, NOT via frontmatter
     params.content = this.editableContent;
+
+    // 同步可编辑标签到发布参数
+    if (this.editableTags.length > 0) {
+      params.tags = [...this.editableTags];
+    }
 
     // 隐藏模态窗口，显示全屏进度条
     this.modalEl.style.display = 'none';

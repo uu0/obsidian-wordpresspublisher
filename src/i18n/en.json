@@ -323,6 +323,8 @@
   "publishModal_previewFeaturedImageUploaded": "Featured Image (Uploaded to WordPress)",
   "publishModal_previewSummary": "Summary: ",
   "publishModal_previewTags": "Tags: ",
+  "publishModal_tagInputPlaceholder": "Enter tag name...",
+  "publishModal_tagExists": "Tag already exists",
   "publishModal_previewContent": "Post Content",
   "publishModal_editButton": "✏️ Edit",
   "publishModal_saveButton": "💾 Save",

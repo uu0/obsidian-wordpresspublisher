@@ -323,6 +323,8 @@
   "publishModal_previewFeaturedImageUploaded": "特色图片（已上传到 WordPress）",
   "publishModal_previewSummary": "摘要: ",
   "publishModal_previewTags": "标签: ",
+  "publishModal_tagInputPlaceholder": "输入标签名...",
+  "publishModal_tagExists": "标签已存在",
   "publishModal_previewContent": "文章内容",
   "publishModal_editButton": "✏️ 编辑",
   "publishModal_saveButton": "💾 保存",
