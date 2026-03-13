@@ -346,17 +346,12 @@ export abstract class AbstractWordPressClient implements WordPressClient {
             }
             // 5. slug
             fm.slug = postParams.slug || '';
-            // 6. featurePicture (preserve existing value, will be updated by updateMatterData callback if new image uploaded)
-            // Only set empty string if not already present
-            if (!fm.featurePicture) {
-              fm.featurePicture = '';
-            }
-            // 7. featuredImageId (preserve existing value, will be updated by updateMatterData callback if new image uploaded)
+            // 6. featuredImageId (preserve existing value, will be updated by updateMatterData callback if new image uploaded)
             // Only set empty string if not already present
             if (!fm.featuredImageId) {
               fm.featuredImageId = '';
             }
-            // 8. tags (formatted according to user preference)
+            // 7. tags (formatted according to user preference)
             // Remove old 'tag' field if it exists (legacy cleanup)
             delete fm.tag;
             if (tagNames && tagNames.length > 0) {
@@ -377,12 +372,6 @@ export abstract class AbstractWordPressClient implements WordPressClient {
 
             // Clean up content field from frontmatter (should not be stored there)
             delete fm.content;
-
-            // Apply synced featurePicture if available
-            if (syncedFeaturePictureUrl && !fm.featurePicture) {
-              fm.featurePicture = syncedFeaturePictureUrl;
-              console.log('[tryToPublish] Applied synced featurePicture to frontmatter');
-            }
 
             if (isFunction(updateMatterData)) {
               updateMatterData(fm);
@@ -491,6 +480,16 @@ export abstract class AbstractWordPressClient implements WordPressClient {
       if (matterData.postId) {
         const remoteData = await this.fetchRemotePostData(matterData.postId, auth);
         if (remoteData) {
+          // Update feature picture cache with remote data
+          if (remoteData.featurePicture && remoteData.featuredImageId) {
+            await this.plugin.featurePictureCacheManager.set(
+              remoteData.postId,
+              remoteData.featurePicture,
+              remoteData.featuredImageId
+            );
+            console.log('[publishPost] Updated feature picture cache from remote');
+          }
+
           const conflicts = this.frontmatterManager.detectConflicts(matterData, remoteData);
           if (conflicts.length > 0) {
             const resolution = await openConflictModal(this.plugin.app, this.plugin, conflicts);
@@ -670,9 +669,6 @@ export abstract class AbstractWordPressClient implements WordPressClient {
 
                 // Wrap updateMatterData to also save featured image info
                 const wrappedUpdateMatterData = (fm: MatterData) => {
-                  if (featuredImageUrl) {
-                    fm.featurePicture = featuredImageUrl;
-                  }
                   if (featuredImageId) {
                     fm.featuredImageId = featuredImageId;
                   }
@@ -687,7 +683,16 @@ export abstract class AbstractWordPressClient implements WordPressClient {
                   updateMatterData: wrappedUpdateMatterData
                 });
                 if (r.code === WordPressClientReturnCode.OK) {
-                  // 发布成功，清理图片缓存
+                  // 发布成功，更新特色图片缓存
+                  if (featuredImageUrl && featuredImageId && postParams.postId) {
+                    await this.plugin.featurePictureCacheManager.set(
+                      postParams.postId,
+                      featuredImageUrl,
+                      featuredImageId
+                    );
+                    console.log('[WpPublishModalV2] Updated feature picture cache');
+                  }
+                  // 清理图片缓存
                   await publishModal.clearImageCache();
                   publishModal.close();
                   resolve(r);

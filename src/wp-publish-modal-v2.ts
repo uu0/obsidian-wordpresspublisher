@@ -122,7 +122,6 @@ export class WpPublishModalV2 extends AbstractModal {
   private isPublishing: boolean = false;
   private lastPublishParams: WordPressPostParams | null = null;
   private publishBtn: HTMLButtonElement | null = null;
-  private featurePictureUrl: string | null = null; // 已上传到 WordPress 的特色图片 URL
   private imageCacheManager: ImageCacheManager; // 图片缓存管理器
   private notePath: string; // 当前笔记路径，用于缓存关联
   private imageSource: 'local' | 'unsplash' | 'ai' | 'vault' | 'cached' | 'auto' = 'auto'; // 图片来源类型
@@ -178,15 +177,30 @@ export class WpPublishModalV2 extends AbstractModal {
       this.unsplashService = new UnsplashService(plugin.settings.unsplashAccessKey);
     }
 
-    // 检查 frontmatter 中是否已有特色图片链接
-    if (matterData.featurePicture) {
-      log.info('Found featured image in frontmatter:', matterData.featurePicture);
-      this.featurePictureUrl = matterData.featurePicture as string;
-      // 加载已有的特色图片
-      this.loadFeaturePictureFromUrl(matterData.featurePicture as string);
+    // 尝试从缓存加载特色图片
+    if (matterData.postId) {
+      this.loadFeaturePictureFromCache(matterData.postId);
     } else {
-      // 尝试从缓存恢复图片
+      // 如果没有 postId，尝试从图片缓存恢复
       this.loadCachedImage();
+    }
+  }
+
+  // 从缓存加载特色图片
+  private async loadFeaturePictureFromCache(postId: string | number): Promise<void> {
+    try {
+      const cached = this.plugin.featurePictureCacheManager.get(postId);
+      if (cached) {
+        log.info('Loading featured image from cache:', cached.url);
+        await this.loadFeaturePictureFromUrl(cached.url);
+        return;
+      }
+      log.info('No cached feature picture found for post:', postId);
+      // 没有缓存，尝试从图片缓存恢复
+      await this.loadCachedImage();
+    } catch (e) {
+      log.error('Failed to load feature picture from cache:', e);
+      await this.loadCachedImage();
     }
   }
 
@@ -606,24 +620,6 @@ export class WpPublishModalV2 extends AbstractModal {
         this.featuredImage = this.autoFeaturedImage;
         this.display(params);
       };
-    } else if (this.featurePictureUrl) {
-      // 显示已上传到 WordPress 的特色图片
-      const img = previewContainer.createEl('img', {
-        attr: { src: this.featurePictureUrl },
-        cls: 'featured-image-full'
-      });
-      img.style.maxWidth = '100%';
-      img.style.maxHeight = '160px';
-      img.style.objectFit = 'cover';
-      img.style.borderRadius = '6px';
-
-      const info = previewContainer.createDiv('featured-image-info');
-      info.createSpan({ text: this.t('publishModal_uploadedToWordPress') });
-      info.style.color = 'var(--text-success)';
-      info.style.display = 'flex';
-      info.style.alignItems = 'center';
-      info.style.justifyContent = 'center';
-      info.style.gap = '4px';
     } else {
       previewContainer.createEl('p', {
         text: this.t('publishModal_noFeaturedImage'),
