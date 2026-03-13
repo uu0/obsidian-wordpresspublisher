@@ -1208,8 +1208,11 @@ export class WpPublishModalV2 extends AbstractModal {
   }
 
   private renderPreviewContent(card: HTMLElement, params: WordPressPostParams): void {
-    // 初始化可编辑标签数组（从 params 复制）- 只在第一次渲染时初始化
-    if (!this.editableTags || this.editableTags.length === 0) {
+    // 同步 editableTags 与 params.tags（确保冲突解决后能更新）
+    // 如果 params.tags 发生变化，需要重新同步
+    const paramsTagsStr = JSON.stringify(params.tags || []);
+    const editableTagsStr = JSON.stringify(this.editableTags);
+    if (paramsTagsStr !== editableTagsStr) {
       this.editableTags = params.tags ? [...params.tags] : [];
     }
 
@@ -1319,8 +1322,8 @@ export class WpPublishModalV2 extends AbstractModal {
     });
 
     // 渲染现有标签
-    this.editableTags.forEach((tag, index) => {
-      this.renderTagItem(section, tag, index, params);
+    this.editableTags.forEach((tag) => {
+      this.renderTagItem(section, tag, params);
     });
 
     // 添加"+"按钮
@@ -1330,7 +1333,7 @@ export class WpPublishModalV2 extends AbstractModal {
   /**
    * 渲染单个标签项（带删除按钮）
    */
-  private renderTagItem(container: HTMLElement, tag: string, index: number, params: WordPressPostParams): void {
+  private renderTagItem(container: HTMLElement, tag: string, params: WordPressPostParams): void {
     const tagEl = container.createEl('span');
     tagEl.addClass('wp-tag-item');
     const bgColor = getTagColor(tag);
