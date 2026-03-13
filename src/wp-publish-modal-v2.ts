@@ -1,4 +1,4 @@
-import { Setting, Notice, TFile } from 'obsidian';
+import { Setting, Notice, TFile, requestUrl } from 'obsidian';
 import { toNumber } from 'lodash-es';
 import { format, parse } from 'date-fns';
 import IMask, { DynamicMaskType, InputMask } from 'imask';
@@ -208,14 +208,14 @@ export class WpPublishModalV2 extends AbstractModal {
   private async loadFeaturePictureFromUrl(url: string): Promise<void> {
     try {
       log.info('Loading featured image from URL:', url);
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      const arrayBuffer = await response.arrayBuffer();
+      // 使用 Obsidian 的 requestUrl API 绕过 CORS 限制
+      const response = await requestUrl({
+        url,
+        method: 'GET'
+      });
 
       // 从 URL 或 Content-Type 获取 MIME 类型
-      const contentType = response.headers.get('content-type');
+      const contentType = response.headers['content-type'];
       const mimeType = this.getMimeTypeFromResponse(contentType, url);
 
       // 从 URL 提取文件名
@@ -224,7 +224,7 @@ export class WpPublishModalV2 extends AbstractModal {
       this.autoFeaturedImage = {
         fileName,
         mimeType,
-        content: arrayBuffer,
+        content: response.arrayBuffer,
         width: 1200
       };
       log.info('Successfully loaded featured image:', fileName);
