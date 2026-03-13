@@ -308,7 +308,8 @@ export class WpPublishModalV2 extends AbstractModal {
       // 获取配置名称用于错误提示
       const profile = this.plugin.settings.profiles.find(p => p.isDefault);
       const profileName = profile?.name || '默认配置';
-      this.remoteImageError = `连接 ${profileName} 失败：${e.message}`;
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      this.remoteImageError = `连接 ${profileName} 失败：${errorMessage}`;
 
       return false;
     } finally {

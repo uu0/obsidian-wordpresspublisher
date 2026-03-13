@@ -194,6 +194,7 @@
   "publishModal_loadingRemoteImage": "Loading remote image...",
   "publishModal_remoteImageLoadFailed": "Failed to load remote image",
   "publishModal_retry": "Retry",
+  "publishModal_skip": "Skip",
   "publishModal_generateSummary": "📝 Generate Summary",
   "publishModal_generateTags": "🏷️ Generate Tags",
   "publishModal_generatingSummary": "Generating summary...",
