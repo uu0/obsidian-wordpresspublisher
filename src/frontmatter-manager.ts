@@ -14,7 +14,6 @@ export const STANDARD_FRONTMATTER_FIELDS = [
   'postType',
   'categories',
   'slug',
-  'featurePicture',
   'featuredImageId',
   'tags'
 ] as const;
@@ -31,6 +30,8 @@ export interface RemotePostData {
   slug: string;
   tags: string[];
   excerpt?: string;
+  featuredImageId?: number;
+  featurePicture?: string; // Used for cache update, not for conflict detection
 }
 
 /**
@@ -188,6 +189,16 @@ export class FrontmatterManager {
         field: 'tags',
         localValue: localTags,
         remoteValue: remoteTags
+      });
+    }
+
+    // Check featured image ID
+    if (localMatter.featuredImageId && remoteData.featuredImageId &&
+        Number(localMatter.featuredImageId) !== Number(remoteData.featuredImageId)) {
+      conflicts.push({
+        field: 'featuredImageId',
+        localValue: localMatter.featuredImageId,
+        remoteValue: remoteData.featuredImageId
       });
     }
 

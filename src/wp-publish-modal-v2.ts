@@ -1,4 +1,4 @@
-import { Setting, Notice, TFile } from 'obsidian';
+import { Setting, Notice, TFile, requestUrl } from 'obsidian';
 import { toNumber } from 'lodash-es';
 import { format, parse } from 'date-fns';
 import IMask, { DynamicMaskType, InputMask } from 'imask';
@@ -23,6 +23,30 @@ import { getApiCapabilities, getApiLimitations, getApiRecommendation } from './a
 const log = createModuleLogger('WpPublishModalV2');
 
 // Default prompt templates will be loaded from i18n
+
+/**
+ * 预定义的标签颜色池
+ */
+const TAG_COLORS = [
+  '#5B8FF9', // 蓝色
+  '#5AD8A6', // 绿色
+  '#F6BD16', // 黄色
+  '#E86452', // 红色
+  '#6DC8EC', // 青色
+  '#945FB9', // 紫色
+  '#FF9845', // 橙色
+  '#1E9493', // 深青
+  '#FF99C3', // 粉色
+];
+
+/**
+ * 根据标签名称哈希分配颜色（确保同名标签颜色一致）
+ */
+function getTagColor(tagName: string): string {
+  const hash = tagName.split('').reduce((acc, char) =>
+    acc + char.charCodeAt(0), 0);
+  return TAG_COLORS[hash % TAG_COLORS.length];
+}
 
 /**
  * 检测文本的主要语言
@@ -98,11 +122,17 @@ export class WpPublishModalV2 extends AbstractModal {
   private isPublishing: boolean = false;
   private lastPublishParams: WordPressPostParams | null = null;
   private publishBtn: HTMLButtonElement | null = null;
-  private featurePictureUrl: string | null = null; // 已上传到 WordPress 的特色图片 URL
   private imageCacheManager: ImageCacheManager; // 图片缓存管理器
   private notePath: string; // 当前笔记路径，用于缓存关联
   private imageSource: 'local' | 'unsplash' | 'ai' | 'vault' | 'cached' | 'auto' = 'auto'; // 图片来源类型
   private currentParams: WordPressPostParams | null = null; // 当前的发布参数，用于在关闭时保存生成的内容
+  private editableTags: string[] = []; // 可编辑的标签数组（预览标签页使用）
+  private tagsContainer: HTMLElement | null = null; // 标签容器的引用
+  private cachedFeaturedImageId: number | undefined; // 从缓存或远程获取的特色图片 ID
+  private isLoadingRemoteImage: boolean = false; // 是否正在加载远程图片
+  private remoteImageLoadFailed: boolean = false; // 远程图片加载是否失败
+  private remoteImagePostId: string | number | null = null; // 需要加载远程图片的 postId
+  private remoteImageError: string | null = null; // 远程图片加载失败的错误信息
 
   // Prompt templates from settings, with proper defaults
   private get imageGenerationPrompt(): string {
@@ -152,15 +182,166 @@ export class WpPublishModalV2 extends AbstractModal {
       this.unsplashService = new UnsplashService(plugin.settings.unsplashAccessKey);
     }
 
-    // 检查 frontmatter 中是否已有特色图片链接
-    if (matterData.featurePicture) {
-      log.info('Found featured image in frontmatter:', matterData.featurePicture);
-      this.featurePictureUrl = matterData.featurePicture as string;
-      // 加载已有的特色图片
-      this.loadFeaturePictureFromUrl(matterData.featurePicture as string);
+    // 尝试从缓存加载特色图片
+    if (matterData.postId) {
+      this.loadFeaturePictureFromCache(matterData.postId);
     } else {
-      // 尝试从缓存恢复图片
+      // 如果没有 postId，尝试从图片缓存恢复
       this.loadCachedImage();
+    }
+  }
+
+  // 从缓存加载特色图片
+  private async loadFeaturePictureFromCache(postId: string | number): Promise<void> {
+    try {
+      // 优先检查本地是否有用户选择的图片缓存
+      if (this.notePath) {
+        const localCachedImage = await this.imageCacheManager.loadImage(this.notePath);
+        if (localCachedImage) {
+          log.info('Found local cached image, using it instead of remote:', localCachedImage.fileName);
+          this.featuredImage = {
+            fileName: localCachedImage.fileName,
+            mimeType: localCachedImage.mimeType,
+            content: localCachedImage.content,
+            width: localCachedImage.width
+          };
+          this.imageSource = 'cached';
+
+          // 图片加载完成后，刷新 UI 显示
+          if (this.currentParams) {
+            this.display(this.currentParams);
+          }
+          return;
+        }
+      }
+
+      // 本地无缓存，检查 featurePicture 缓存
+      const cached = this.plugin.featurePictureCacheManager.get(postId);
+      if (cached) {
+        log.info('Loading featured image from cache:', cached.url);
+        // 保存缓存的 featuredImageId
+        this.cachedFeaturedImageId = cached.featuredImageId;
+        await this.loadFeaturePictureFromUrl(cached.url);
+        return;
+      }
+      log.info('No cached feature picture found for post:', postId);
+
+      // 缓存未命中，尝试从远程 WordPress 获取
+      const remoteImage = await this.loadFeaturePictureFromRemote(postId);
+      if (remoteImage) {
+        return; // 成功从远程加载
+      }
+
+      // 远程也没有，尝试从图片缓存恢复
+      await this.loadCachedImage();
+    } catch (e) {
+      log.error('Failed to load feature picture from cache:', e);
+      await this.loadCachedImage();
+    }
+  }
+
+  /**
+   * 从远程 WordPress 获取特色图片
+   * @param postId - 文章 ID
+   * @returns 是否成功加载
+   */
+  private async loadFeaturePictureFromRemote(postId: string | number): Promise<boolean> {
+    try {
+      log.info('Fetching featured image from remote WordPress:', postId);
+
+      // 设置加载状态
+      this.isLoadingRemoteImage = true;
+      this.remoteImageLoadFailed = false;
+      this.remoteImagePostId = postId;
+      this.remoteImageError = null;
+
+      // 如果 UI 已经初始化，刷新显示加载状态
+      if (this.currentParams) {
+        this.display(this.currentParams);
+      }
+
+      // 获取当前配置文件
+      const profile = this.plugin.settings.profiles.find(p => p.isDefault);
+      if (!profile) {
+        log.warn('No default profile found');
+        this.remoteImageError = '未配置 WordPress 账号，请先在设置中配置';
+        return false;
+      }
+
+      // 创建临时客户端
+      const { getWordPressClient } = await import('./wp-clients');
+      const client = getWordPressClient(this.plugin, profile);
+      if (!client) {
+        log.warn('Failed to create WordPress client');
+        this.remoteImageError = `无法创建 ${profile.name} 客户端`;
+        return false;
+      }
+
+      // 检查客户端是否有 getPost 方法（AbstractWpClient 的子类）
+      if (!('getPost' in client)) {
+        log.warn('Client does not support getPost method');
+        this.remoteImageError = '客户端不支持获取文章';
+        return false;
+      }
+
+      // 获取认证信息
+      const auth = {
+        username: profile.username || null,
+        password: profile.password || null
+      };
+
+      // 获取文章信息（网络已在发布前检测，不需要超时）
+      const post = await (client as any).getPost(postId, auth);
+
+      if (!post) {
+        log.info('Post not found on remote');
+        return false;
+      }
+
+      // 提取特色图片信息
+      const featuredImageId = post.featured_media;
+      const featurePictureUrl = post._embedded?.['wp:featuredmedia']?.[0]?.source_url;
+
+      if (!featurePictureUrl || !featuredImageId) {
+        log.info('No featured image found on remote post');
+        return false;
+      }
+
+      log.info('Found featured image on remote:', { featuredImageId, featurePictureUrl });
+
+      // 更新缓存
+      await this.plugin.featurePictureCacheManager.set(
+        postId,
+        featurePictureUrl,
+        featuredImageId
+      );
+
+      // 保存 featuredImageId
+      this.cachedFeaturedImageId = featuredImageId;
+
+      // 加载图片
+      await this.loadFeaturePictureFromUrl(featurePictureUrl);
+
+      return true;
+    } catch (e) {
+      log.error('Failed to load featured image from remote:', e);
+      this.remoteImageLoadFailed = true;
+
+      // 获取配置名称用于错误提示
+      const profile = this.plugin.settings.profiles.find(p => p.isDefault);
+      const profileName = profile?.name || '默认配置';
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      this.remoteImageError = `连接 ${profileName} 失败：${errorMessage}`;
+
+      return false;
+    } finally {
+      // 清除加载状态
+      this.isLoadingRemoteImage = false;
+
+      // 如果 UI 已经初始化，刷新显示
+      if (this.currentParams) {
+        this.display(this.currentParams);
+      }
     }
   }
 
@@ -168,14 +349,14 @@ export class WpPublishModalV2 extends AbstractModal {
   private async loadFeaturePictureFromUrl(url: string): Promise<void> {
     try {
       log.info('Loading featured image from URL:', url);
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      const arrayBuffer = await response.arrayBuffer();
+      // 使用 Obsidian 的 requestUrl API 绕过 CORS 限制
+      const response = await requestUrl({
+        url,
+        method: 'GET'
+      });
 
       // 从 URL 或 Content-Type 获取 MIME 类型
-      const contentType = response.headers.get('content-type');
+      const contentType = response.headers['content-type'];
       const mimeType = this.getMimeTypeFromResponse(contentType, url);
 
       // 从 URL 提取文件名
@@ -184,10 +365,15 @@ export class WpPublishModalV2 extends AbstractModal {
       this.autoFeaturedImage = {
         fileName,
         mimeType,
-        content: arrayBuffer,
+        content: response.arrayBuffer,
         width: 1200
       };
       log.info('Successfully loaded featured image:', fileName);
+
+      // 图片加载完成后，刷新 UI 显示
+      if (this.currentParams) {
+        this.display(this.currentParams);
+      }
     } catch (e) {
       log.info('Failed to load featured image from URL:', e);
       // 加载失败，尝试从缓存恢复
@@ -216,6 +402,11 @@ export class WpPublishModalV2 extends AbstractModal {
           width: cachedImage.width
         };
         this.imageSource = 'cached';
+
+        // 图片加载完成后，刷新 UI 显示
+        if (this.currentParams) {
+          this.display(this.currentParams);
+        }
       } else {
         // 没有缓存，自动检测文章第一张图片
         await this.detectFirstImage();
@@ -259,13 +450,20 @@ export class WpPublishModalV2 extends AbstractModal {
    */
   async clearImageCache(): Promise<void> {
     if (!this.notePath) return;
-    
+
     try {
       await this.imageCacheManager.clearCache(this.notePath);
       log.info('Image cache cleared for:', this.notePath);
     } catch (e) {
       log.error('Failed to clear image cache:', e);
     }
+  }
+
+  /**
+   * 获取从缓存中加载的特色图片 ID
+   */
+  getCachedFeaturedImageId(): number | undefined {
+    return this.cachedFeaturedImageId;
   }
 
   private getMimeTypeFromResponse(contentType: string | null, url: string): string {
@@ -298,6 +496,11 @@ export class WpPublishModalV2 extends AbstractModal {
       } else {
         await this.loadLocalImage(imagePath);
       }
+
+      // 图片检测完成后，刷新 UI 显示
+      if (this.currentParams && this.autoFeaturedImage) {
+        this.display(this.currentParams);
+      }
     } catch (e) {
       log.info('Error detecting first image:', e);
       await this.loadEmptyImage();
@@ -322,6 +525,11 @@ export class WpPublishModalV2 extends AbstractModal {
         width: 1200
       };
       log.info('Auto-detected first image:', file.name);
+
+      // 图片加载完成后，刷新 UI 显示
+      if (this.currentParams) {
+        this.display(this.currentParams);
+      }
     }
   }
 
@@ -335,6 +543,11 @@ export class WpPublishModalV2 extends AbstractModal {
         content: arrayBuffer,
         width: 1200
       };
+
+      // 图片加载完成后，刷新 UI 显示
+      if (this.currentParams) {
+        this.display(this.currentParams);
+      }
     } catch (e) {
       log.info('Failed to download online image:', e);
     }
@@ -381,6 +594,11 @@ export class WpPublishModalV2 extends AbstractModal {
       slug: this.matterData.slug || '',
       excerpt: this.matterData.excerpt || ''
     };
+
+    // 从 frontmatter 恢复特色图片 ID（如果存在）
+    if (this.matterData.featuredImageId) {
+      params.featuredMedia = Number(this.matterData.featuredImageId);
+    }
 
     this.editableContent = this.articleContent;
     this.currentTab = 'settings';
@@ -550,54 +768,132 @@ export class WpPublishModalV2 extends AbstractModal {
 
     const previewContainer = card.createDiv('featured-image-preview-large');
 
-    if (this.featuredImage) {
-      const blob = new Blob([this.featuredImage.content], { type: this.featuredImage.mimeType });
-      const url = URL.createObjectURL(blob);
+    // 如果正在加载远程图片，显示加载状态
+    if (this.isLoadingRemoteImage) {
+      const loadingDiv = previewContainer.createDiv('featured-image-loading');
+      loadingDiv.style.display = 'flex';
+      loadingDiv.style.flexDirection = 'column';
+      loadingDiv.style.alignItems = 'center';
+      loadingDiv.style.justifyContent = 'center';
+      loadingDiv.style.padding = '40px 20px';
+      loadingDiv.style.color = 'var(--text-muted)';
 
-      const img = previewContainer.createEl('img', {
-        attr: { src: url },
-        cls: 'featured-image-full'
+      const spinner = loadingDiv.createDiv('featured-image-spinner');
+      spinner.style.width = '32px';
+      spinner.style.height = '32px';
+      spinner.style.border = '3px solid var(--background-modifier-border)';
+      spinner.style.borderTop = '3px solid var(--interactive-accent)';
+      spinner.style.borderRadius = '50%';
+      spinner.style.animation = 'spin 1s linear infinite';
+      spinner.style.marginBottom = '12px';
+
+      loadingDiv.createEl('p', {
+        text: this.t('publishModal_loadingRemoteImage') || '正在加载远程图片...',
+        cls: 'featured-image-loading-text'
       });
-      // Constrain image height for better text readability
-      img.style.maxWidth = '100%';
-      img.style.maxHeight = '160px';
-      img.style.objectFit = 'cover';
-      img.style.borderRadius = '6px';
 
-      const info = previewContainer.createDiv('featured-image-info');
-      info.createSpan({ text: this.featuredImage.fileName });
+      // 添加 CSS 动画（如果还没有）
+      if (!document.getElementById('featured-image-spinner-style')) {
+        const style = document.createElement('style');
+        style.id = 'featured-image-spinner-style';
+        style.textContent = `
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        `;
+        document.head.appendChild(style);
+      }
+    } else if (this.remoteImageLoadFailed) {
+      // 如果加载失败，显示错误信息和操作按钮
+      const errorDiv = previewContainer.createDiv('featured-image-error');
+      errorDiv.style.display = 'flex';
+      errorDiv.style.flexDirection = 'column';
+      errorDiv.style.alignItems = 'center';
+      errorDiv.style.justifyContent = 'center';
+      errorDiv.style.padding = '40px 20px';
+      errorDiv.style.color = 'var(--text-error)';
 
-      const removeBtn = previewContainer.createEl('button', {
-        text: this.t('confirmModal_cancel'),
-        cls: 'featured-image-remove-btn'
+      errorDiv.createEl('p', {
+        text: '⚠️ ' + (this.remoteImageError || this.t('publishModal_remoteImageLoadFailed') || '远程图片加载失败'),
+        cls: 'featured-image-error-text'
       });
-      removeBtn.onclick = () => {
-        this.featuredImage = this.autoFeaturedImage;
+
+      // 按钮容器
+      const btnContainer = errorDiv.createDiv('featured-image-error-buttons');
+      btnContainer.style.display = 'flex';
+      btnContainer.style.gap = '8px';
+      btnContainer.style.marginTop = '12px';
+
+      // 重试按钮
+      const retryBtn = btnContainer.createEl('button', {
+        text: this.t('publishModal_retry') || '重试',
+        cls: 'mod-cta'
+      });
+      retryBtn.onclick = async () => {
+        if (this.remoteImagePostId) {
+          await this.loadFeaturePictureFromRemote(this.remoteImagePostId);
+        }
+      };
+
+      // 跳过按钮
+      const skipBtn = btnContainer.createEl('button', {
+        text: this.t('publishModal_skip') || '跳过',
+      });
+      skipBtn.onclick = () => {
+        // 清除失败状态，允许继续发布
+        this.remoteImageLoadFailed = false;
+        this.autoFeaturedImage = null;
         this.display(params);
       };
-    } else if (this.featurePictureUrl) {
-      // 显示已上传到 WordPress 的特色图片
-      const img = previewContainer.createEl('img', {
-        attr: { src: this.featurePictureUrl },
-        cls: 'featured-image-full'
-      });
-      img.style.maxWidth = '100%';
-      img.style.maxHeight = '160px';
-      img.style.objectFit = 'cover';
-      img.style.borderRadius = '6px';
 
-      const info = previewContainer.createDiv('featured-image-info');
-      info.createSpan({ text: this.t('publishModal_uploadedToWordPress') });
-      info.style.color = 'var(--text-success)';
-      info.style.display = 'flex';
-      info.style.alignItems = 'center';
-      info.style.justifyContent = 'center';
-      info.style.gap = '4px';
-    } else {
-      previewContainer.createEl('p', {
-        text: this.t('publishModal_noFeaturedImage'),
-        cls: 'featured-image-placeholder-text'
+      // 关闭按钮
+      const closeBtn = btnContainer.createEl('button', {
+        text: this.t('confirmModal_cancel') || '关闭',
       });
+      closeBtn.onclick = () => {
+        this.close();
+      };
+    } else {
+      // 优先显示用户选择的图片，否则显示自动检测的图片
+      const imageToDisplay = this.featuredImage || this.autoFeaturedImage;
+
+      if (imageToDisplay) {
+        const blob = new Blob([imageToDisplay.content], { type: imageToDisplay.mimeType });
+        const url = URL.createObjectURL(blob);
+
+        const img = previewContainer.createEl('img', {
+          attr: { src: url },
+          cls: 'featured-image-full'
+        });
+        // Constrain image height for better text readability
+        img.style.maxWidth = '100%';
+        img.style.maxHeight = '160px';
+        img.style.objectFit = 'cover';
+        img.style.borderRadius = '6px';
+
+        const info = previewContainer.createDiv('featured-image-info');
+        info.createSpan({ text: imageToDisplay.fileName });
+
+        // 只有当用户手动选择了图片时才显示移除按钮
+        if (this.featuredImage) {
+          const removeBtn = previewContainer.createEl('button', {
+            text: this.t('confirmModal_cancel'),
+            cls: 'featured-image-remove-btn'
+          });
+          removeBtn.onclick = async () => {
+            // 清除本地图片缓存
+            await this.clearImageCache();
+            this.featuredImage = null;
+            this.display(params);
+          };
+        }
+      } else {
+        previewContainer.createEl('p', {
+          text: this.t('publishModal_noFeaturedImage'),
+          cls: 'featured-image-placeholder-text'
+        });
+      }
     }
 
     // 四个按钮
@@ -1182,9 +1478,31 @@ export class WpPublishModalV2 extends AbstractModal {
   }
 
   private renderPreviewContent(card: HTMLElement, params: WordPressPostParams): void {
-    // 特色图片
-    if (this.featuredImage) {
-      this.renderFeaturedImagePreview(card, this.featuredImage);
+    // 同步 editableTags 与 params.tags（确保冲突解决后能更新）
+    // 如果 params.tags 发生变化，需要重新同步
+    const paramsTagsStr = JSON.stringify(params.tags || []);
+    const editableTagsStr = JSON.stringify(this.editableTags);
+    if (paramsTagsStr !== editableTagsStr) {
+      this.editableTags = params.tags ? [...params.tags] : [];
+    }
+
+    // Check if featuredImageId exists but no image is loaded
+    const hasImageId = this.matterData.featuredImageId && this.matterData.featuredImageId !== '';
+
+    if (hasImageId && !this.featuredImage && !this.autoFeaturedImage) {
+      // Warning: featuredImageId exists but no image loaded
+      const warningDiv = card.createDiv('wp-preview-warning');
+      warningDiv.createEl('strong', { text: '⚠️ ' + this.plugin.t('publishModal_previewInconsistencyWarning') });
+      warningDiv.createEl('p', {
+        text: this.plugin.t('publishModal_previewInconsistencyDesc'),
+        cls: 'wp-preview-warning-desc'
+      });
+    }
+
+    // 特色图片 - 优先显示用户选择的图片，否则显示自动检测的图片
+    const imageToDisplay = this.featuredImage || this.autoFeaturedImage;
+    if (imageToDisplay) {
+      this.renderFeaturedImagePreview(card, imageToDisplay);
     } else if (this.matterData.featurePicture) {
       this.renderUploadedImagePreview(card, this.matterData.featurePicture as string);
     }
@@ -1194,10 +1512,8 @@ export class WpPublishModalV2 extends AbstractModal {
       this.renderExcerptPreview(card, params.excerpt);
     }
 
-    // 标签
-    if (params.tags?.length) {
-      this.renderTagsPreview(card, params.tags);
-    }
+    // 标签（使用可编辑的标签数组）
+    this.renderTagsPreview(card, params);
 
     // 文章内容
     this.renderArticlePreview(card);
@@ -1262,30 +1578,250 @@ export class WpPublishModalV2 extends AbstractModal {
     section.createSpan({ text: excerpt });
   }
 
-  private renderTagsPreview(card: HTMLElement, tags: string[]): void {
-    const section = card.createDiv('wp-preview-tags');
-    Object.assign(section.style, {
-      marginBottom: '16px',
-      display: 'flex',
-      flexWrap: 'wrap',
-      gap: '6px',
-      alignItems: 'center'
-    });
+  private renderTagsPreview(card: HTMLElement, params: WordPressPostParams): void {
+    // 如果容器已存在，清空内容复用；否则创建新容器
+    let section: HTMLElement;
+    if (this.tagsContainer && this.tagsContainer.parentElement === card) {
+      // 容器存在且父元素正确，清空内容复用
+      section = this.tagsContainer;
+      section.empty();
+    } else {
+      // 容器不存在或父元素不对，创建新容器
+      section = card.createDiv('wp-preview-tags-editable');
+      this.tagsContainer = section;
+      Object.assign(section.style, {
+        marginBottom: '16px',
+        display: 'flex',
+        flexWrap: 'wrap',
+        gap: '8px',
+        alignItems: 'center',
+        padding: '12px',
+        backgroundColor: 'var(--background-primary)',
+        borderRadius: '6px',
+        border: '1px solid var(--background-modifier-border)'
+      });
+    }
 
     const label = section.createEl('span', { text: this.plugin.t('publishModal_previewTags') });
-    label.style.fontSize = '12px';
-    label.style.color = 'var(--text-muted)';
-
-    tags.forEach(tag => {
-      const tagEl = section.createEl('span', { text: tag });
-      Object.assign(tagEl.style, {
-        padding: '2px 8px',
-        backgroundColor: 'var(--interactive-accent)',
-        color: 'var(--text-on-accent)',
-        borderRadius: '10px',
-        fontSize: '11px'
-      });
+    Object.assign(label.style, {
+      fontSize: '12px',
+      color: 'var(--text-muted)',
+      fontWeight: '500'
     });
+
+    // 渲染现有标签
+    this.editableTags.forEach((tag) => {
+      this.renderTagItem(section, tag, params);
+    });
+
+    // 添加"+"按钮
+    this.renderAddTagButton(section, params);
+  }
+
+  /**
+   * 渲染单个标签项（带删除按钮）
+   */
+  private renderTagItem(container: HTMLElement, tag: string, params: WordPressPostParams): void {
+    const tagEl = container.createEl('span');
+    tagEl.addClass('wp-tag-item');
+    const bgColor = getTagColor(tag);
+    Object.assign(tagEl.style, {
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: '4px',
+      padding: '4px 10px',
+      backgroundColor: bgColor,
+      color: '#fff',
+      borderRadius: '12px',
+      fontSize: '12px',
+      fontWeight: '500',
+      cursor: 'default',
+      transition: 'all 0.2s ease'
+    });
+
+    // 标签文本
+    const textSpan = tagEl.createEl('span', { text: tag });
+    textSpan.addClass('wp-tag-text');
+
+    // 删除按钮
+    const removeBtn = tagEl.createEl('span', { text: '×' });
+    removeBtn.addClass('wp-tag-remove');
+    Object.assign(removeBtn.style, {
+      cursor: 'pointer',
+      fontSize: '16px',
+      fontWeight: 'bold',
+      lineHeight: '1',
+      opacity: '0.7',
+      transition: 'opacity 0.2s ease'
+    });
+
+    removeBtn.addEventListener('mouseenter', () => {
+      removeBtn.style.opacity = '1';
+    });
+
+    removeBtn.addEventListener('mouseleave', () => {
+      removeBtn.style.opacity = '0.7';
+    });
+
+    removeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.removeTag(tag, params);
+    });
+
+    // 标签悬停效果
+    tagEl.addEventListener('mouseenter', () => {
+      tagEl.style.transform = 'translateY(-1px)';
+      tagEl.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.2)';
+    });
+
+    tagEl.addEventListener('mouseleave', () => {
+      tagEl.style.transform = 'translateY(0)';
+      tagEl.style.boxShadow = 'none';
+    });
+  }
+
+  /**
+   * 渲染添加标签按钮
+   */
+  private renderAddTagButton(container: HTMLElement, params: WordPressPostParams): void {
+    const addBtn = container.createEl('span', { text: '+' });
+    addBtn.addClass('wp-tag-add-btn');
+    Object.assign(addBtn.style, {
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      width: '24px',
+      height: '24px',
+      backgroundColor: 'var(--interactive-accent)',
+      color: 'var(--text-on-accent)',
+      borderRadius: '50%',
+      fontSize: '18px',
+      fontWeight: 'bold',
+      cursor: 'pointer',
+      transition: 'all 0.2s ease',
+      lineHeight: '1'
+    });
+
+    addBtn.addEventListener('mouseenter', () => {
+      addBtn.style.transform = 'scale(1.1)';
+      addBtn.style.backgroundColor = 'var(--interactive-accent-hover)';
+    });
+
+    addBtn.addEventListener('mouseleave', () => {
+      addBtn.style.transform = 'scale(1)';
+      addBtn.style.backgroundColor = 'var(--interactive-accent)';
+    });
+
+    addBtn.addEventListener('click', () => {
+      this.showTagInput(container, addBtn, params);
+    });
+  }
+
+  /**
+   * 显示标签输入框
+   */
+  private showTagInput(container: HTMLElement, addBtn: HTMLElement, params: WordPressPostParams): void {
+    // 隐藏加号按钮
+    addBtn.style.display = 'none';
+
+    // 创建输入框
+    const input = container.createEl('input');
+    input.addClass('wp-tag-input');
+    input.type = 'text';
+    input.placeholder = this.plugin.t('publishModal_tagInputPlaceholder') || '输入标签名...';
+    Object.assign(input.style, {
+      padding: '4px 10px',
+      fontSize: '12px',
+      border: '1px solid var(--interactive-accent)',
+      borderRadius: '12px',
+      outline: 'none',
+      minWidth: '120px',
+      backgroundColor: 'var(--background-primary)',
+      color: 'var(--text-normal)'
+    });
+
+    input.focus();
+
+    // 标志位，防止重复添加
+    let tagAdded = false;
+
+    // 监听 Enter 键
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const tagName = input.value.trim();
+        if (tagName && !tagAdded) {
+          this.addTag(tagName, params);
+          tagAdded = true;
+        }
+        input.remove();
+        addBtn.style.display = 'inline-flex';
+      } else if (e.key === 'Escape') {
+        tagAdded = true; // 取消时也设置标志，防止 blur 触发
+        input.remove();
+        addBtn.style.display = 'inline-flex';
+      }
+    });
+
+    // 监听失焦事件
+    input.addEventListener('blur', () => {
+      setTimeout(() => {
+        if (!tagAdded) {
+          const tagName = input.value.trim();
+          if (tagName) {
+            this.addTag(tagName, params);
+            tagAdded = true;
+          }
+        }
+        input.remove();
+        addBtn.style.display = 'inline-flex';
+      }, 200);
+    });
+  }
+
+  /**
+   * 删除标签（通过标签名而不是索引）
+   */
+  private removeTag(tagName: string, params: WordPressPostParams): void {
+    const index = this.editableTags.indexOf(tagName);
+    if (index > -1) {
+      this.editableTags.splice(index, 1);
+      // 同步到 params
+      params.tags = [...this.editableTags];
+      this.refreshTagsPreview(params);
+    }
+  }
+
+  /**
+   * 添加标签
+   */
+  private addTag(tagName: string, params: WordPressPostParams): void {
+    const trimmed = tagName.trim();
+    if (!trimmed) return;
+
+    // 去重检查
+    if (this.editableTags.includes(trimmed)) {
+      new Notice(this.plugin.t('publishModal_tagExists') || '标签已存在');
+      return;
+    }
+
+    this.editableTags.push(trimmed);
+    // 同步到 params
+    params.tags = [...this.editableTags];
+    this.refreshTagsPreview(params);
+
+    // 提示标签已添加
+    new Notice(this.plugin.t('publishModal_tagAdded') || '标签已添加');
+  }
+
+  /**
+   * 刷新标签预览
+   */
+  private refreshTagsPreview(params: WordPressPostParams): void {
+    if (!this.tagsContainer) return;
+    const card = this.tagsContainer.parentElement;
+    if (!card) return;
+    this.renderTagsPreview(card, params);
   }
 
   private renderArticlePreview(card: HTMLElement): void {
@@ -1637,6 +2173,11 @@ Consider migrating to REST API for better security and feature support.
 
     // Pass edited content via params, NOT via frontmatter
     params.content = this.editableContent;
+
+    // 同步可编辑标签到发布参数
+    if (this.editableTags.length > 0) {
+      params.tags = [...this.editableTags];
+    }
 
     // 隐藏模态窗口，显示全屏进度条
     this.modalEl.style.display = 'none';

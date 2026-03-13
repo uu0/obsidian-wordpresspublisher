@@ -113,7 +113,8 @@ export class FrontmatterConflictModal extends Modal {
       postType: this.plugin.t('conflictModal_fieldPostType'),
       categories: this.plugin.t('conflictModal_fieldCategories'),
       slug: this.plugin.t('conflictModal_fieldSlug'),
-      tags: this.plugin.t('conflictModal_fieldTags')
+      tags: this.plugin.t('conflictModal_fieldTags'),
+      featuredImageId: this.plugin.t('conflictModal_fieldFeaturedImageId')
     };
     return labels[field] || field;
   }

@@ -1,8 +1,8 @@
 # WordPress Publisher - Obsidian WordPress Plugin
 
-**Version**: 1.1.0
+**Version**: 1.2.0
 **Author**: uu0
-**Updated**: 2026-03-12
+**Updated**: 2026-03-14
 
 ## Project Background
 
@@ -163,6 +163,20 @@ This project uses the following open source projects. Special thanks to:
 Thanks to all open source community contributors!
 
 ## Changelog
+
+### 1.2.0 (2026-03-14)
+
+**New Features**
+- Category Selector: New tag-based category selector UI with current category display, delete functionality, and +button for adding categories
+- Publish As New: Added option to publish the same content as a new article
+- Featured Image Sync: Added featured image synchronization and conflict detection
+- Remote Image Loading: Added timeout and retry functionality with loading status indicator
+
+**Bug Fixes**
+- Fixed featured image not displaying on initial modal open
+- Fixed featurePicture/featuredImageId being cleared on republish
+- Fixed category showing "Uncategorized" after conflict resolution
+- Fixed preview tab position changing after deletion
 
 ### 1.1.0 (2026-03-12)
 

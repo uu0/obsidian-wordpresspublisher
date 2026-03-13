@@ -12,15 +12,13 @@
 .wp-publish-modal-v2 {
   padding: 12px 20px;
   width: 100%;
-  min-width: 600px;
-  max-width: 100%;
+  max-width: 800px;
   box-sizing: border-box;
 }
 
 /* 响应式布局 - 根据窗口大小自动调整 */
 @media (max-width: 600px) {
   .wp-publish-modal-v2 {
-    min-width: 100%;
     padding: 12px;
   }
 }
@@ -315,11 +313,11 @@
 }
 
 .wp-ai-button {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
   border: none;
   padding: 8px 16px;
-  border-radius: 6px;
+  border-radius: var(--radius-m, 6px);
   cursor: pointer;
   font-weight: 500;
   margin-top: 8px;
@@ -643,7 +641,7 @@
 }
 
 .featured-image-remove-btn:hover {
-  background: #e74c3c;
+  background: var(--text-error, var(--color-red, #e74c3c));
 }
 
 /* Featured Image Button Row */
@@ -694,6 +692,28 @@
   font-size: 1.2em;
   font-weight: 600;
   color: var(--text-normal);
+}
+
+.wp-preview-warning {
+  background: var(--background-modifier-error);
+  border-left: 4px solid var(--text-error);
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+}
+
+.wp-preview-warning strong {
+  display: block;
+  color: var(--text-error);
+  margin-bottom: 6px;
+  font-size: 0.95em;
+}
+
+.wp-preview-warning-desc {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.9em;
+  line-height: 1.5;
 }
 
 .wp-preview-editor-area {
@@ -899,7 +919,7 @@
 
 /* 发布成功按钮样式 */
 .wp-publish-success {
-  background: #27ae60 !important;
+  background: var(--text-success, var(--color-green, #27ae60)) !important;
   cursor: default !important;
 }
 
@@ -1039,8 +1059,8 @@
 .wp-publish-progress-fill {
   height: 100%;
   width: 30%;
-  background: linear-gradient(90deg, #6bcb77, #54a0ff);
-  border-radius: 3px;
+  background: var(--interactive-accent);
+  border-radius: var(--radius-s, 3px);
   animation: progressSlide 1.5s ease-in-out infinite;
 }
 
@@ -1094,7 +1114,7 @@
 .wp-error-title {
   font-size: 24px;
   font-weight: 600;
-  color: #ff6b6b;
+  color: var(--text-error, var(--color-red, #ff6b6b));
   margin-bottom: 12px;
 }
 
@@ -1124,12 +1144,12 @@
 }
 
 .wp-error-retry-btn {
-  background: #6bcb77;
-  color: white;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
 }
 
 .wp-error-retry-btn:hover {
-  background: #5ab366;
+  opacity: 0.9;
   transform: translateY(-2px);
 }
 
@@ -1234,4 +1254,420 @@
 
 .theme-dark .wp-category-add-btn {
   background: var(--background-secondary);
+}
+
+/* 可编辑标签容器 */
+.wp-preview-tags-editable {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 16px;
+  padding: 12px;
+  background: var(--background-primary);
+  border-radius: 6px;
+  border: 1px solid var(--background-modifier-border);
+}
+
+.wp-preview-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+/* 标签项 */
+.wp-tag-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  fontSize: 12px;
+  font-weight: 500;
+  cursor: default;
+  transition: all 0.2s ease;
+}
+
+.wp-tag-item:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.wp-tag-text {
+  user-select: none;
+}
+
+.wp-tag-remove {
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: bold;
+  line-height: 1;
+  opacity: 0.7;
+  transition: opacity 0.2s ease;
+}
+
+.wp-tag-remove:hover {
+  opacity: 1;
+}
+
+/* 添加标签按钮 */
+.wp-tag-add-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border-radius: 50%;
+  font-size: 18px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  line-height: 1;
+}
+
+.wp-tag-add-btn:hover {
+  transform: scale(1.1);
+  background-color: var(--interactive-accent-hover);
+}
+
+/* 标签输入框 */
+.wp-tag-input {
+  padding: 4px 10px;
+  font-size: 12px;
+  border: 1px solid var(--interactive-accent);
+  border-radius: 12px;
+  outline: none;
+  min-width: 120px;
+  background-color: var(--background-primary);
+  color: var(--text-normal);
+}
+
+.wp-tag-input:focus {
+  border-color: var(--interactive-accent);
+  box-shadow: 0 0 0 2px rgba(var(--interactive-accent-rgb), 0.2);
+}
+
+/* ==================== Phase 4: 移动端响应式优化 ==================== */
+
+/* 平板 (481px - 768px) */
+@media (max-width: 768px) {
+  .wp-publish-modal-v2 {
+    padding: 16px;
+  }
+
+  .wp-publish-card {
+    padding: 16px;
+    margin-bottom: 12px;
+  }
+
+  .wp-settings-section-title {
+    font-size: 1em;
+    margin-bottom: 12px;
+  }
+
+  /* 标签页优化 */
+  .wp-publish-tab-item {
+    padding: 10px 16px;
+    font-size: var(--font-ui-small, 13px);
+  }
+
+  /* 特色图片按钮 - 2列布局 */
+  .featured-image-btn-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .feature-btn {
+    width: 100%;
+    justify-content: center;
+    padding: 12px 16px;
+  }
+
+  /* 底部操作栏 */
+  .wp-publish-bottom-bar {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .wp-publish-bottom-bar button {
+    flex: 1 1 calc(50% - 8px);
+    min-width: 120px;
+  }
+}
+
+/* 大手机 (<= 480px) */
+@media (max-width: 480px) {
+  .wp-publish-modal-v2 {
+    padding: 12px;
+  }
+
+  .modal-header h1 {
+    font-size: 1.2em;
+  }
+
+  .wp-publish-card {
+    padding: 12px;
+    border-radius: var(--radius-m, 6px);
+  }
+
+  /* 标签页 - 更紧凑 */
+  .wp-publish-tabs {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .wp-publish-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .wp-publish-tab-item {
+    padding: 8px 12px;
+    font-size: var(--font-ui-small, 12px);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  /* 特色图片按钮 - 单列 */
+  .featured-image-btn-row {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .feature-btn {
+    width: 100%;
+    justify-content: center;
+    padding: 14px 16px;
+    font-size: 16px; /* 防止 iOS 缩放 */
+  }
+
+  /* 分类标签 */
+  .wp-category-tags-container {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .wp-category-tag {
+    width: 100%;
+    justify-content: space-between;
+    padding: 8px 12px;
+  }
+
+  .wp-category-add-control {
+    width: 100%;
+  }
+
+  .wp-category-dropdown {
+    width: 100%;
+  }
+
+  /* 底部操作栏 - 单列 */
+  .wp-publish-bottom-bar {
+    flex-direction: column;
+  }
+
+  .wp-publish-bottom-bar button {
+    width: 100%;
+    padding: 14px 20px;
+    font-size: 16px; /* 防止 iOS 缩放 */
+  }
+
+  /* 发布进度 */
+  .wp-publish-progress-container {
+    padding: 24px 32px;
+    margin: 16px;
+    width: calc(100% - 32px);
+  }
+
+  .wp-publish-progress-text {
+    font-size: 16px;
+  }
+
+  /* 错误卡片 */
+  .wp-error-card {
+    padding: 24px;
+    margin: 16px;
+    max-width: calc(100% - 32px);
+  }
+
+  .wp-error-title {
+    font-size: 18px;
+  }
+
+  .wp-error-buttons {
+    flex-direction: column;
+  }
+
+  .wp-error-buttons button {
+    width: 100%;
+  }
+
+  /* 预览区域 */
+  .wp-preview-rendered {
+    padding: 12px;
+    max-height: 300px;
+  }
+
+  /* 表单输入框 - 触摸优化 */
+  .wp-settings-card .setting-item-control input[type="text"],
+  .wp-settings-card .setting-item-control textarea,
+  .wp-preview-textarea {
+    font-size: 16px !important; /* 防止 iOS 缩放 */
+    padding: 12px;
+  }
+
+  /* 标签输入 */
+  .wp-tag-input {
+    font-size: 16px;
+    min-width: 100px;
+  }
+
+  /* 高级设置 */
+  .wp-advanced-section {
+    padding: 12px;
+  }
+
+  .wp-advanced-card .setting-item-control textarea {
+    min-height: 100px;
+  }
+}
+
+/* 超小屏幕 (<= 360px) */
+@media (max-width: 360px) {
+  .wp-publish-modal-v2 {
+    padding: 8px;
+  }
+
+  .wp-publish-tab-item {
+    padding: 8px 10px;
+    font-size: 11px;
+  }
+
+  .wp-publish-card {
+    padding: 10px;
+  }
+
+  .feature-btn {
+    padding: 12px;
+    font-size: 13px;
+  }
+}
+
+/* ==================== 触摸设备优化 ==================== */
+@media (hover: none) and (pointer: coarse) {
+  /* 增大点击区域 */
+  .feature-btn,
+  .wp-publish-tab-item,
+  .wp-category-tag,
+  .wp-tag-item,
+  .wp-category-add-btn {
+    min-height: 44px; /* iOS 推荐最小触摸区域 */
+  }
+
+  /* 移除 hover 效果（触摸设备无意义） */
+  .wp-publish-card:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    transform: none;
+  }
+
+  .feature-btn:hover {
+    border-color: var(--background-modifier-border);
+    background: var(--background-primary);
+  }
+
+  /* 添加 active 状态替代 */
+  .feature-btn:active,
+  .wp-publish-tab-item:active {
+    transform: scale(0.98);
+    opacity: 0.9;
+  }
+}
+
+/* ==================== 横屏模式优化 ==================== */
+@media (max-height: 500px) and (orientation: landscape) {
+  .wp-publish-modal-v2 {
+    overflow-y: auto;
+    max-height: 100vh;
+  }
+
+  .wp-publish-container {
+    gap: 12px;
+  }
+
+  .wp-publish-card {
+    padding: 12px;
+    margin-bottom: 8px;
+  }
+
+  .featured-image-preview-large {
+    min-height: 100px;
+  }
+
+  .wp-preview-rendered {
+    max-height: 200px;
+  }
+}
+
+/* ==================== Phase 5: 动画与交互优化 ==================== */
+
+/* 无障碍支持 - 减少动画 */
+@media (prefers-reduced-motion: reduce) {
+  .wp-publish-card,
+  .wp-category-tag,
+  .wp-confetti,
+  .wp-publish-progress-fill,
+  .wp-spinner-cat,
+  .wp-error-icon,
+  .image-grid-item {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .wp-publish-card:hover,
+  .wp-category-tag:hover,
+  .feature-btn:hover,
+  .publish-btn:hover {
+    transform: none !important;
+  }
+}
+
+/* 焦点状态 - 键盘导航 */
+.feature-btn:focus-visible,
+.wp-publish-tab-item:focus-visible,
+.wp-category-tag:focus-visible,
+.wp-tag-item:focus-visible,
+.wp-category-add-btn:focus-visible,
+.wp-error-retry-btn:focus-visible,
+.wp-error-close-btn:focus-visible {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: 2px;
+}
+
+/* 按钮点击反馈 */
+.feature-btn:active,
+.publish-btn:active,
+.wp-category-tag:active {
+  transform: scale(0.98);
+}
+
+/* 加载状态优化 */
+.wp-loading-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--background-secondary) 25%,
+    var(--background-primary) 50%,
+    var(--background-secondary) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
