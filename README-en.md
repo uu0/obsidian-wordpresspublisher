@@ -1,6 +1,6 @@
 # WordPress Publisher - Obsidian WordPress Plugin
 
-**Version**: 1.2.0
+**Version**: 1.2.1
 **Author**: uu0
 **Updated**: 2026-03-14
 
@@ -163,6 +163,21 @@ This project uses the following open source projects. Special thanks to:
 Thanks to all open source community contributors!
 
 ## Changelog
+
+### 1.2.1 (2026-03-14)
+
+**Bug Fixes**
+- Fixed local featured image being overwritten by remote image when reopening the publish modal
+- Fixed cancelled featured image reappearing after closing and reopening the modal
+
+**Improvements**
+- Removed redundant `featurePicture` URL inconsistency check in preview; only `featuredImageId` presence is now checked
+- UI refactor: replaced hardcoded colors with CSS variables for better theme compatibility
+- Removed fixed minimum width; added responsive breakpoints (768px / 480px / 360px)
+- Touch device optimization (44px minimum touch target)
+- Added `prefers-reduced-motion` and `focus-visible` accessibility support
+- Plugin description updated to English
+- Build script now auto-syncs `manifest.json` to output and guards against Chinese characters
 
 ### 1.2.0 (2026-03-14)
 
