@@ -199,11 +199,92 @@ export class WpPublishModalV2 extends AbstractModal {
         return;
       }
       log.info('No cached feature picture found for post:', postId);
-      // 没有缓存，尝试从图片缓存恢复
+
+      // 缓存未命中，尝试从远程 WordPress 获取
+      const remoteImage = await this.loadFeaturePictureFromRemote(postId);
+      if (remoteImage) {
+        return; // 成功从远程加载
+      }
+
+      // 远程也没有，尝试从图片缓存恢复
       await this.loadCachedImage();
     } catch (e) {
       log.error('Failed to load feature picture from cache:', e);
       await this.loadCachedImage();
+    }
+  }
+
+  /**
+   * 从远程 WordPress 获取特色图片
+   * @param postId - 文章 ID
+   * @returns 是否成功加载
+   */
+  private async loadFeaturePictureFromRemote(postId: string | number): Promise<boolean> {
+    try {
+      log.info('Fetching featured image from remote WordPress:', postId);
+
+      // 获取当前配置文件
+      const profile = this.plugin.settings.profiles.find(p => p.isDefault);
+      if (!profile) {
+        log.warn('No default profile found');
+        return false;
+      }
+
+      // 创建临时客户端
+      const { getWordPressClient } = await import('./wp-clients');
+      const client = getWordPressClient(this.plugin, profile);
+      if (!client) {
+        log.warn('Failed to create WordPress client');
+        return false;
+      }
+
+      // 检查客户端是否有 getPost 方法（AbstractWpClient 的子类）
+      if (!('getPost' in client)) {
+        log.warn('Client does not support getPost method');
+        return false;
+      }
+
+      // 获取认证信息
+      const auth = {
+        username: profile.username || null,
+        password: profile.password || null
+      };
+
+      // 获取文章信息
+      const post = await (client as any).getPost(postId, auth);
+      if (!post) {
+        log.info('Post not found on remote');
+        return false;
+      }
+
+      // 提取特色图片信息
+      const featuredImageId = post.featured_media;
+      const featurePictureUrl = post._embedded?.['wp:featuredmedia']?.[0]?.source_url;
+
+      if (!featurePictureUrl || !featuredImageId) {
+        log.info('No featured image found on remote post');
+        return false;
+      }
+
+      log.info('Found featured image on remote:', { featuredImageId, featurePictureUrl });
+
+      // 更新缓存
+      await this.plugin.featurePictureCacheManager.set(
+        postId,
+        featurePictureUrl,
+        featuredImageId
+      );
+
+      // 保存 featuredImageId
+      this.cachedFeaturedImageId = featuredImageId;
+
+      // 加载图片
+      await this.loadFeaturePictureFromUrl(featurePictureUrl);
+
+      return true;
+    } catch (e) {
+      log.error('Failed to load featured image from remote:', e);
+      return false;
     }
   }
 
