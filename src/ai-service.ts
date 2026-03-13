@@ -6,7 +6,19 @@ const log = createModuleLogger('AIService');
 export interface AIConfig {
   provider: 'openai' | 'claude';
   baseURL: string;
-  apiKey: string;
+  /**
+   * API key for the AI service (runtime only, never persisted as plaintext).
+   * Optional because on-disk representation uses encryptedApiKey instead.
+   */
+  apiKey?: string;
+  /**
+   * Encrypted API key stored on disk.
+   */
+  encryptedApiKey?: {
+    encrypted: string;
+    key?: string;
+    vector?: string;
+  };
   model: string;
 }
 
@@ -207,6 +219,9 @@ export class AIService {
       return { valid: false, error: 'Invalid or missing model' };
     }
 
+    // apiKey is guaranteed non-empty by the guard above
+    const apiKey = config.apiKey!;
+
     try {
       if (config.provider === 'openai') {
         const baseURL = config.baseURL.replace(/\/+$/, '');
@@ -217,7 +232,7 @@ export class AIService {
 
         await apiRequestWithRetry(
           `${baseURL}${endpoint}`,
-          { 'Authorization': `Bearer ${config.apiKey}` },
+          { 'Authorization': `Bearer ${apiKey}` },
           requestBody,
           { ...this.options, maxRetries: 1 } // Only try once for validation
         );
@@ -228,7 +243,7 @@ export class AIService {
         await apiRequestWithRetry(
           `${baseURL}/messages`,
           {
-            'x-api-key': config.apiKey,
+            'x-api-key': apiKey,
             'anthropic-version': '2023-06-01'
           },
           {
@@ -257,6 +272,7 @@ export class AIService {
     const opts = { ...this.options, ...options };
     const config = this.config.textAI;
     const baseURL = config.baseURL.replace(/\/+$/, '');
+    const apiKey = config.apiKey ?? '';
 
     log.debug('Generating text', { provider: config.provider, model: config.model });
 
@@ -264,7 +280,7 @@ export class AIService {
       if (config.provider === 'openai') {
         const data = await apiRequestWithRetry(
           `${baseURL}/chat/completions`,
-          { 'Authorization': `Bearer ${config.apiKey}` },
+          { 'Authorization': `Bearer ${apiKey}` },
           {
             model: config.model,
             messages: [{ role: 'user', content: prompt }],
@@ -291,7 +307,7 @@ export class AIService {
         const data = await apiRequestWithRetry(
           `${baseURL}/messages`,
           {
-            'x-api-key': config.apiKey,
+            'x-api-key': apiKey,
             'anthropic-version': '2023-06-01'
           },
           {
@@ -338,6 +354,7 @@ export class AIService {
     const opts = { ...this.options, ...options };
     const config = this.config.imageAI;
     const baseURL = config.baseURL.replace(/\/+$/, '');
+    const apiKey = config.apiKey ?? '';
 
     log.debug('Generating image', { provider: config.provider, model: config.model });
 
@@ -345,7 +362,7 @@ export class AIService {
       if (config.provider === 'openai') {
         const data = await apiRequestWithRetry(
           `${baseURL}/images/generations`,
-          { 'Authorization': `Bearer ${config.apiKey}` },
+          { 'Authorization': `Bearer ${apiKey}` },
           {
             model: config.model,
             prompt: prompt,

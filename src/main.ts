@@ -198,6 +198,35 @@ export default class WordpressPlugin extends Plugin {
       }
     }
 
+    // Decrypt AI API keys
+    const aiConfig = this._settings?.aiConfig;
+    if (aiConfig) {
+      if (aiConfig.textAI?.encryptedApiKey) {
+        aiConfig.textAI.apiKey = await crypto.decrypt(
+          aiConfig.textAI.encryptedApiKey.encrypted,
+          aiConfig.textAI.encryptedApiKey.key,
+          aiConfig.textAI.encryptedApiKey.vector
+        );
+      }
+      if (aiConfig.imageAI?.encryptedApiKey) {
+        aiConfig.imageAI.apiKey = await crypto.decrypt(
+          aiConfig.imageAI.encryptedApiKey.encrypted,
+          aiConfig.imageAI.encryptedApiKey.key,
+          aiConfig.imageAI.encryptedApiKey.vector
+        );
+      }
+    }
+
+    // Decrypt Unsplash API key
+    const encryptedUnsplash = this._settings?.encryptedUnsplashAccessKey;
+    if (encryptedUnsplash) {
+      this._settings!.unsplashAccessKey = await crypto.decrypt(
+        encryptedUnsplash.encrypted,
+        encryptedUnsplash.key,
+        encryptedUnsplash.vector
+      );
+    }
+
     // Update markdown parser settings
     AppState.markdownParser.set({
       html: this._settings?.enableHtml ?? false
@@ -220,6 +249,24 @@ export default class WordpressPlugin extends Plugin {
         profile.encryptedPassword = await crypto.encrypt(password);
         delete profile.password;
       }
+    }
+
+    // Encrypt AI API keys before saving
+    if (settings.aiConfig) {
+      if (settings.aiConfig.textAI?.apiKey) {
+        settings.aiConfig.textAI.encryptedApiKey = await crypto.encrypt(settings.aiConfig.textAI.apiKey);
+        settings.aiConfig.textAI.apiKey = undefined;
+      }
+      if (settings.aiConfig.imageAI?.apiKey) {
+        settings.aiConfig.imageAI.encryptedApiKey = await crypto.encrypt(settings.aiConfig.imageAI.apiKey);
+        settings.aiConfig.imageAI.apiKey = undefined;
+      }
+    }
+
+    // Encrypt Unsplash API key before saving
+    if (settings.unsplashAccessKey) {
+      settings.encryptedUnsplashAccessKey = await crypto.encrypt(settings.unsplashAccessKey);
+      settings.unsplashAccessKey = undefined;
     }
 
     await this.saveData(settings);

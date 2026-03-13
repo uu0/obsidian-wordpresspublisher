@@ -87,9 +87,18 @@ export interface WordpressPluginSettings {
   aiConfig?: AIServiceConfig;
 
   /**
-   * Unsplash API access key for featured images.
+   * Unsplash API access key for featured images (runtime only, never persisted as plaintext).
    */
   unsplashAccessKey?: string;
+
+  /**
+   * Encrypted Unsplash API access key stored on disk.
+   */
+  encryptedUnsplashAccessKey?: {
+    encrypted: string;
+    key?: string;
+    vector?: string;
+  };
 
   /**
    * Auto-generate slug from title.

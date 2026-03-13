@@ -429,7 +429,7 @@ export class WordpressSettingTab extends PluginSettingTab {
       .addText(text => {
         text
           .setPlaceholder(t('settings_aiAPIKeyPlaceholder'))
-          .setValue(textAIConfig.apiKey)
+          .setValue(textAIConfig.apiKey ?? '')
           .onChange(async (value) => {
             if (!this.plugin.settings.aiConfig) {
               this.plugin.settings.aiConfig = {
@@ -547,7 +547,7 @@ export class WordpressSettingTab extends PluginSettingTab {
       .addText(text => {
         text
           .setPlaceholder(t('settings_aiAPIKeyPlaceholder'))
-          .setValue(imageAIConfig.apiKey)
+          .setValue(imageAIConfig.apiKey ?? '')
           .onChange(async (value) => {
             if (!this.plugin.settings.aiConfig) {
               this.plugin.settings.aiConfig = {
