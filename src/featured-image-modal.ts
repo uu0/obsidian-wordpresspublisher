@@ -157,6 +157,8 @@ export class FeaturedImageModal extends Modal {
     aiBtn.onclick = () => {
       if (!this.aiService) {
         new Notice(this.plugin.t('featuredImageModal_aiServiceRequired'));
+      } else if (!this.aiService.hasImageAIKey()) {
+        new Notice(this.plugin.t('notice_imageAIApiKeyRequired'));
       } else {
         this.openAIPicker();
       }

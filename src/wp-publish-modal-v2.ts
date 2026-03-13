@@ -917,6 +917,10 @@ export class WpPublishModalV2 extends AbstractModal {
       aiBtn.onclick = () => {
         new Notice(this.t('publishModal_imageAIRequired'));
       };
+    } else if (!this.aiService?.hasImageAIKey()) {
+      aiBtn.onclick = () => {
+        new Notice(this.t('notice_imageAIApiKeyRequired'));
+      };
     } else {
       aiBtn.onclick = () => this.generateAImage(params);
     }
@@ -1007,6 +1011,10 @@ export class WpPublishModalV2 extends AbstractModal {
       new Notice(this.t('publishModal_aiServiceRequired'));
       return;
     }
+    if (!this.aiService.hasImageAIKey()) {
+      new Notice(this.t('notice_imageAIApiKeyRequired'));
+      return;
+    }
 
     try {
       const imagePromptContent = await this.getImagePromptContent(params);
@@ -1060,6 +1068,10 @@ export class WpPublishModalV2 extends AbstractModal {
     // Generate summary first
     if (!this.aiService) {
       new Notice(this.t('notice_aiConfigRequired'));
+      return null;
+    }
+    if (!this.aiService.hasTextAIKey()) {
+      new Notice(this.t('notice_textAIApiKeyRequired'));
       return null;
     }
 
@@ -1186,6 +1198,12 @@ export class WpPublishModalV2 extends AbstractModal {
         slugSetting.addButton(btn => {
           btn.setButtonText(this.t('publishModal_slugAIButtonNeedConfig'))
             .setTooltip(this.t('publishModal_aiServiceRequired'))
+            .setDisabled(true);
+        });
+      } else if (!this.aiService?.hasTextAIKey()) {
+        slugSetting.addButton(btn => {
+          btn.setButtonText(this.t('publishModal_slugAIButtonNeedConfig'))
+            .setTooltip(this.t('notice_textAIApiKeyRequired'))
             .setDisabled(true);
         });
       } else {
@@ -2047,6 +2065,11 @@ Consider migrating to REST API for better security and feature support.
         summaryBtn.onclick = () => {
           new Notice(this.t('notice_aiConfigRequired'));
         };
+      } else if (!this.aiService.hasTextAIKey()) {
+        summaryBtn.addClass('disabled');
+        summaryBtn.onclick = () => {
+          new Notice(this.t('notice_textAIApiKeyRequired'));
+        };
       } else {
         summaryBtn.onclick = () => this.generateSummary(params);
       }
@@ -2056,6 +2079,11 @@ Consider migrating to REST API for better security and feature support.
         tagsBtn.addClass('disabled');
         tagsBtn.onclick = () => {
           new Notice(this.t('notice_aiConfigRequired'));
+        };
+      } else if (!this.aiService.hasTextAIKey()) {
+        tagsBtn.addClass('disabled');
+        tagsBtn.onclick = () => {
+          new Notice(this.t('notice_textAIApiKeyRequired'));
         };
       } else {
         tagsBtn.onclick = () => this.generateTags(params);
@@ -2097,6 +2125,10 @@ Consider migrating to REST API for better security and feature support.
       new Notice(this.t('publishModal_aiServiceRequired'));
       return;
     }
+    if (!this.aiService.hasTextAIKey()) {
+      new Notice(this.t('notice_textAIApiKeyRequired'));
+      return;
+    }
 
     const contentToUse = this.editableContent || this.articleContent;
     if (!contentToUse) {
@@ -2129,6 +2161,10 @@ Consider migrating to REST API for better security and feature support.
   private async generateTags(params: WordPressPostParams): Promise<void> {
     if (!this.aiService) {
       new Notice(this.t('notice_aiConfigRequired'));
+      return;
+    }
+    if (!this.aiService.hasTextAIKey()) {
+      new Notice(this.t('notice_textAIApiKeyRequired'));
       return;
     }
 

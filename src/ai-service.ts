@@ -199,6 +199,20 @@ export class AIService {
   }
 
   /**
+   * Returns true if the text AI has a non-empty API key configured.
+   */
+  hasTextAIKey(): boolean {
+    return !!this.config.textAI?.apiKey?.trim();
+  }
+
+  /**
+   * Returns true if the image AI has a non-empty API key configured.
+   */
+  hasImageAIKey(): boolean {
+    return !!this.config.imageAI?.apiKey?.trim();
+  }
+
+  /**
    * Validate AI configuration
    */
   async validateConfig(config: AIConfig, isImageModel: boolean = false): Promise<{ valid: boolean; error?: string }> {
