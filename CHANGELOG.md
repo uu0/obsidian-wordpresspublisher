@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.2.1] (2026-03-14)
+
+### Bug Fixes
+
+* 修复本地选择的特色图片被远端图片覆盖的问题：打开发布界面时优先使用本地 ImageCache，不再被远端缓存或 WordPress 远程图片覆盖
+* 修复点击"取消"移除特色图片后，关闭再打开发布界面图片仍重新出现的问题：取消时同步清除本地 ImageCache
+
+### Improvements
+
+* 移除预览界面中 `featurePicture` URL 不一致检测，保留 `featuredImageId` 存在性检测，使预览更简洁
+* UI 重构：使用 CSS 变量替换硬编码颜色，提升主题兼容性
+* 移除固定最小宽度限制，添加响应式断点（768px / 480px / 360px）
+* 触屏设备优化（最小触控区域 44px）
+* 添加 `prefers-reduced-motion` 和 `focus-visible` 无障碍支持
+
 ## [1.2.0] (2026-03-13)
 
 
