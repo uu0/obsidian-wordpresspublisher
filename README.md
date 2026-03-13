@@ -4,7 +4,7 @@
 
 **Version**: 1.2.0
 **Author**: uu0
-**Last Updated**: 2026-03-14
+**Last Updated**: 2026-03-13
 
 ## About This Project
 
@@ -169,19 +169,20 @@ Thanks to all open-source community contributors!
 
 ## Changelog
 
-### 1.2.0 (2026-03-14)
+### 1.2.0 (2026-03-13)
 
 **New Features**
-- Category Selector: New tag-based category selector UI with current category display, delete functionality, and +button for adding categories
-- Publish As New: Added option to publish the same content as a new article
-- Featured Image Sync: Added featured image synchronization and conflict detection
-- Remote Image Loading: Added timeout and retry functionality with loading status indicator
+- Added inline tags support, using #tag# format in notes
+- Added "Publish as New" feature, allows choosing between updating remote posts or publishing as a completely new article
+- Enhanced API capability analysis with XML-RPC protocol support
+- Changed default tag format to YAML array format
 
 **Bug Fixes**
-- Fixed featured image not displaying on initial modal open
-- Fixed featurePicture/featuredImageId being cleared on republish
-- Fixed category showing "Uncategorized" after conflict resolution
-- Fixed preview tab position changing after deletion
+- Fixed category selection being overwritten when publishing posts
+- Fixed posts becoming uncategorized after publishing when different category was selected
+- Fixed featurePicture and featuredImageId being lost in frontmatter during republish
+- Improved category handling logic and user interface
+- Improved media upload error handling with clearer error messages
 
 ### 1.1.0 (2026-03-12)
 

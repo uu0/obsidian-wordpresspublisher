@@ -334,15 +334,15 @@ export abstract class AbstractWordPressClient implements WordPressClient {
             fm.postId = postId;
             // 3. postType
             fm.postType = postParams.postType;
-            // 4. categories (single string, not array)
+            // 4. categories (array format)
             if (postParams.postType === PostTypeConst.Post) {
               // Write category names instead of IDs
               const categoryNames = postParams.categories.map(catId => {
                 const term = this.categoriesList.find(t => String(t.id) === String(catId));
                 return term ? term.name : String(catId);
               });
-              // Use first category as single string
-              fm.categories = categoryNames[0] || '';
+              // Use array format for categories
+              fm.categories = categoryNames.length > 0 ? categoryNames : [];
             }
             // 5. slug
             fm.slug = postParams.slug || '';
