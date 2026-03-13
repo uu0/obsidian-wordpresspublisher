@@ -1235,3 +1235,96 @@
 .theme-dark .wp-category-add-btn {
   background: var(--background-secondary);
 }
+
+/* 可编辑标签容器 */
+.wp-preview-tags-editable {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 16px;
+  padding: 12px;
+  background: var(--background-primary);
+  border-radius: 6px;
+  border: 1px solid var(--background-modifier-border);
+}
+
+.wp-preview-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+/* 标签项 */
+.wp-tag-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  fontSize: 12px;
+  font-weight: 500;
+  cursor: default;
+  transition: all 0.2s ease;
+}
+
+.wp-tag-item:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.wp-tag-text {
+  user-select: none;
+}
+
+.wp-tag-remove {
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: bold;
+  line-height: 1;
+  opacity: 0.7;
+  transition: opacity 0.2s ease;
+}
+
+.wp-tag-remove:hover {
+  opacity: 1;
+}
+
+/* 添加标签按钮 */
+.wp-tag-add-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border-radius: 50%;
+  font-size: 18px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  line-height: 1;
+}
+
+.wp-tag-add-btn:hover {
+  transform: scale(1.1);
+  background-color: var(--interactive-accent-hover);
+}
+
+/* 标签输入框 */
+.wp-tag-input {
+  padding: 4px 10px;
+  font-size: 12px;
+  border: 1px solid var(--interactive-accent);
+  border-radius: 12px;
+  outline: none;
+  min-width: 120px;
+  background-color: var(--background-primary);
+  color: var(--text-normal);
+}
+
+.wp-tag-input:focus {
+  border-color: var(--interactive-accent);
+  box-shadow: 0 0 0 2px rgba(var(--interactive-accent-rgb), 0.2);
+}

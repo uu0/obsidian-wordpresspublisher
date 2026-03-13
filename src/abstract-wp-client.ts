@@ -131,7 +131,8 @@ export abstract class AbstractWordPressClient implements WordPressClient {
         categories: this.extractCategoryNames(post.categories || []),
         slug: post.slug || '',
         tags: this.extractTagNames(post.tags || []),
-        excerpt: post.excerpt?.rendered || post.excerpt || ''
+        excerpt: post.excerpt?.rendered || post.excerpt || '',
+        featuredImageId: post.featured_media || undefined
       };
     } catch (error) {
       console.error('[fetchRemotePostData] Error fetching remote post:', error);

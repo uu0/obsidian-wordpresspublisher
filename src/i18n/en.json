@@ -294,6 +294,7 @@
   "conflictModal_fieldCategories": "Categories",
   "conflictModal_fieldSlug": "URL Slug",
   "conflictModal_fieldTags": "Tags",
+  "conflictModal_fieldFeaturedImageId": "Featured Image",
   "conflictModal_emptyValue": "(empty)",
   "notice_createCategoryFailed": "Failed to create category \"<%= name %>\": <%= error %>",
   "notice_duplicateFrontmatter": "⚠️ Duplicate fields in frontmatter: <%= fields %>, please check manually",

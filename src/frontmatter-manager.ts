@@ -31,6 +31,7 @@ export interface RemotePostData {
   slug: string;
   tags: string[];
   excerpt?: string;
+  featuredImageId?: number;
 }
 
 /**
@@ -188,6 +189,16 @@ export class FrontmatterManager {
         field: 'tags',
         localValue: localTags,
         remoteValue: remoteTags
+      });
+    }
+
+    // Check featured image ID
+    if (localMatter.featuredImageId && remoteData.featuredImageId &&
+        Number(localMatter.featuredImageId) !== Number(remoteData.featuredImageId)) {
+      conflicts.push({
+        field: 'featuredImageId',
+        localValue: localMatter.featuredImageId,
+        remoteValue: remoteData.featuredImageId
       });
     }
 

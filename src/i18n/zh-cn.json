@@ -294,6 +294,7 @@
   "conflictModal_fieldCategories": "分类",
   "conflictModal_fieldSlug": "URL 别名",
   "conflictModal_fieldTags": "标签",
+  "conflictModal_fieldFeaturedImageId": "特色图片",
   "conflictModal_emptyValue": "(空)",
   "notice_createCategoryFailed": "无法创建分类 \"<%= name %>\": <%= error %>",
   "notice_duplicateFrontmatter": "⚠️ Frontmatter 中存在重复字段: <%= fields %>，请手动检查",
