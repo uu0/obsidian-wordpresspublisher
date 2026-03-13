@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.2.2] (2026-03-14)
+
+### Security
+
+* AI API Key（文本 AI / 图片生成 AI）和 Unsplash API Key 改为使用 AES-256-GCM 加密后存储，与 WordPress 密码保持一致；旧版明文配置在首次保存后自动迁移加密
+* 新增 `AIService.hasTextAIKey()` / `hasImageAIKey()` helper，所有 AI 功能入口在未填写 API Key 时显示友好提示而非触发 HTTP 401 错误
+
+### Bug Fixes
+
+* 修复 AI apiConfig 存在但 API Key 为空时，生成摘要 / 生成标签 / Slug AI 翻译 / AI 生成图片按钮绕过防护直接发请求的问题
+* 生成摘要、生成标签、Slug 翻译按钮在 API Key 未填时自动置灰并展示提示
+
 ## [1.2.1] (2026-03-14)
 
 ### Bug Fixes
