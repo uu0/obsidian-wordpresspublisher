@@ -2,6 +2,75 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.3.0] (2026-03-14)
+
+### Major Features - Complete UI Refactor
+
+#### 🎨 Modern Tab-Based Interface
+* Complete redesign with Settings, Preview, and AI Assistant tabs
+* Smooth tab transitions with state persistence
+* Enhanced state management across all tabs
+* Responsive design adapting to different screen sizes
+
+#### 🤖 AI-Powered Content Enhancement
+* **AI Featured Image Generation**: Generate unique images based on content using AI
+* **Unsplash Integration**: Search and select from millions of free, high-quality photos
+* **Vault Image Browser**: Browse and select images from your Obsidian vault
+* **AI Excerpt Generation**: Automatically generate content summaries
+* **AI Tag Suggestions**: Context-aware tag generation based on content analysis
+* **Multi-language Support**: Seamless support for English and Chinese content
+
+#### 🖼️ Advanced Image Management
+* **Intelligent Caching System**: Per-note image caching with source tracking
+* **Multiple Image Sources**: Support for AI, Unsplash, Vault, local upload, and cached images
+* **Cache Management**: Automatic cache invalidation and manual clearing
+* **Source Tracking**: Track image origin (AI, Unsplash, Vault, cached)
+* Reduces API calls and generation time through smart caching
+
+#### 📝 Live Preview & Editing
+* **Real-time Preview**: Live HTML preview of your content
+* **Inline Editing**: Edit preview content directly in the modal
+* **Tag Management**: Add, edit, and remove tags with visual feedback
+* **Edit Mode Toggle**: Switch between view and edit modes seamlessly
+* **Live Updates**: Real-time preview updates as you edit
+
+#### ✨ Visual Enhancements & Micro-interactions
+* **Button Effects**: Ripple effects, hover states, smooth transitions
+* **Loading States**: Skeleton screens, progress indicators, pulse animations
+* **Visual Feedback**: Success/error messages with slide-in animations
+* **Focus Enhancements**: Clear visual feedback for input fields
+* **Tooltip System**: Contextual help throughout the interface
+* **Card Hover Effects**: Elevation and shadow effects on hover
+
+#### ♿ Accessibility & UX Improvements
+* **Keyboard Navigation**: Full keyboard support with logical tab order
+* **Screen Reader Support**: ARIA labels and announcements
+* **High Contrast**: Sufficient color contrast for readability
+* **Smooth Scrolling**: Animated scrolling to relevant sections
+* **Responsive Design**: Adapts to different screen sizes and themes
+
+### Technical Improvements
+
+* Added `ImageCacheManager` for intelligent image caching
+* Implemented comprehensive tab state management system
+* Created modular AI service integration architecture
+* Enhanced preview rendering with edit capabilities
+* Added ripple effect and tooltip helper methods
+* Improved CSS with animations and transitions
+* Better error handling and user feedback
+* Optimized performance through caching and efficient DOM updates
+
+### Documentation
+
+* Added comprehensive [UI Refactor Guide](docs/UI-REFACTOR-GUIDE.md)
+* Added detailed [Testing Checklist](docs/TESTING-CHECKLIST.md)
+* Updated README with new features and usage instructions
+* Added migration guide from v1.2.x to v1.3.0
+
+### Breaking Changes
+
+None - v1.3.0 maintains full backward compatibility with v1.2.x settings and workflows.
+
 ## [1.2.2] (2026-03-14)
 
 ### Security

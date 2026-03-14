@@ -2,7 +2,7 @@
 
 [English](README.md) | [简体中文](README_zh.md)
 
-**Version**: 1.2.2
+**Version**: 1.3.0
 **Author**: uu0
 **Last Updated**: 2026-03-14
 
@@ -11,11 +11,13 @@
 This project is a deep refactor and feature extension based on [obsidian-wordpress](https://github.com/devbean/obsidian-wordpress). While preserving the core WordPress publishing functionality, we've added a modern publishing interface, intelligent slug generation, featured image selection, AI service integration, and completely refactored the codebase architecture.
 
 **Key Extensions**:
-- Brand new visual publishing interface with post/page type selection, category management, and status control
-- Intelligent slug generation system (Pinyin conversion / AI translation dual modes)
-- Three featured image options (local images / Unsplash search / AI generation)
-- OpenAI / Claude AI service integration with auto-summary and smart translation
-- Modern UI design with dark theme and glassmorphism effects
+- 🎨 **Modern Tab-Based Interface**: Complete UI refactor with Settings/Preview/AI Assistant tabs
+- 🤖 **AI-Powered Features**: Featured image generation, auto-excerpt, smart tag suggestions
+- 🖼️ **Advanced Image Management**: AI generation, Unsplash integration, vault browser, intelligent caching
+- 📝 **Live Preview & Editing**: Real-time preview with inline editing capabilities
+- ✨ **Enhanced UX**: Micro-interactions, smooth animations, visual feedback
+- 🔗 **Intelligent Slug Generation**: Pinyin conversion / AI translation dual modes
+- 🎯 **Smart Content Enhancement**: Auto-summary and context-aware tag generation
 
 ## Overview
 
@@ -23,12 +25,35 @@ WordPress Publisher is a powerful Obsidian plugin that enables one-click publish
 
 ## Core Features
 
+### 🎨 Modern Tab-Based Interface (v1.3.0)
+
+- **Settings Tab**: Core publishing configuration with intuitive form layout
+- **Preview Tab**: Live HTML preview with inline editing capabilities
+- **AI Assistant Tab**: AI-powered content generation and enhancement
+- **Smooth Transitions**: Animated tab switching with state persistence
+- **Responsive Design**: Adapts to different screen sizes
+
+### 🤖 AI-Powered Content Enhancement
+
+#### Featured Image Generation
+- **AI Generation**: Create images based on your content using AI
+- **Unsplash Integration**: Search millions of free, high-quality photos
+- **Vault Browser**: Select from images already in your Obsidian vault
+- **Smart Caching**: Automatically cache generated images for reuse
+- **Multiple Sources**: Switch between AI, Unsplash, vault, or local upload
+
+#### Content Generation
+- **Auto Excerpt**: AI-generated summaries of your content
+- **Smart Tags**: Context-aware tag suggestions based on content analysis
+- **Multi-language Support**: Works seamlessly with English and Chinese content
+
 ### 📝 Content Publishing
 
 - **Dual Type Support**: Publish as posts or pages
 - **Category Management**: Select WordPress categories and tags
 - **Status Control**: Draft, pending review, published, and more
-- **Live Preview**: Preview all settings before publishing
+- **Live Preview**: Real-time preview with editing capabilities
+- **Inline Editing**: Edit content, tags, and metadata directly in preview
 
 ### 🔗 Intelligent Slug Generation
 
@@ -36,13 +61,22 @@ WordPress Publisher is a powerful Obsidian plugin that enables one-click publish
 - **AI Translation Mode**: Uses AI to translate Chinese to English slugs (e.g., "减脂食谱" → "weight-loss-recipes")
 - **Manual Editing**: Edit auto-generated slugs in the publishing interface
 
-### 🖼️ Featured Images
+### 🖼️ Advanced Image Management
 
-Three ways to set featured images:
+Multiple ways to set featured images:
 
-1. **Local Images**: Select from file system or Obsidian vault
-2. **Unsplash**: Search and download free high-quality images
-3. **AI Generation**: Auto-generate images based on article content
+1. **AI Generation**: Generate unique images based on your content
+2. **Unsplash Search**: Browse and select from millions of free photos
+3. **Vault Browser**: Choose from images in your Obsidian vault
+4. **Local Upload**: Upload images from your file system
+5. **Smart Caching**: Previously generated/selected images are cached per note
+
+**Cache Features**:
+- Automatic caching of generated images
+- Per-note cache association
+- Source tracking (AI, Unsplash, Vault)
+- Manual cache clearing
+- Reduces API calls and generation time
 
 ### 🤖 AI Service Integration
 
@@ -51,12 +85,14 @@ Three ways to set featured images:
 - **Features**: Auto-generate summaries, translate slugs, generate image prompts
 - **API Compatibility**: Supports custom Base URLs for regional mirrors
 
-### 💎 Modern Interface
+### 💎 Enhanced User Experience
 
-- Card-based layout with split-pane design
-- Glassmorphism background effects
-- Smooth animation transitions
-- Dark theme support
+- **Micro-interactions**: Ripple effects, hover states, smooth transitions
+- **Visual Feedback**: Loading states, progress indicators, success/error messages
+- **Keyboard Navigation**: Full keyboard support with logical tab order
+- **Accessibility**: ARIA labels, screen reader support, high contrast
+- **Responsive Design**: Adapts to different screen sizes and themes
+- **Dark Theme Support**: Seamless integration with Obsidian's theme system
 
 ## Installation
 
@@ -117,11 +153,62 @@ Model Name: gpt-3.5-turbo / claude-3-sonnet
 
 ## Usage
 
-1. **Write Content**: Create Markdown document in Obsidian
-2. **Open Publishing Interface**: Click plugin icon or use command palette
-3. **Fill Information**: Title, categories, status, etc.
-4. **Select Featured Image** (optional): Local/Unsplash/AI generation
-5. **Publish**: Click publish button and wait for completion
+### Quick Start
+
+1. **Write Content**: Create your Markdown document in Obsidian
+2. **Open Publishing Interface**: Click the plugin icon or use command palette
+3. **Configure Settings**:
+   - Switch to Settings tab to configure title, slug, categories, status
+   - Switch to Preview tab to review and edit content
+   - Switch to AI Assistant tab to generate images, excerpts, or tags
+4. **Publish**: Click the publish button and wait for completion
+
+### Using AI Features
+
+#### Generate Featured Image
+
+1. Open the AI Assistant tab
+2. Click "Featured Image" sub-tab
+3. Choose your preferred method:
+   - **AI Generate**: Click "Generate with AI" for AI-created image
+   - **Unsplash**: Search for free photos
+   - **Vault**: Browse images in your vault
+   - **Upload**: Upload from your computer
+4. Generated/selected images are automatically cached
+
+#### Generate Excerpt
+
+1. Open the AI Assistant tab
+2. Click "Excerpt" sub-tab
+3. Click "Generate Excerpt"
+4. Review and edit the generated summary
+5. Click "Use This Excerpt" to apply
+
+#### Generate Tags
+
+1. Open the AI Assistant tab
+2. Click "Tags" sub-tab
+3. Click "Generate Tags"
+4. Review suggested tags
+5. Click individual tags to add them
+6. Edit or remove tags as needed
+
+### Preview and Edit
+
+1. Switch to the Preview tab
+2. Review the rendered HTML content
+3. Click "Edit" to enable inline editing
+4. Make changes directly in the preview
+5. Click "Save" to apply changes
+6. Edit tags by clicking on them
+
+### Image Caching
+
+- First-time generated/selected images are cached per note
+- Reopen the modal to see cached images
+- Click "Use Cached" to reuse previous image
+- Click "Generate New" to create a fresh image
+- Cache persists across sessions
 
 ## Project Structure
 
@@ -130,16 +217,50 @@ src/
 ├── ai-service.ts              # AI service module
 ├── slug-generator.ts          # Slug generation utilities
 ├── unsplash-service.ts        # Unsplash integration
+├── image-cache-manager.ts     # Image caching system
 ├── featured-image-modal.ts    # Featured image selector
-├── wp-publish-modal-v2.ts     # Publishing interface
+├── wp-publish-modal-v2.ts     # Modern publishing interface (v1.3.0)
 ├── plugin-settings.ts         # Settings definitions
 └── i18n/                      # Internationalization
     ├── en.json                # English translations
     └── zh-cn.json             # Chinese translations
 
-styles.css                     # UI styles
+docs/
+├── UI-REFACTOR-GUIDE.md       # Complete UI refactor documentation
+└── TESTING-CHECKLIST.md       # Comprehensive testing checklist
+
+styles.css                     # UI styles with animations
 manifest.json                  # Plugin manifest
 ```
+
+## Documentation
+
+- **[UI Refactor Guide](docs/UI-REFACTOR-GUIDE.md)**: Complete guide to the v1.3.0 UI refactor, including architecture, features, and migration
+- **[Testing Checklist](docs/TESTING-CHECKLIST.md)**: Comprehensive testing checklist for all features
+- **[README 中文](README_zh.md)**: Chinese version of this README
+
+## What's New in v1.3.0
+
+### Major Features
+- ✅ Complete UI refactor with modern tab-based interface
+- ✅ AI-powered featured image generation
+- ✅ Unsplash integration for free photos
+- ✅ Vault image browser
+- ✅ Intelligent image caching system
+- ✅ AI excerpt generation
+- ✅ AI tag suggestions
+- ✅ Live preview with inline editing
+- ✅ Enhanced visual feedback and micro-interactions
+
+### Improvements
+- Better state management across tabs
+- Improved error handling and user feedback
+- Optimized performance with caching
+- Enhanced accessibility
+- Smoother animations and transitions
+- Better keyboard navigation
+
+See [UI Refactor Guide](docs/UI-REFACTOR-GUIDE.md) for detailed information.
 
 ## Important Notes
 
