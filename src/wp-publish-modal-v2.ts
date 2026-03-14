@@ -1,4 +1,4 @@
-import { Setting, Notice, TFile, requestUrl } from 'obsidian';
+import { Setting, Notice, TFile, requestUrl, setIcon } from 'obsidian';
 import { toNumber } from 'lodash-es';
 import { format, parse } from 'date-fns';
 import IMask, { DynamicMaskType, InputMask } from 'imask';
@@ -19,6 +19,7 @@ import { ImageCacheManager, CachedFeaturedImage } from './image-cache-manager';
 import { createModuleLogger } from './utils/logger';
 import { TagFormatter } from './tag-formatter';
 import { getApiCapabilities, getApiLimitations, getApiRecommendation } from './api-capability';
+import { TranslateKey } from './i18n';
 
 const log = createModuleLogger('WpPublishModalV2');
 
@@ -1000,14 +1001,27 @@ export class WpPublishModalV2 extends AbstractModal {
     modal.open();
   }
 
+  /**
+   * 为 Setting 添加信息按钮
+   */
+  private addInfoButton(setting: Setting, infoKey: TranslateKey): void {
+    setting.addExtraButton(btn => {
+      btn.setIcon('info')
+        .setTooltip(this.t(infoKey))
+        .onClick(() => {
+          new Notice(this.t(infoKey), 5000);
+        });
+      btn.extraSettingsEl.addClass('wp-info-button');
+    });
+  }
+
   private renderBasicSettings(container: HTMLElement, params: WordPressPostParams): void {
     const card = container.createDiv('wp-settings-card');
     card.createEl('h3', { text: this.plugin.t('publishModal_basicSettings'), cls: 'wp-settings-section-title' });
 
     // 标题
-    new Setting(card)
+    const titleSetting = new Setting(card)
       .setName(this.t('publishModal_titleName'))
-      .setDesc(this.t('publishModal_titleDesc'))
       .addText(text => {
         this.titleInput = text.inputEl;
         text.setPlaceholder(this.t('publishModal_titlePlaceholder'))
@@ -1043,10 +1057,12 @@ export class WpPublishModalV2 extends AbstractModal {
         });
       });
 
+    // 添加标题信息按钮
+    this.addInfoButton(titleSetting, 'publishModal_titleInfo');
+
     // Slug
     const slugSetting = new Setting(card)
-      .setName(this.t('publishModal_slugName'))
-      .setDesc(this.t('publishModal_slugDesc'));
+      .setName(this.t('publishModal_slugName'));
 
     // Track the initial slug value to detect manual edits
     const initialSlugValue = params.slug;
@@ -1112,6 +1128,9 @@ export class WpPublishModalV2 extends AbstractModal {
       }
     }
 
+    // 添加 Slug 信息按钮
+    this.addInfoButton(slugSetting, 'publishModal_slugInfo');
+
     // 分类（仅Post类型）
     // 先过滤掉空值的分类项
     const validCategories = this.categories.items.filter(it => it.name && it.name.trim());
@@ -1119,8 +1138,18 @@ export class WpPublishModalV2 extends AbstractModal {
     if (params.postType === PostTypeConst.Post && validCategories.length > 0) {
       // 创建分类设置标题（不使用 Setting 组件，避免移动端布局问题）
       const categoryHeader = card.createDiv('wp-category-header');
-      categoryHeader.createEl('div', { cls: 'setting-item-name', text: this.t('publishModal_categoryName') });
-      categoryHeader.createEl('div', { cls: 'setting-item-description', text: this.t('publishModal_categoryDesc') });
+
+      // 创建标题行容器
+      const titleRow = categoryHeader.createDiv('wp-category-title-row');
+      titleRow.createEl('div', { cls: 'setting-item-name', text: this.t('publishModal_categoryName') });
+
+      // 创建信息按钮
+      const infoBtn = titleRow.createEl('button', { cls: 'wp-info-button clickable-icon' });
+      infoBtn.setAttribute('aria-label', this.t('publishModal_categoryInfo'));
+      setIcon(infoBtn, 'info');
+      infoBtn.addEventListener('click', () => {
+        new Notice(this.t('publishModal_categoryInfo'), 5000);
+      });
 
       // 创建分类标签容器
       const tagsContainer = document.createElement('div');

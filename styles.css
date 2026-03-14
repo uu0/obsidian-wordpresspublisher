@@ -1211,21 +1211,43 @@
 
 /* ==================== 分类标签选择器样式 ==================== */
 
+/* 信息按钮样式 */
+.wp-info-button {
+  padding: 4px;
+  margin-left: 6px;
+  opacity: 0.6;
+  transition: opacity 0.2s ease;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+}
+
+.wp-info-button:hover {
+  opacity: 1;
+  color: var(--interactive-accent);
+}
+
+.wp-info-button svg {
+  width: 16px;
+  height: 16px;
+}
+
 /* 分类标题容器 */
 .wp-category-header {
   margin-bottom: 12px;
 }
 
+/* 分类标题行（包含标题和信息按钮） */
+.wp-category-title-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
 .wp-category-header .setting-item-name {
   font-weight: 500;
   color: var(--text-normal);
-  margin-bottom: 4px;
-}
-
-.wp-category-header .setting-item-description {
-  font-size: 0.85em;
-  color: var(--text-muted);
-  margin-bottom: 8px;
 }
 
 .wp-category-tags-container {
