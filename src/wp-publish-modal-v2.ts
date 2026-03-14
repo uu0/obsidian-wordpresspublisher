@@ -80,6 +80,15 @@ function detectLanguage(text: string): 'zh' | 'en' | 'other' {
  * Get localized prompt based on language
  */
 function getLocalizedPrompt(plugin: WordpressPlugin, language: 'zh' | 'en' | 'other', type: 'summary' | 'tags' | 'image'): string {
+  // Check if user has custom prompt in settings
+  if (type === 'summary' && plugin.settings.summaryPrompt) {
+    return plugin.settings.summaryPrompt;
+  } else if (type === 'tags' && plugin.settings.tagsPrompt) {
+    return plugin.settings.tagsPrompt;
+  } else if (type === 'image' && plugin.settings.imageGenerationPrompt) {
+    return plugin.settings.imageGenerationPrompt;
+  }
+
   // Use English prompts for English or other languages
   if (language === 'en' || language === 'other') {
     if (type === 'summary') {

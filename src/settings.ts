@@ -491,6 +491,57 @@ export class WordpressSettingTab extends PluginSettingTab {
           });
       });
 
+    // AI Prompt 模板配置
+    containerEl.createEl('h3', { text: t('settings_aiPromptTemplates') });
+
+    new Setting(containerEl)
+      .setName(t('settings_summaryPrompt'))
+      .setDesc(t('settings_summaryPromptDesc'))
+      .addTextArea(text => {
+        text
+          .setPlaceholder(t('settings_summaryPromptPlaceholder'))
+          .setValue(this.plugin.settings.summaryPrompt || '')
+          .onChange(async (value) => {
+            this.plugin.settings.summaryPrompt = value;
+            await this.plugin.saveSettings();
+          });
+        text.inputEl.rows = 4;
+        text.inputEl.style.width = '100%';
+        text.inputEl.style.fontFamily = 'monospace';
+      });
+
+    new Setting(containerEl)
+      .setName(t('settings_tagsPrompt'))
+      .setDesc(t('settings_tagsPromptDesc'))
+      .addTextArea(text => {
+        text
+          .setPlaceholder(t('settings_tagsPromptPlaceholder'))
+          .setValue(this.plugin.settings.tagsPrompt || '')
+          .onChange(async (value) => {
+            this.plugin.settings.tagsPrompt = value;
+            await this.plugin.saveSettings();
+          });
+        text.inputEl.rows = 4;
+        text.inputEl.style.width = '100%';
+        text.inputEl.style.fontFamily = 'monospace';
+      });
+
+    new Setting(containerEl)
+      .setName(t('settings_imageGenerationPrompt'))
+      .setDesc(t('settings_imageGenerationPromptDesc'))
+      .addTextArea(text => {
+        text
+          .setPlaceholder(t('settings_imageGenerationPromptPlaceholder'))
+          .setValue(this.plugin.settings.imageGenerationPrompt || '')
+          .onChange(async (value) => {
+            this.plugin.settings.imageGenerationPrompt = value;
+            await this.plugin.saveSettings();
+          });
+        text.inputEl.rows = 4;
+        text.inputEl.style.width = '100%';
+        text.inputEl.style.fontFamily = 'monospace';
+      });
+
     // 图片生成 AI 配置
     containerEl.createEl('h3', { text: t('settings_imageAIConfig') });
 
