@@ -123,7 +123,8 @@ export class WpPublishModalV2 extends AbstractModal {
   private unsplashService: UnsplashService | null = null;
   private slugInput: HTMLInputElement | null = null;
   private titleInput: HTMLInputElement | null = null;
-  private currentTab: 'settings' | 'preview' | 'advanced' = 'settings';
+  private currentTab: 'settings' | 'preview' = 'settings';
+  private currentAITab: 'featured-image' | 'excerpt' | 'tags' = 'featured-image'; // AI 标签页状态
   private editableContent: string = '';
   private isEditingPreview: boolean = false;
   private autoFeaturedImage: FeaturedImageResult | null = null;
@@ -591,6 +592,34 @@ export class WpPublishModalV2 extends AbstractModal {
     return mimeTypes[extension.toLowerCase()] || 'image/jpeg';
   }
 
+  /**
+   * 将 ArrayBuffer 转换为 Base64 字符串
+   */
+  private arrayBufferToBase64(buffer: ArrayBuffer): string {
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    for (let i = 0; i < bytes.byteLength; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
+  }
+
+  /**
+   * 格式化文件大小
+   */
+  private formatFileSize(bytes: number): string {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  }
+
+  /**
+   * 加载远程特色图片（别名方法）
+   */
+  private async loadRemoteFeaturedImage(postId: string | number, params: WordPressPostParams): Promise<void> {
+    await this.loadFeaturePictureFromRemote(postId);
+  }
+
   onOpen() {
     log.info('onOpen called');
     const params: WordPressPostParams = {
@@ -722,14 +751,13 @@ export class WpPublishModalV2 extends AbstractModal {
       this.renderSettingsTab(mainContainer, params);
     } else if (this.currentTab === 'preview') {
       this.renderPreviewTab(mainContainer, params);
-    } else if (this.currentTab === 'advanced') {
-      this.renderAdvancedTab(mainContainer, params);
     }
 
-    // 底部操作栏（仅在设置和预览标签显示）
-    if (this.currentTab !== 'advanced') {
-      this.renderBottomBar(contentEl, params);
-    }
+    // 底部操作栏
+    this.renderBottomBar(contentEl, params);
+
+    // 设置滚动监听，为 sticky 元素添加阴影效果
+    this.setupStickyScrollListener(contentEl);
   }
 
   private updateModalWidth(): void {
@@ -742,13 +770,52 @@ export class WpPublishModalV2 extends AbstractModal {
     }
   }
 
+  /**
+   * 设置滚动监听，为 sticky 元素添加阴影效果
+   */
+  private setupStickyScrollListener(container: HTMLElement): void {
+    const tabBar = container.querySelector('.wp-publish-tabs') as HTMLElement;
+    const bottomBar = container.querySelector('.wp-publish-bottom-bar') as HTMLElement;
+
+    if (!tabBar || !bottomBar) {
+      return;
+    }
+
+    // 监听容器滚动
+    const handleScroll = () => {
+      const scrollTop = container.scrollTop;
+      const scrollHeight = container.scrollHeight;
+      const clientHeight = container.clientHeight;
+      const scrollBottom = scrollHeight - scrollTop - clientHeight;
+
+      // 顶部标签栏：滚动超过 10px 时添加阴影
+      if (scrollTop > 10) {
+        tabBar.addClass('scrolled');
+      } else {
+        tabBar.removeClass('scrolled');
+      }
+
+      // 底部操作栏：距离底部超过 10px 时添加阴影
+      if (scrollBottom > 10) {
+        bottomBar.addClass('scrolled');
+      } else {
+        bottomBar.removeClass('scrolled');
+      }
+    };
+
+    // 添加滚动监听
+    container.addEventListener('scroll', handleScroll);
+
+    // 初始检查
+    handleScroll();
+  }
+
   private renderTabBar(container: HTMLElement, params: WordPressPostParams): void {
     const tabContainer = container.createDiv('wp-publish-tabs');
 
     const tabs = [
       { id: 'settings', label: this.plugin.t('publishModal_settingsTab') },
-      { id: 'preview', label: this.plugin.t('publishModal_previewTab') },
-      { id: 'advanced', label: this.plugin.t('publishModal_advancedTab') }
+      { id: 'preview', label: this.plugin.t('publishModal_previewTab') }
     ];
 
     tabs.forEach(tab => {
@@ -757,7 +824,7 @@ export class WpPublishModalV2 extends AbstractModal {
       });
       tabEl.createSpan({ text: tab.label });
       tabEl.onclick = () => {
-        this.currentTab = tab.id as 'settings' | 'preview' | 'advanced';
+        this.currentTab = tab.id as 'settings' | 'preview';
         this.display(params);
       };
     });
@@ -765,178 +832,13 @@ export class WpPublishModalV2 extends AbstractModal {
 
   // ==================== 设置标签 ====================
   private renderSettingsTab(container: HTMLElement, params: WordPressPostParams): void {
-    const topSection = container.createDiv('wp-settings-top');
-    this.renderFeaturedImageSettings(topSection, params);
+    // AI 标签页区域（包含特色图片、摘要、标签）
+    const aiSection = container.createDiv('wp-settings-ai');
+    this.renderAIAssistSection(aiSection, params);
 
+    // 基本设置区域
     const bottomSection = container.createDiv('wp-settings-bottom');
     this.renderBasicSettings(bottomSection, params);
-  }
-
-  private renderFeaturedImageSettings(container: HTMLElement, params: WordPressPostParams): void {
-    const card = container.createDiv('wp-settings-card');
-    card.createEl('h3', { text: this.t('publishModal_featuredImage'), cls: 'wp-settings-section-title' });
-
-    const previewContainer = card.createDiv('featured-image-preview-large');
-
-    // 如果正在加载远程图片，显示加载状态
-    if (this.isLoadingRemoteImage) {
-      const loadingDiv = previewContainer.createDiv('featured-image-loading');
-      loadingDiv.style.display = 'flex';
-      loadingDiv.style.flexDirection = 'column';
-      loadingDiv.style.alignItems = 'center';
-      loadingDiv.style.justifyContent = 'center';
-      loadingDiv.style.padding = '40px 20px';
-      loadingDiv.style.color = 'var(--text-muted)';
-
-      const spinner = loadingDiv.createDiv('featured-image-spinner');
-      spinner.style.width = '32px';
-      spinner.style.height = '32px';
-      spinner.style.border = '3px solid var(--background-modifier-border)';
-      spinner.style.borderTop = '3px solid var(--interactive-accent)';
-      spinner.style.borderRadius = '50%';
-      spinner.style.animation = 'spin 1s linear infinite';
-      spinner.style.marginBottom = '12px';
-
-      loadingDiv.createEl('p', {
-        text: this.t('publishModal_loadingRemoteImage') || '正在加载远程图片...',
-        cls: 'featured-image-loading-text'
-      });
-
-      // 添加 CSS 动画（如果还没有）
-      if (!document.getElementById('featured-image-spinner-style')) {
-        const style = document.createElement('style');
-        style.id = 'featured-image-spinner-style';
-        style.textContent = `
-          @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-          }
-        `;
-        document.head.appendChild(style);
-      }
-    } else if (this.remoteImageLoadFailed) {
-      // 如果加载失败，显示错误信息和操作按钮
-      const errorDiv = previewContainer.createDiv('featured-image-error');
-      errorDiv.style.display = 'flex';
-      errorDiv.style.flexDirection = 'column';
-      errorDiv.style.alignItems = 'center';
-      errorDiv.style.justifyContent = 'center';
-      errorDiv.style.padding = '40px 20px';
-      errorDiv.style.color = 'var(--text-error)';
-
-      errorDiv.createEl('p', {
-        text: '⚠️ ' + (this.remoteImageError || this.t('publishModal_remoteImageLoadFailed') || '远程图片加载失败'),
-        cls: 'featured-image-error-text'
-      });
-
-      // 按钮容器
-      const btnContainer = errorDiv.createDiv('featured-image-error-buttons');
-      btnContainer.style.display = 'flex';
-      btnContainer.style.gap = '8px';
-      btnContainer.style.marginTop = '12px';
-
-      // 重试按钮
-      const retryBtn = btnContainer.createEl('button', {
-        text: this.t('publishModal_retry') || '重试',
-        cls: 'mod-cta'
-      });
-      retryBtn.onclick = async () => {
-        if (this.remoteImagePostId) {
-          await this.loadFeaturePictureFromRemote(this.remoteImagePostId);
-        }
-      };
-
-      // 跳过按钮
-      const skipBtn = btnContainer.createEl('button', {
-        text: this.t('publishModal_skip') || '跳过',
-      });
-      skipBtn.onclick = () => {
-        // 清除失败状态，允许继续发布
-        this.remoteImageLoadFailed = false;
-        this.autoFeaturedImage = null;
-        this.display(params);
-      };
-
-      // 关闭按钮
-      const closeBtn = btnContainer.createEl('button', {
-        text: this.t('confirmModal_cancel') || '关闭',
-      });
-      closeBtn.onclick = () => {
-        this.close();
-      };
-    } else {
-      // 优先显示用户选择的图片，否则显示自动检测的图片
-      const imageToDisplay = this.featuredImage || this.autoFeaturedImage;
-
-      if (imageToDisplay) {
-        const blob = new Blob([imageToDisplay.content], { type: imageToDisplay.mimeType });
-        const url = URL.createObjectURL(blob);
-
-        const img = previewContainer.createEl('img', {
-          attr: { src: url },
-          cls: 'featured-image-full'
-        });
-        // Constrain image height for better text readability
-        img.style.maxWidth = '100%';
-        img.style.maxHeight = '160px';
-        img.style.objectFit = 'cover';
-        img.style.borderRadius = '6px';
-
-        const info = previewContainer.createDiv('featured-image-info');
-        info.createSpan({ text: imageToDisplay.fileName });
-
-        // 只有当用户手动选择了图片时才显示移除按钮
-        if (this.featuredImage) {
-          const removeBtn = previewContainer.createEl('button', {
-            text: this.t('confirmModal_cancel'),
-            cls: 'featured-image-remove-btn'
-          });
-          removeBtn.onclick = async () => {
-            // 清除本地图片缓存
-            await this.clearImageCache();
-            this.featuredImage = null;
-            this.display(params);
-          };
-        }
-      } else {
-        previewContainer.createEl('p', {
-          text: this.t('publishModal_noFeaturedImage'),
-          cls: 'featured-image-placeholder-text'
-        });
-      }
-    }
-
-    // 四个按钮
-    const btnRow = card.createDiv('featured-image-btn-row');
-
-    const localBtn = btnRow.createEl('button', { text: this.t('publishModal_localImage'), cls: 'feature-btn' });
-    localBtn.onclick = () => this.selectLocalImage(params);
-
-    // 在线按钮 (Unsplash) - use tags as search query
-    const onlineBtn = btnRow.createEl('button', { text: this.t('publishModal_onlineImage'), cls: 'feature-btn' });
-    onlineBtn.onclick = () => {
-      if (!this.plugin.settings.unsplashAccessKey) {
-        new Notice(this.t('publishModal_unsplashKeyRequired'));
-      } else {
-        this.selectUnsplashImage(params);
-      }
-    };
-
-    const aiBtn = btnRow.createEl('button', { text: this.t('publishModal_aiGenerateBtn'), cls: 'feature-btn' });
-    if (!this.plugin.settings.aiConfig) {
-      aiBtn.onclick = () => {
-        new Notice(this.t('publishModal_imageAIRequired'));
-      };
-    } else if (!this.aiService?.hasImageAIKey()) {
-      aiBtn.onclick = () => {
-        new Notice(this.t('notice_imageAIApiKeyRequired'));
-      };
-    } else {
-      aiBtn.onclick = () => this.generateAImage(params);
-    }
-
-    const galleryBtn = btnRow.createEl('button', { text: this.t('publishModal_galleryImage'), cls: 'feature-btn' });
-    galleryBtn.onclick = () => this.selectVaultImage(params);
   }
 
   private selectLocalImage(params: WordPressPostParams): void {
@@ -1065,6 +967,13 @@ export class WpPublishModalV2 extends AbstractModal {
     }
   }
 
+  /**
+   * 别名方法：生成特色图片（用于新的 AI 标签页）
+   */
+  private async generateFeaturedImage(params: WordPressPostParams): Promise<void> {
+    return this.generateAImage(params);
+  }
+
   private async getImagePromptContent(params: WordPressPostParams): Promise<string | null> {
     // Priority: excerpt > tags > generate summary
     if (params.excerpt) {
@@ -1135,14 +1044,31 @@ export class WpPublishModalV2 extends AbstractModal {
     modal.open();
   }
 
+  /**
+   * 为 Setting 添加信息按钮
+   */
+  private addInfoButton(setting: Setting, infoKey: TranslateKey): void {
+    setting.addExtraButton(btn => {
+      btn.setIcon('info')
+        .setTooltip(this.t(infoKey))
+        .onClick(() => {
+          new Notice(this.t(infoKey), 5000);
+        });
+      btn.extraSettingsEl.addClass('wp-info-button');
+    });
+  }
+
   private renderBasicSettings(container: HTMLElement, params: WordPressPostParams): void {
     const card = container.createDiv('wp-settings-card');
     card.createEl('h3', { text: this.plugin.t('publishModal_basicSettings'), cls: 'wp-settings-section-title' });
 
-    // 标题
-    new Setting(card)
+    // 创建网格容器
+    const gridContainer = card.createDiv('wp-settings-grid');
+
+    // 标题（占满整行）
+    const titleWrapper = gridContainer.createDiv('wp-grid-full');
+    const titleSetting = new Setting(titleWrapper)
       .setName(this.t('publishModal_titleName'))
-      .setDesc(this.t('publishModal_titleDesc'))
       .addText(text => {
         this.titleInput = text.inputEl;
         text.setPlaceholder(this.t('publishModal_titlePlaceholder'))
@@ -1178,10 +1104,13 @@ export class WpPublishModalV2 extends AbstractModal {
         });
       });
 
-    // Slug
-    const slugSetting = new Setting(card)
-      .setName(this.t('publishModal_slugName'))
-      .setDesc(this.t('publishModal_slugDesc'));
+    // 添加标题信息按钮
+    this.addInfoButton(titleSetting, 'publishModal_titleInfo');
+
+    // Slug（占满整行）
+    const slugWrapper = gridContainer.createDiv('wp-grid-full');
+    const slugSetting = new Setting(slugWrapper)
+      .setName(this.t('publishModal_slugName'));
 
     // Track the initial slug value to detect manual edits
     const initialSlugValue = params.slug;
@@ -1247,15 +1176,29 @@ export class WpPublishModalV2 extends AbstractModal {
       }
     }
 
-    // 分类（仅Post类型）
+    // 添加 Slug 信息按钮
+    this.addInfoButton(slugSetting, 'publishModal_slugInfo');
+
+    // 分类（仅Post类型，占满整行）
     // 先过滤掉空值的分类项
     const validCategories = this.categories.items.filter(it => it.name && it.name.trim());
 
     if (params.postType === PostTypeConst.Post && validCategories.length > 0) {
+      const categoryWrapper = gridContainer.createDiv('wp-grid-full');
       // 创建分类设置标题（不使用 Setting 组件，避免移动端布局问题）
-      const categoryHeader = card.createDiv('wp-category-header');
-      categoryHeader.createEl('div', { cls: 'setting-item-name', text: this.t('publishModal_categoryName') });
-      categoryHeader.createEl('div', { cls: 'setting-item-description', text: this.t('publishModal_categoryDesc') });
+      const categoryHeader = categoryWrapper.createDiv('wp-category-header');
+
+      // 创建标题行容器
+      const titleRow = categoryHeader.createDiv('wp-category-title-row');
+      titleRow.createEl('div', { cls: 'setting-item-name', text: this.t('publishModal_categoryName') });
+
+      // 创建信息按钮
+      const infoBtn = titleRow.createEl('button', { cls: 'wp-info-button clickable-icon' });
+      infoBtn.setAttribute('aria-label', this.t('publishModal_categoryInfo'));
+      setIcon(infoBtn, 'info');
+      infoBtn.addEventListener('click', () => {
+        new Notice(this.t('publishModal_categoryInfo'), 5000);
+      });
 
       // 创建分类标签容器
       const tagsContainer = document.createElement('div');
@@ -1366,8 +1309,9 @@ export class WpPublishModalV2 extends AbstractModal {
       }
     }
 
-    // 发布状态 - preserve slug on state change
-    new Setting(card)
+    // 发布状态（左列）
+    const statusWrapper = gridContainer.createDiv();
+    new Setting(statusWrapper)
       .setName(this.t('publishModal_statusName'))
       .setDesc(this.t('publishModal_statusDesc'))
       .addDropdown((dropdown) => {
@@ -1384,9 +1328,10 @@ export class WpPublishModalV2 extends AbstractModal {
           });
       });
 
-    // 定时发布日期
+    // 定时发布日期（占满整行，仅在 Future 状态时显示）
     if (params.status === PostStatus.Future) {
-      new Setting(card)
+      const dateWrapper = gridContainer.createDiv('wp-grid-full');
+      new Setting(dateWrapper)
         .setName(this.t('publishModal_postDateTimeName'))
         .setDesc(this.t('publishModal_postDateTimeDescFormat'))
         .addText(text => {
@@ -1397,8 +1342,9 @@ export class WpPublishModalV2 extends AbstractModal {
       delete params.datetime;
     }
 
-    // 评论状态
-    new Setting(card)
+    // 评论状态（右列）
+    const commentWrapper = gridContainer.createDiv();
+    new Setting(commentWrapper)
       .setName(this.t('publishModal_commentName'))
       .setDesc(this.t('publishModal_commentDesc'))
       .addDropdown((dropdown) => {
@@ -1411,8 +1357,9 @@ export class WpPublishModalV2 extends AbstractModal {
           });
       });
 
-    // 发布为Markdown选项
-    new Setting(card)
+    // 发布为Markdown选项（左列）
+    const formatWrapper = gridContainer.createDiv();
+    new Setting(formatWrapper)
       .setName(this.t('publishModal_postTypeName'))
       .setDesc(this.t('publishModal_postTypeDesc'))
       .addDropdown((dropdown) => {
@@ -1425,9 +1372,10 @@ export class WpPublishModalV2 extends AbstractModal {
           });
       });
 
-    // 发布为新文章选项（仅当已有关联文章时显示）
+    // 发布为新文章选项（仅当已有关联文章时显示，右列）
     if (this.matterData.postId) {
-      new Setting(card)
+      const publishAsNewWrapper = gridContainer.createDiv();
+      new Setting(publishAsNewWrapper)
         .setName(this.t('publishModal_publishAsNewName'))
         .setDesc(this.t('publishModal_publishAsNewDesc'))
         .addToggle((toggle) => {
@@ -1438,6 +1386,300 @@ export class WpPublishModalV2 extends AbstractModal {
             });
         });
     }
+  }
+
+  // ==================== AI 辅助区域 ====================
+  private renderAIAssistSection(container: HTMLElement, params: WordPressPostParams): void {
+    const card = container.createDiv('wp-settings-card');
+
+    // AI 标签页导航
+    this.renderAITabBar(card, params);
+
+    // AI 标签页内容
+    const aiContentContainer = card.createDiv('wp-ai-tab-content');
+
+    if (this.currentAITab === 'featured-image') {
+      this.renderAIFeaturedImageTab(aiContentContainer, params);
+    } else if (this.currentAITab === 'excerpt') {
+      this.renderAIExcerptTab(aiContentContainer, params);
+    } else if (this.currentAITab === 'tags') {
+      this.renderAITagsTab(aiContentContainer, params);
+    }
+  }
+
+  /**
+   * 渲染 AI 标签页导航栏
+   */
+  private renderAITabBar(container: HTMLElement, params: WordPressPostParams): void {
+    const tabContainer = container.createDiv('wp-ai-tabs');
+
+    const tabs = [
+      { id: 'featured-image', label: this.plugin.t('publishModal_featuredImage') },
+      { id: 'excerpt', label: this.plugin.t('publishModal_aiExcerpt') },
+      { id: 'tags', label: this.plugin.t('publishModal_aiTags') }
+    ];
+
+    tabs.forEach(tab => {
+      const tabEl = tabContainer.createDiv({
+        cls: `wp-ai-tab-item ${this.currentAITab === tab.id ? 'active' : ''}`
+      });
+      tabEl.createSpan({ text: tab.label });
+      tabEl.onclick = () => {
+        this.currentAITab = tab.id as 'featured-image' | 'excerpt' | 'tags';
+        this.display(params);
+      };
+    });
+  }
+
+  /**
+   * 渲染特色图片标签页（从基本设置迁移过来）
+   */
+  private renderAIFeaturedImageTab(container: HTMLElement, params: WordPressPostParams): void {
+    const previewContainer = container.createDiv('featured-image-preview-large');
+
+    // 如果正在加载远程图片，显示加载状态
+    if (this.isLoadingRemoteImage) {
+      const loadingDiv = previewContainer.createDiv('featured-image-loading');
+      loadingDiv.style.display = 'flex';
+      loadingDiv.style.flexDirection = 'column';
+      loadingDiv.style.alignItems = 'center';
+      loadingDiv.style.justifyContent = 'center';
+      loadingDiv.style.padding = '40px 20px';
+      loadingDiv.style.color = 'var(--text-muted)';
+
+      const spinner = loadingDiv.createDiv('featured-image-spinner');
+      spinner.style.width = '32px';
+      spinner.style.height = '32px';
+      spinner.style.border = '3px solid var(--background-modifier-border)';
+      spinner.style.borderTop = '3px solid var(--interactive-accent)';
+      spinner.style.borderRadius = '50%';
+      spinner.style.animation = 'spin 1s linear infinite';
+      spinner.style.marginBottom = '12px';
+
+      loadingDiv.createEl('p', {
+        text: this.t('publishModal_loadingRemoteImage') || '正在加载远程图片...',
+        cls: 'featured-image-loading-text'
+      });
+
+      // 添加 CSS 动画（如果还没有）
+      if (!document.getElementById('featured-image-spinner-style')) {
+        const style = document.createElement('style');
+        style.id = 'featured-image-spinner-style';
+        style.textContent = `
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        `;
+        document.head.appendChild(style);
+      }
+    } else if (this.remoteImageLoadFailed) {
+      // 如果加载失败，显示错误信息和操作按钮
+      const errorDiv = previewContainer.createDiv('featured-image-error');
+      errorDiv.style.display = 'flex';
+      errorDiv.style.flexDirection = 'column';
+      errorDiv.style.alignItems = 'center';
+      errorDiv.style.justifyContent = 'center';
+      errorDiv.style.padding = '40px 20px';
+      errorDiv.style.color = 'var(--text-error)';
+
+      errorDiv.createEl('p', {
+        text: '❌ ' + (this.remoteImageError || this.t('publishModal_remoteImageLoadFailed')),
+        cls: 'featured-image-error-text'
+      });
+
+      const btnRow = errorDiv.createDiv('featured-image-btn-row');
+      btnRow.style.marginTop = '16px';
+
+      const retryBtn = btnRow.createEl('button', {
+        text: this.t('publishModal_retryLoadImage') || '重试',
+        cls: 'feature-btn'
+      });
+      retryBtn.onclick = async () => {
+        if (this.remoteImagePostId) {
+          this.remoteImageLoadFailed = false;
+          this.remoteImageError = null;
+          await this.loadRemoteFeaturedImage(this.remoteImagePostId, params);
+        }
+      };
+
+      const skipBtn = btnRow.createEl('button', {
+        text: this.t('publishModal_skipRemoteImage') || '跳过',
+        cls: 'feature-btn'
+      });
+      skipBtn.onclick = () => {
+        this.remoteImageLoadFailed = false;
+        this.remoteImageError = null;
+        this.remoteImagePostId = null;
+        this.display(params);
+      };
+    } else if (this.featuredImage) {
+      // 显示已选择的图片
+      const img = previewContainer.createEl('img', {
+        cls: 'featured-image-full'
+      });
+      img.src = `data:${this.featuredImage.mimeType};base64,${this.arrayBufferToBase64(this.featuredImage.content)}`;
+
+      const info = previewContainer.createDiv('featured-image-info');
+      info.textContent = `${this.featuredImage.fileName} (${this.formatFileSize(this.featuredImage.content.byteLength)})`;
+
+      const removeBtn = previewContainer.createEl('button', {
+        text: this.t('publishModal_removeImage'),
+        cls: 'featured-image-remove-btn'
+      });
+      removeBtn.onclick = async () => {
+        this.featuredImage = null;
+        this.imageSource = 'auto';
+        await this.clearImageCache();
+        this.display(params);
+      };
+    } else {
+      // 显示占位符
+      previewContainer.createEl('p', {
+        text: this.t('publishModal_noImageSelected'),
+        cls: 'featured-image-placeholder-text'
+      });
+    }
+
+    // 操作按钮行
+    const btnRow = container.createDiv('featured-image-btn-row');
+
+    // 从库中选择
+    const vaultBtn = btnRow.createEl('button', {
+      text: '📁 ' + this.t('publishModal_selectFromVault'),
+      cls: 'feature-btn'
+    });
+    vaultBtn.onclick = () => this.selectVaultImage(params);
+
+    // Unsplash
+    if (this.unsplashService) {
+      const unsplashBtn = btnRow.createEl('button', {
+        text: '🖼️ Unsplash',
+        cls: 'feature-btn'
+      });
+      unsplashBtn.onclick = () => this.selectUnsplashImage(params);
+    }
+
+    // AI 生成
+    if (this.aiService?.hasImageAIKey()) {
+      const aiBtn = btnRow.createEl('button', {
+        text: '🤖 ' + this.t('publishModal_aiGenerate'),
+        cls: 'feature-btn'
+      });
+      aiBtn.onclick = () => this.generateFeaturedImage(params);
+    } else {
+      const aiBtn = btnRow.createEl('button', {
+        text: '🤖 ' + this.t('publishModal_aiGenerate'),
+        cls: 'feature-btn disabled'
+      });
+      aiBtn.onclick = () => {
+        new Notice(this.t('notice_imageAIApiKeyRequired'));
+      };
+    }
+  }
+
+  /**
+   * 渲染摘要标签页（支持编辑）
+   */
+  private renderAIExcerptTab(container: HTMLElement, params: WordPressPostParams): void {
+    // AI 生成按钮
+    const btnContainer = container.createDiv('wp-ai-buttons');
+    const generateBtn = btnContainer.createEl('button', { text: this.t('publishModal_generateSummary') });
+
+    if (!this.aiService) {
+      generateBtn.addClass('disabled');
+      generateBtn.onclick = () => {
+        new Notice(this.t('notice_aiConfigRequired'));
+      };
+    } else if (!this.aiService.hasTextAIKey()) {
+      generateBtn.addClass('disabled');
+      generateBtn.onclick = () => {
+        new Notice(this.t('notice_textAIApiKeyRequired'));
+      };
+    } else {
+      generateBtn.onclick = () => this.generateSummary(params);
+    }
+
+    // 摘要编辑区域
+    const excerptEditor = container.createDiv('wp-ai-excerpt-editor');
+    excerptEditor.style.marginTop = '16px';
+
+    const label = excerptEditor.createEl('label', {
+      text: this.t('publishModal_excerptLabel') || '摘要内容',
+      cls: 'wp-ai-editor-label'
+    });
+    label.style.display = 'block';
+    label.style.marginBottom = '8px';
+    label.style.fontWeight = '500';
+    label.style.color = 'var(--text-normal)';
+
+    const textarea = excerptEditor.createEl('textarea', {
+      cls: 'wp-preview-textarea'
+    });
+    textarea.value = params.excerpt || '';
+    textarea.placeholder = this.t('publishModal_excerptPlaceholder') || '在此输入或生成摘要...';
+    textarea.style.width = '100%';
+    textarea.style.minHeight = '120px';
+    textarea.style.padding = '12px';
+    textarea.style.borderRadius = '6px';
+    textarea.style.border = '1px solid var(--background-modifier-border)';
+    textarea.style.backgroundColor = 'var(--background-primary)';
+    textarea.style.color = 'var(--text-normal)';
+    textarea.style.fontFamily = 'var(--font-text)';
+    textarea.style.fontSize = '14px';
+    textarea.style.lineHeight = '1.6';
+    textarea.style.resize = 'vertical';
+
+    // 实时同步到 params
+    textarea.addEventListener('input', () => {
+      params.excerpt = textarea.value;
+    });
+  }
+
+  /**
+   * 渲染标签标签页（支持编辑）
+   */
+  private renderAITagsTab(container: HTMLElement, params: WordPressPostParams): void {
+    // AI 生成按钮
+    const btnContainer = container.createDiv('wp-ai-buttons');
+    const generateBtn = btnContainer.createEl('button', { text: this.t('publishModal_generateTags') });
+
+    if (!this.aiService) {
+      generateBtn.addClass('disabled');
+      generateBtn.onclick = () => {
+        new Notice(this.t('notice_aiConfigRequired'));
+      };
+    } else if (!this.aiService.hasTextAIKey()) {
+      generateBtn.addClass('disabled');
+      generateBtn.onclick = () => {
+        new Notice(this.t('notice_textAIApiKeyRequired'));
+      };
+    } else {
+      generateBtn.onclick = () => this.generateTags(params);
+    }
+
+    // 标签编辑区域
+    const tagsEditor = container.createDiv('wp-ai-tags-editor');
+    tagsEditor.style.marginTop = '16px';
+
+    const label = tagsEditor.createEl('label', {
+      text: this.t('publishModal_tagsLabel') || '标签',
+      cls: 'wp-ai-editor-label'
+    });
+    label.style.display = 'block';
+    label.style.marginBottom = '8px';
+    label.style.fontWeight = '500';
+    label.style.color = 'var(--text-normal)';
+
+    // 标签容器
+    const tagsContainer = tagsEditor.createDiv('wp-preview-tags-editable');
+    this.tagsContainer = tagsContainer;
+
+    // 初始化可编辑标签数组
+    this.editableTags = params.tags ? [...params.tags] : [];
+
+    // 渲染标签
+    this.refreshTagsPreview(params);
   }
 
   private setupDateMask(inputEl: HTMLInputElement, params: WordPressPostParams): void {
@@ -1697,7 +1939,7 @@ export class WpPublishModalV2 extends AbstractModal {
     // 标签悬停效果
     tagEl.addEventListener('mouseenter', () => {
       tagEl.style.transform = 'translateY(-1px)';
-      tagEl.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.2)';
+      tagEl.style.boxShadow = 'var(--wp-shadow-hover)';
     });
 
     tagEl.addEventListener('mouseleave', () => {
@@ -1876,85 +2118,6 @@ export class WpPublishModalV2 extends AbstractModal {
   }
 
   // ==================== Advanced Settings Tab ====================
-  private renderAdvancedTab(container: HTMLElement, params: WordPressPostParams): void {
-    const card = container.createDiv('wp-advanced-card');
-
-    const header = card.createDiv('wp-advanced-header');
-    header.createEl('h3', { text: this.plugin.t('publishModal_advancedTitle'), cls: 'wp-advanced-card-title' });
-
-    const notice = header.createDiv('wp-advanced-notice');
-    notice.style.padding = '12px';
-    notice.style.backgroundColor = 'var(--background-secondary)';
-    notice.style.borderRadius = '6px';
-    notice.style.marginBottom = '20px';
-    notice.createEl('p', { text: this.plugin.t('publishModal_advancedNotice') });
-
-    // Summary prompt
-    const summarySection = card.createDiv('wp-advanced-section');
-    summarySection.createEl('h4', { text: this.plugin.t('publishModal_summaryPromptTitle'), cls: 'wp-advanced-section-title' });
-    const summarySetting = new Setting(summarySection);
-    summarySetting.addTextArea(text => {
-      text.setPlaceholder(this.plugin.t('defaultPrompt_summary'))
-        .setValue(this.plugin.settings.summaryPrompt || '')
-        .onChange(value => {
-          (this.plugin.settings as SafeAny).summaryPrompt = value;
-        });
-      text.inputEl.rows = 6;
-      text.inputEl.style.width = '100%';
-      text.inputEl.style.minHeight = '120px';
-      text.inputEl.style.fontFamily = 'var(--font-mono)';
-      text.inputEl.style.fontSize = '12px';
-      text.inputEl.style.lineHeight = '1.5';
-    });
-
-    // Tags prompt
-    const tagsSection = card.createDiv('wp-advanced-section');
-    tagsSection.createEl('h4', { text: this.plugin.t('publishModal_tagsPromptTitle'), cls: 'wp-advanced-section-title' });
-    const tagsSetting = new Setting(tagsSection);
-    tagsSetting.addTextArea(text => {
-      text.setPlaceholder(this.plugin.t('defaultPrompt_tags'))
-        .setValue(this.plugin.settings.tagsPrompt || '')
-        .onChange(value => {
-          (this.plugin.settings as SafeAny).tagsPrompt = value;
-        });
-      text.inputEl.rows = 6;
-      text.inputEl.style.width = '100%';
-      text.inputEl.style.minHeight = '120px';
-      text.inputEl.style.fontFamily = 'var(--font-mono)';
-      text.inputEl.style.fontSize = '12px';
-      text.inputEl.style.lineHeight = '1.5';
-    });
-
-    // Image generation prompt
-    const imageSection = card.createDiv('wp-advanced-section');
-    imageSection.createEl('h4', { text: this.plugin.t('publishModal_imagePromptTitle'), cls: 'wp-advanced-section-title' });
-    const imageSetting = new Setting(imageSection);
-    imageSetting.addTextArea(text => {
-      text.setPlaceholder(this.plugin.t('defaultPrompt_image'))
-        .setValue(this.plugin.settings.imageGenerationPrompt || '')
-        .onChange(value => {
-          (this.plugin.settings as SafeAny).imageGenerationPrompt = value;
-        });
-      text.inputEl.rows = 6;
-      text.inputEl.style.width = '100%';
-      text.inputEl.style.minHeight = '120px';
-      text.inputEl.style.fontFamily = 'var(--font-mono)';
-      text.inputEl.style.fontSize = '12px';
-      text.inputEl.style.lineHeight = '1.5';
-    });
-
-    // 保存设置按钮
-    const saveSection = card.createDiv('wp-advanced-save');
-    new Setting(saveSection)
-      .addButton(btn => {
-        btn.setButtonText(this.t('publishModal_saveSettings'))
-          .setCta()
-          .onClick(async () => {
-            await this.plugin.saveSettings();
-            new Notice(this.t('publishModal_settingsSaved'));
-          });
-      });
-  }
 
   // ==================== API Warning Display ====================
   private renderApiWarning(container: HTMLElement, apiType: string): void {
@@ -2023,7 +2186,7 @@ Consider migrating to REST API for better security and feature support.
     const modal = this.plugin.app.workspace.activeLeaf?.view.containerEl.createEl('div');
     if (modal) {
       modal.innerHTML = `
-        <div class="modal-bg" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;">
+        <div class="modal-bg" style="position:fixed;top:0;left:0;width:100%;height:100%;background:var(--wp-modal-overlay);z-index:9999;">
           <div class="modal" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--background-primary);padding:20px;border-radius:8px;max-width:600px;max-height:80vh;overflow:auto;">
             <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
               <h3 style="margin:0;">API Information</h3>
@@ -2066,36 +2229,6 @@ Consider migrating to REST API for better security and feature support.
         }
         this.display(params);
       };
-
-      const summaryBtn = bottomContainer.createEl('button', { text: this.t('publishModal_generateSummary') });
-      if (!this.aiService) {
-        summaryBtn.addClass('disabled');
-        summaryBtn.onclick = () => {
-          new Notice(this.t('notice_aiConfigRequired'));
-        };
-      } else if (!this.aiService.hasTextAIKey()) {
-        summaryBtn.addClass('disabled');
-        summaryBtn.onclick = () => {
-          new Notice(this.t('notice_textAIApiKeyRequired'));
-        };
-      } else {
-        summaryBtn.onclick = () => this.generateSummary(params);
-      }
-
-      const tagsBtn = bottomContainer.createEl('button', { text: this.t('publishModal_generateTags') });
-      if (!this.aiService) {
-        tagsBtn.addClass('disabled');
-        tagsBtn.onclick = () => {
-          new Notice(this.t('notice_aiConfigRequired'));
-        };
-      } else if (!this.aiService.hasTextAIKey()) {
-        tagsBtn.addClass('disabled');
-        tagsBtn.onclick = () => {
-          new Notice(this.t('notice_textAIApiKeyRequired'));
-        };
-      } else {
-        tagsBtn.onclick = () => this.generateTags(params);
-      }
 
       const publishBtn = bottomContainer.createEl('button', {
         text: this.t('publishModal_publishButton'),
@@ -2414,6 +2547,72 @@ Consider migrating to REST API for better security and feature support.
         this.close();
       }
     }, 8000);
+  }
+
+  /**
+   * 添加涟漪效果到按钮
+   */
+  private addRippleEffect(button: HTMLElement): void {
+    button.addEventListener('click', (e: MouseEvent) => {
+      const ripple = button.createDiv('wp-ripple-effect');
+      const rect = button.getBoundingClientRect();
+      const size = Math.max(rect.width, rect.height);
+      const x = e.clientX - rect.left - size / 2;
+      const y = e.clientY - rect.top - size / 2;
+
+      ripple.style.width = ripple.style.height = `${size}px`;
+      ripple.style.left = `${x}px`;
+      ripple.style.top = `${y}px`;
+
+      setTimeout(() => ripple.remove(), 600);
+    });
+  }
+
+  /**
+   * 显示工具提示
+   */
+  private showTooltip(element: HTMLElement, text: string, duration: number = 2000): void {
+    const tooltip = document.body.createDiv('wp-tooltip');
+    tooltip.setText(text);
+
+    const rect = element.getBoundingClientRect();
+    tooltip.style.left = `${rect.left + rect.width / 2}px`;
+    tooltip.style.top = `${rect.top - 40}px`;
+    tooltip.style.transform = 'translateX(-50%)';
+
+    setTimeout(() => tooltip.addClass('show'), 10);
+
+    setTimeout(() => {
+      tooltip.removeClass('show');
+      setTimeout(() => tooltip.remove(), 200);
+    }, duration);
+  }
+
+  /**
+   * 添加输入框焦点动画
+   */
+  private enhanceInputFocus(input: HTMLInputElement | HTMLTextAreaElement): void {
+    input.addEventListener('focus', () => {
+      input.parentElement?.addClass('wp-input-focused');
+    });
+
+    input.addEventListener('blur', () => {
+      input.parentElement?.removeClass('wp-input-focused');
+    });
+  }
+
+  /**
+   * 添加平滑滚动到元素
+   */
+  private scrollToElement(element: HTMLElement, offset: number = 20): void {
+    const rect = element.getBoundingClientRect();
+    const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+    const targetY = rect.top + scrollTop - offset;
+
+    window.scrollTo({
+      top: targetY,
+      behavior: 'smooth'
+    });
   }
 
   private generateDefaultSlug(title: string, params?: WordPressPostParams): void {
