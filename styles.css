@@ -642,6 +642,31 @@
   box-sizing: border-box;
 }
 
+/* Two-column grid layout for form fields */
+.wp-settings-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px 20px;
+  margin-top: 16px;
+}
+
+/* Full-width fields that span both columns */
+.wp-settings-grid .wp-grid-full {
+  grid-column: 1 / -1;
+}
+
+/* Responsive: single column on mobile */
+@media (max-width: 768px) {
+  .wp-settings-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .wp-settings-grid .wp-grid-full {
+    grid-column: 1;
+  }
+}
+
 .wp-settings-card .setting-item {
   width: 100%;
   box-sizing: border-box;

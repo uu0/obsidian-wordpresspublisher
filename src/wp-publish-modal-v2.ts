@@ -1062,8 +1062,12 @@ export class WpPublishModalV2 extends AbstractModal {
     const card = container.createDiv('wp-settings-card');
     card.createEl('h3', { text: this.plugin.t('publishModal_basicSettings'), cls: 'wp-settings-section-title' });
 
-    // 标题
-    const titleSetting = new Setting(card)
+    // 创建网格容器
+    const gridContainer = card.createDiv('wp-settings-grid');
+
+    // 标题（占满整行）
+    const titleWrapper = gridContainer.createDiv('wp-grid-full');
+    const titleSetting = new Setting(titleWrapper)
       .setName(this.t('publishModal_titleName'))
       .addText(text => {
         this.titleInput = text.inputEl;
@@ -1103,8 +1107,9 @@ export class WpPublishModalV2 extends AbstractModal {
     // 添加标题信息按钮
     this.addInfoButton(titleSetting, 'publishModal_titleInfo');
 
-    // Slug
-    const slugSetting = new Setting(card)
+    // Slug（占满整行）
+    const slugWrapper = gridContainer.createDiv('wp-grid-full');
+    const slugSetting = new Setting(slugWrapper)
       .setName(this.t('publishModal_slugName'));
 
     // Track the initial slug value to detect manual edits
@@ -1174,13 +1179,14 @@ export class WpPublishModalV2 extends AbstractModal {
     // 添加 Slug 信息按钮
     this.addInfoButton(slugSetting, 'publishModal_slugInfo');
 
-    // 分类（仅Post类型）
+    // 分类（仅Post类型，占满整行）
     // 先过滤掉空值的分类项
     const validCategories = this.categories.items.filter(it => it.name && it.name.trim());
 
     if (params.postType === PostTypeConst.Post && validCategories.length > 0) {
+      const categoryWrapper = gridContainer.createDiv('wp-grid-full');
       // 创建分类设置标题（不使用 Setting 组件，避免移动端布局问题）
-      const categoryHeader = card.createDiv('wp-category-header');
+      const categoryHeader = categoryWrapper.createDiv('wp-category-header');
 
       // 创建标题行容器
       const titleRow = categoryHeader.createDiv('wp-category-title-row');
@@ -1303,8 +1309,9 @@ export class WpPublishModalV2 extends AbstractModal {
       }
     }
 
-    // 发布状态 - preserve slug on state change
-    new Setting(card)
+    // 发布状态（左列）
+    const statusWrapper = gridContainer.createDiv();
+    new Setting(statusWrapper)
       .setName(this.t('publishModal_statusName'))
       .setDesc(this.t('publishModal_statusDesc'))
       .addDropdown((dropdown) => {
@@ -1321,9 +1328,10 @@ export class WpPublishModalV2 extends AbstractModal {
           });
       });
 
-    // 定时发布日期
+    // 定时发布日期（占满整行，仅在 Future 状态时显示）
     if (params.status === PostStatus.Future) {
-      new Setting(card)
+      const dateWrapper = gridContainer.createDiv('wp-grid-full');
+      new Setting(dateWrapper)
         .setName(this.t('publishModal_postDateTimeName'))
         .setDesc(this.t('publishModal_postDateTimeDescFormat'))
         .addText(text => {
@@ -1334,8 +1342,9 @@ export class WpPublishModalV2 extends AbstractModal {
       delete params.datetime;
     }
 
-    // 评论状态
-    new Setting(card)
+    // 评论状态（右列）
+    const commentWrapper = gridContainer.createDiv();
+    new Setting(commentWrapper)
       .setName(this.t('publishModal_commentName'))
       .setDesc(this.t('publishModal_commentDesc'))
       .addDropdown((dropdown) => {
@@ -1348,8 +1357,9 @@ export class WpPublishModalV2 extends AbstractModal {
           });
       });
 
-    // 发布为Markdown选项
-    new Setting(card)
+    // 发布为Markdown选项（左列）
+    const formatWrapper = gridContainer.createDiv();
+    new Setting(formatWrapper)
       .setName(this.t('publishModal_postTypeName'))
       .setDesc(this.t('publishModal_postTypeDesc'))
       .addDropdown((dropdown) => {
@@ -1362,9 +1372,10 @@ export class WpPublishModalV2 extends AbstractModal {
           });
       });
 
-    // 发布为新文章选项（仅当已有关联文章时显示）
+    // 发布为新文章选项（仅当已有关联文章时显示，右列）
     if (this.matterData.postId) {
-      new Setting(card)
+      const publishAsNewWrapper = gridContainer.createDiv();
+      new Setting(publishAsNewWrapper)
         .setName(this.t('publishModal_publishAsNewName'))
         .setDesc(this.t('publishModal_publishAsNewDesc'))
         .addToggle((toggle) => {
