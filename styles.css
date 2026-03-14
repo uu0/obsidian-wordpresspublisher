@@ -1821,6 +1821,259 @@
   100% { background-position: -200% 0; }
 }
 
+/* ==================== Phase 5: 视觉优化与交互增强 ==================== */
+
+/* 按钮增强效果 */
+.feature-btn,
+.publish-btn,
+.publish-btn-full,
+.wp-ai-button,
+.wp-error-retry-btn,
+.wp-error-close-btn {
+  position: relative;
+  overflow: hidden;
+}
+
+.feature-btn::before,
+.publish-btn::before,
+.publish-btn-full::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  transform: translate(-50%, -50%);
+  transition: width 0.6s ease, height 0.6s ease;
+}
+
+.feature-btn:hover::before,
+.publish-btn:hover::before,
+.publish-btn-full:hover::before {
+  width: 300px;
+  height: 300px;
+}
+
+/* 输入框焦点增强 */
+.wp-settings-card .setting-item-control input[type="text"]:focus,
+.wp-settings-card .setting-item-control textarea:focus,
+.wp-preview-textarea:focus,
+.wp-tag-input:focus,
+.wp-category-dropdown:focus {
+  outline: none;
+  border-color: var(--interactive-accent);
+  box-shadow: 0 0 0 3px rgba(var(--interactive-accent-rgb, 88, 110, 255), 0.1);
+  transform: translateY(-1px);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 标签交互优化 */
+.wp-category-tag,
+.wp-tag-item {
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.wp-category-tag:hover,
+.wp-tag-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.wp-category-tag-remove,
+.wp-tag-remove {
+  transition: all 0.2s ease;
+  border-radius: 50%;
+  padding: 2px;
+}
+
+.wp-category-tag-remove:hover,
+.wp-tag-remove:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: rotate(90deg);
+}
+
+/* 卡片悬停效果增强 */
+.wp-settings-card,
+.wp-preview-card,
+.wp-advanced-card {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.wp-settings-card:hover,
+.wp-preview-card:hover,
+.wp-advanced-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+/* 加载状态骨架屏 */
+.wp-skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--background-secondary) 25%,
+    var(--background-primary) 50%,
+    var(--background-secondary) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-loading 1.5s ease-in-out infinite;
+  border-radius: 4px;
+}
+
+@keyframes skeleton-loading {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* 错误提示优化 */
+.wp-error-message {
+  background: var(--background-modifier-error);
+  border-left: 4px solid var(--text-error);
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin: 12px 0;
+  animation: error-slide-in 0.3s ease-out;
+}
+
+@keyframes error-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* 成功提示优化 */
+.wp-success-message {
+  background: var(--background-modifier-success);
+  border-left: 4px solid var(--text-success);
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin: 12px 0;
+  animation: success-slide-in 0.3s ease-out;
+}
+
+@keyframes success-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 工具提示样式 */
+.wp-tooltip {
+  position: absolute;
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 0.85em;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.wp-tooltip.show {
+  opacity: 1;
+}
+
+/* 按钮禁用状态优化 */
+button:disabled,
+button.disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+  filter: grayscale(0.3);
+}
+
+button:disabled:hover,
+button.disabled:hover {
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+/* 平滑滚动 */
+.wp-publish-modal-v2,
+.wp-preview-content,
+.wp-preview-rendered {
+  scroll-behavior: smooth;
+}
+
+/* 选择高亮优化 */
+::selection {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+/* 图片加载占位符 */
+.featured-image-loading {
+  background: var(--background-secondary);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* 涟漪效果 */
+.wp-ripple-effect {
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+  transform: scale(0);
+  animation: ripple 0.6s ease-out;
+  pointer-events: none;
+}
+
+@keyframes ripple {
+  to {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
+/* 输入框焦点容器 */
+.wp-input-focused {
+  position: relative;
+}
+
+.wp-input-focused::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--interactive-accent);
+  transform: scaleX(0);
+  animation: input-focus-line 0.3s ease-out forwards;
+}
+
+@keyframes input-focus-line {
+  to {
+    transform: scaleX(1);
+  }
+}
+
 /* ==================== AI 辅助区域样式 ==================== */
 .wp-settings-ai {
   margin-top: 16px;

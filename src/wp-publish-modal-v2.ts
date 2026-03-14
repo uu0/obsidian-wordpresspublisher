@@ -2549,6 +2549,72 @@ Consider migrating to REST API for better security and feature support.
     }, 8000);
   }
 
+  /**
+   * 添加涟漪效果到按钮
+   */
+  private addRippleEffect(button: HTMLElement): void {
+    button.addEventListener('click', (e: MouseEvent) => {
+      const ripple = button.createDiv('wp-ripple-effect');
+      const rect = button.getBoundingClientRect();
+      const size = Math.max(rect.width, rect.height);
+      const x = e.clientX - rect.left - size / 2;
+      const y = e.clientY - rect.top - size / 2;
+
+      ripple.style.width = ripple.style.height = `${size}px`;
+      ripple.style.left = `${x}px`;
+      ripple.style.top = `${y}px`;
+
+      setTimeout(() => ripple.remove(), 600);
+    });
+  }
+
+  /**
+   * 显示工具提示
+   */
+  private showTooltip(element: HTMLElement, text: string, duration: number = 2000): void {
+    const tooltip = document.body.createDiv('wp-tooltip');
+    tooltip.setText(text);
+
+    const rect = element.getBoundingClientRect();
+    tooltip.style.left = `${rect.left + rect.width / 2}px`;
+    tooltip.style.top = `${rect.top - 40}px`;
+    tooltip.style.transform = 'translateX(-50%)';
+
+    setTimeout(() => tooltip.addClass('show'), 10);
+
+    setTimeout(() => {
+      tooltip.removeClass('show');
+      setTimeout(() => tooltip.remove(), 200);
+    }, duration);
+  }
+
+  /**
+   * 添加输入框焦点动画
+   */
+  private enhanceInputFocus(input: HTMLInputElement | HTMLTextAreaElement): void {
+    input.addEventListener('focus', () => {
+      input.parentElement?.addClass('wp-input-focused');
+    });
+
+    input.addEventListener('blur', () => {
+      input.parentElement?.removeClass('wp-input-focused');
+    });
+  }
+
+  /**
+   * 添加平滑滚动到元素
+   */
+  private scrollToElement(element: HTMLElement, offset: number = 20): void {
+    const rect = element.getBoundingClientRect();
+    const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+    const targetY = rect.top + scrollTop - offset;
+
+    window.scrollTo({
+      top: targetY,
+      behavior: 'smooth'
+    });
+  }
+
   private generateDefaultSlug(title: string, params?: WordPressPostParams): void {
     if (!title || !this.slugInput) return;
 
