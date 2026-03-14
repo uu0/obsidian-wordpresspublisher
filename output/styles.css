@@ -1,3 +1,38 @@
+/* ==================== WordPress Publisher Theme Variables ==================== */
+:root {
+  /* Tag colors for light theme */
+  --wp-tag-color-1: #5B8FF9;
+  --wp-tag-color-2: #5AD8A6;
+  --wp-tag-color-3: #F6BD16;
+  --wp-tag-color-4: #E86452;
+  --wp-tag-color-5: #6DC8EC;
+  --wp-tag-color-6: #945FB9;
+  --wp-tag-color-7: #FF9845;
+  --wp-tag-color-8: #1E9493;
+  --wp-tag-color-9: #FF99C3;
+
+  /* Shadow and overlay effects */
+  --wp-shadow-hover: 0 2px 8px rgba(0, 0, 0, 0.15);
+  --wp-modal-overlay: rgba(0, 0, 0, 0.5);
+}
+
+.theme-dark {
+  /* Tag colors for dark theme - brighter variants */
+  --wp-tag-color-1: #7BA3FF;
+  --wp-tag-color-2: #6FE8B8;
+  --wp-tag-color-3: #FFD13D;
+  --wp-tag-color-4: #FF7A6B;
+  --wp-tag-color-5: #85D9F7;
+  --wp-tag-color-6: #A87FD1;
+  --wp-tag-color-7: #FFB066;
+  --wp-tag-color-8: #3EAFAE;
+  --wp-tag-color-9: #FFB3D9;
+
+  /* Shadow and overlay effects for dark theme */
+  --wp-shadow-hover: 0 2px 8px rgba(255, 255, 255, 0.1);
+  --wp-modal-overlay: rgba(0, 0, 0, 0.7);
+}
+
 .modal-header {
   display: flex;
   justify-content: space-between;
@@ -998,7 +1033,7 @@
   left: 0;
   width: 100vw;
   height: 100vh;
-  background: rgba(0, 0, 0, 0.6);
+  background: var(--wp-modal-overlay);
   backdrop-filter: blur(4px);
   z-index: 9999;
   display: flex;
@@ -1322,7 +1357,7 @@
 
 .wp-tag-item:hover {
   transform: translateY(-1px);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--wp-shadow-hover);
 }
 
 .wp-tag-text {

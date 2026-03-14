@@ -25,18 +25,18 @@ const log = createModuleLogger('WpPublishModalV2');
 // Default prompt templates will be loaded from i18n
 
 /**
- * 预定义的标签颜色池
+ * 预定义的标签颜色池 - 使用 CSS 变量以支持主题切换
  */
 const TAG_COLORS = [
-  '#5B8FF9', // 蓝色
-  '#5AD8A6', // 绿色
-  '#F6BD16', // 黄色
-  '#E86452', // 红色
-  '#6DC8EC', // 青色
-  '#945FB9', // 紫色
-  '#FF9845', // 橙色
-  '#1E9493', // 深青
-  '#FF99C3', // 粉色
+  'var(--wp-tag-color-1)',
+  'var(--wp-tag-color-2)',
+  'var(--wp-tag-color-3)',
+  'var(--wp-tag-color-4)',
+  'var(--wp-tag-color-5)',
+  'var(--wp-tag-color-6)',
+  'var(--wp-tag-color-7)',
+  'var(--wp-tag-color-8)',
+  'var(--wp-tag-color-9)',
 ];
 
 /**
@@ -1687,7 +1687,7 @@ export class WpPublishModalV2 extends AbstractModal {
     // 标签悬停效果
     tagEl.addEventListener('mouseenter', () => {
       tagEl.style.transform = 'translateY(-1px)';
-      tagEl.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.2)';
+      tagEl.style.boxShadow = 'var(--wp-shadow-hover)';
     });
 
     tagEl.addEventListener('mouseleave', () => {
@@ -2013,7 +2013,7 @@ Consider migrating to REST API for better security and feature support.
     const modal = this.plugin.app.workspace.activeLeaf?.view.containerEl.createEl('div');
     if (modal) {
       modal.innerHTML = `
-        <div class="modal-bg" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;">
+        <div class="modal-bg" style="position:fixed;top:0;left:0;width:100%;height:100%;background:var(--wp-modal-overlay);z-index:9999;">
           <div class="modal" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--background-primary);padding:20px;border-radius:8px;max-width:600px;max-height:80vh;overflow:auto;">
             <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
               <h3 style="margin:0;">API Information</h3>
