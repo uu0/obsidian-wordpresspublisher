@@ -1740,3 +1740,85 @@
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
 }
+
+/* ==================== AI 辅助区域样式 ==================== */
+.wp-settings-ai {
+  margin-top: 16px;
+}
+
+.wp-ai-section {
+  margin-bottom: 20px;
+  padding: 16px;
+  background: var(--background-primary);
+  border-radius: 6px;
+  border: 1px solid var(--background-modifier-border);
+}
+
+.wp-ai-section-title {
+  margin: 0 0 12px 0;
+  font-size: 0.95em;
+  font-weight: 600;
+  color: var(--text-normal);
+}
+
+.wp-ai-buttons {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.wp-ai-buttons button {
+  padding: 6px 12px;
+  font-size: 0.9em;
+  border-radius: 4px;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.wp-ai-buttons button:hover {
+  background: var(--interactive-accent-hover);
+  transform: translateY(-1px);
+}
+
+.wp-ai-buttons button.disabled {
+  background: var(--background-modifier-border);
+  color: var(--text-muted);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.wp-ai-buttons button.disabled:hover {
+  transform: none;
+}
+
+.wp-ai-excerpt-preview {
+  padding: 12px;
+  background: var(--background-secondary);
+  border-radius: 4px;
+  border-left: 3px solid var(--interactive-accent);
+}
+
+.wp-ai-excerpt-text {
+  margin: 0;
+  font-size: 0.9em;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.wp-ai-tags-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.wp-ai-tag-item {
+  padding: 4px 10px;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border-radius: 12px;
+  font-size: 0.85em;
+  font-weight: 500;
+}

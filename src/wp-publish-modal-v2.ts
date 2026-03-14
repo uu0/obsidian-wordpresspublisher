@@ -113,7 +113,7 @@ export class WpPublishModalV2 extends AbstractModal {
   private unsplashService: UnsplashService | null = null;
   private slugInput: HTMLInputElement | null = null;
   private titleInput: HTMLInputElement | null = null;
-  private currentTab: 'settings' | 'preview' | 'advanced' = 'settings';
+  private currentTab: 'settings' | 'preview' = 'settings';
   private editableContent: string = '';
   private isEditingPreview: boolean = false;
   private autoFeaturedImage: FeaturedImageResult | null = null;
@@ -712,14 +712,10 @@ export class WpPublishModalV2 extends AbstractModal {
       this.renderSettingsTab(mainContainer, params);
     } else if (this.currentTab === 'preview') {
       this.renderPreviewTab(mainContainer, params);
-    } else if (this.currentTab === 'advanced') {
-      this.renderAdvancedTab(mainContainer, params);
     }
 
-    // 底部操作栏（仅在设置和预览标签显示）
-    if (this.currentTab !== 'advanced') {
-      this.renderBottomBar(contentEl, params);
-    }
+    // 底部操作栏
+    this.renderBottomBar(contentEl, params);
   }
 
   private updateModalWidth(): void {
@@ -737,8 +733,7 @@ export class WpPublishModalV2 extends AbstractModal {
 
     const tabs = [
       { id: 'settings', label: this.plugin.t('publishModal_settingsTab') },
-      { id: 'preview', label: this.plugin.t('publishModal_previewTab') },
-      { id: 'advanced', label: this.plugin.t('publishModal_advancedTab') }
+      { id: 'preview', label: this.plugin.t('publishModal_previewTab') }
     ];
 
     tabs.forEach(tab => {
@@ -747,7 +742,7 @@ export class WpPublishModalV2 extends AbstractModal {
       });
       tabEl.createSpan({ text: tab.label });
       tabEl.onclick = () => {
-        this.currentTab = tab.id as 'settings' | 'preview' | 'advanced';
+        this.currentTab = tab.id as 'settings' | 'preview';
         this.display(params);
       };
     });
@@ -760,6 +755,10 @@ export class WpPublishModalV2 extends AbstractModal {
 
     const bottomSection = container.createDiv('wp-settings-bottom');
     this.renderBasicSettings(bottomSection, params);
+
+    // AI 辅助区域
+    const aiSection = container.createDiv('wp-settings-ai');
+    this.renderAIAssistSection(aiSection, params);
   }
 
   private renderFeaturedImageSettings(container: HTMLElement, params: WordPressPostParams): void {
@@ -1430,6 +1429,79 @@ export class WpPublishModalV2 extends AbstractModal {
     }
   }
 
+  // ==================== AI 辅助区域 ====================
+  private renderAIAssistSection(container: HTMLElement, params: WordPressPostParams): void {
+    const card = container.createDiv('wp-settings-card');
+    card.createEl('h3', { text: '🤖 ' + this.plugin.t('publishModal_aiAssist'), cls: 'wp-settings-section-title' });
+
+    // 生成摘要
+    this.renderAIExcerptSection(card, params);
+
+    // 智能标签推荐
+    this.renderAITagsSection(card, params);
+
+    // AI 生成特色图片（如果已经在特色图片设置中，这里可以省略或添加快捷按钮）
+    // 由于特色图片设置已经有 AI 生成按钮，这里不重复
+  }
+
+  private renderAIExcerptSection(card: HTMLElement, params: WordPressPostParams): void {
+    const section = card.createDiv('wp-ai-section');
+    section.createEl('h4', { text: '📊 ' + this.plugin.t('publishModal_aiExcerpt'), cls: 'wp-ai-section-title' });
+
+    const btnContainer = section.createDiv('wp-ai-buttons');
+    const generateBtn = btnContainer.createEl('button', { text: this.t('publishModal_generateSummary') });
+
+    if (!this.aiService) {
+      generateBtn.addClass('disabled');
+      generateBtn.onclick = () => {
+        new Notice(this.t('notice_aiConfigRequired'));
+      };
+    } else if (!this.aiService.hasTextAIKey()) {
+      generateBtn.addClass('disabled');
+      generateBtn.onclick = () => {
+        new Notice(this.t('notice_textAIApiKeyRequired'));
+      };
+    } else {
+      generateBtn.onclick = () => this.generateSummary(params);
+    }
+
+    // 显示当前摘要（如果有）
+    if (params.excerpt) {
+      const excerptPreview = section.createDiv('wp-ai-excerpt-preview');
+      excerptPreview.createEl('p', { text: params.excerpt, cls: 'wp-ai-excerpt-text' });
+    }
+  }
+
+  private renderAITagsSection(card: HTMLElement, params: WordPressPostParams): void {
+    const section = card.createDiv('wp-ai-section');
+    section.createEl('h4', { text: '🏷️ ' + this.plugin.t('publishModal_aiTags'), cls: 'wp-ai-section-title' });
+
+    const btnContainer = section.createDiv('wp-ai-buttons');
+    const generateBtn = btnContainer.createEl('button', { text: this.t('publishModal_generateTags') });
+
+    if (!this.aiService) {
+      generateBtn.addClass('disabled');
+      generateBtn.onclick = () => {
+        new Notice(this.t('notice_aiConfigRequired'));
+      };
+    } else if (!this.aiService.hasTextAIKey()) {
+      generateBtn.addClass('disabled');
+      generateBtn.onclick = () => {
+        new Notice(this.t('notice_textAIApiKeyRequired'));
+      };
+    } else {
+      generateBtn.onclick = () => this.generateTags(params);
+    }
+
+    // 显示推荐标签（如果有）
+    if (params.tags && params.tags.length > 0) {
+      const tagsPreview = section.createDiv('wp-ai-tags-preview');
+      params.tags.forEach(tag => {
+        tagsPreview.createEl('span', { text: tag, cls: 'wp-ai-tag-item' });
+      });
+    }
+  }
+
   private setupDateMask(inputEl: HTMLInputElement, params: WordPressPostParams): void {
     const dateTimeFormat = 'yyyy-MM-dd HH:mm:ss';
     const dateBlocks = {
@@ -1866,85 +1938,6 @@ export class WpPublishModalV2 extends AbstractModal {
   }
 
   // ==================== Advanced Settings Tab ====================
-  private renderAdvancedTab(container: HTMLElement, params: WordPressPostParams): void {
-    const card = container.createDiv('wp-advanced-card');
-
-    const header = card.createDiv('wp-advanced-header');
-    header.createEl('h3', { text: this.plugin.t('publishModal_advancedTitle'), cls: 'wp-advanced-card-title' });
-
-    const notice = header.createDiv('wp-advanced-notice');
-    notice.style.padding = '12px';
-    notice.style.backgroundColor = 'var(--background-secondary)';
-    notice.style.borderRadius = '6px';
-    notice.style.marginBottom = '20px';
-    notice.createEl('p', { text: this.plugin.t('publishModal_advancedNotice') });
-
-    // Summary prompt
-    const summarySection = card.createDiv('wp-advanced-section');
-    summarySection.createEl('h4', { text: this.plugin.t('publishModal_summaryPromptTitle'), cls: 'wp-advanced-section-title' });
-    const summarySetting = new Setting(summarySection);
-    summarySetting.addTextArea(text => {
-      text.setPlaceholder(this.plugin.t('defaultPrompt_summary'))
-        .setValue(this.plugin.settings.summaryPrompt || '')
-        .onChange(value => {
-          (this.plugin.settings as SafeAny).summaryPrompt = value;
-        });
-      text.inputEl.rows = 6;
-      text.inputEl.style.width = '100%';
-      text.inputEl.style.minHeight = '120px';
-      text.inputEl.style.fontFamily = 'var(--font-mono)';
-      text.inputEl.style.fontSize = '12px';
-      text.inputEl.style.lineHeight = '1.5';
-    });
-
-    // Tags prompt
-    const tagsSection = card.createDiv('wp-advanced-section');
-    tagsSection.createEl('h4', { text: this.plugin.t('publishModal_tagsPromptTitle'), cls: 'wp-advanced-section-title' });
-    const tagsSetting = new Setting(tagsSection);
-    tagsSetting.addTextArea(text => {
-      text.setPlaceholder(this.plugin.t('defaultPrompt_tags'))
-        .setValue(this.plugin.settings.tagsPrompt || '')
-        .onChange(value => {
-          (this.plugin.settings as SafeAny).tagsPrompt = value;
-        });
-      text.inputEl.rows = 6;
-      text.inputEl.style.width = '100%';
-      text.inputEl.style.minHeight = '120px';
-      text.inputEl.style.fontFamily = 'var(--font-mono)';
-      text.inputEl.style.fontSize = '12px';
-      text.inputEl.style.lineHeight = '1.5';
-    });
-
-    // Image generation prompt
-    const imageSection = card.createDiv('wp-advanced-section');
-    imageSection.createEl('h4', { text: this.plugin.t('publishModal_imagePromptTitle'), cls: 'wp-advanced-section-title' });
-    const imageSetting = new Setting(imageSection);
-    imageSetting.addTextArea(text => {
-      text.setPlaceholder(this.plugin.t('defaultPrompt_image'))
-        .setValue(this.plugin.settings.imageGenerationPrompt || '')
-        .onChange(value => {
-          (this.plugin.settings as SafeAny).imageGenerationPrompt = value;
-        });
-      text.inputEl.rows = 6;
-      text.inputEl.style.width = '100%';
-      text.inputEl.style.minHeight = '120px';
-      text.inputEl.style.fontFamily = 'var(--font-mono)';
-      text.inputEl.style.fontSize = '12px';
-      text.inputEl.style.lineHeight = '1.5';
-    });
-
-    // 保存设置按钮
-    const saveSection = card.createDiv('wp-advanced-save');
-    new Setting(saveSection)
-      .addButton(btn => {
-        btn.setButtonText(this.t('publishModal_saveSettings'))
-          .setCta()
-          .onClick(async () => {
-            await this.plugin.saveSettings();
-            new Notice(this.t('publishModal_settingsSaved'));
-          });
-      });
-  }
 
   // ==================== API Warning Display ====================
   private renderApiWarning(container: HTMLElement, apiType: string): void {
@@ -2056,36 +2049,6 @@ Consider migrating to REST API for better security and feature support.
         }
         this.display(params);
       };
-
-      const summaryBtn = bottomContainer.createEl('button', { text: this.t('publishModal_generateSummary') });
-      if (!this.aiService) {
-        summaryBtn.addClass('disabled');
-        summaryBtn.onclick = () => {
-          new Notice(this.t('notice_aiConfigRequired'));
-        };
-      } else if (!this.aiService.hasTextAIKey()) {
-        summaryBtn.addClass('disabled');
-        summaryBtn.onclick = () => {
-          new Notice(this.t('notice_textAIApiKeyRequired'));
-        };
-      } else {
-        summaryBtn.onclick = () => this.generateSummary(params);
-      }
-
-      const tagsBtn = bottomContainer.createEl('button', { text: this.t('publishModal_generateTags') });
-      if (!this.aiService) {
-        tagsBtn.addClass('disabled');
-        tagsBtn.onclick = () => {
-          new Notice(this.t('notice_aiConfigRequired'));
-        };
-      } else if (!this.aiService.hasTextAIKey()) {
-        tagsBtn.addClass('disabled');
-        tagsBtn.onclick = () => {
-          new Notice(this.t('notice_textAIApiKeyRequired'));
-        };
-      } else {
-        tagsBtn.onclick = () => this.generateTags(params);
-      }
 
       const publishBtn = bottomContainer.createEl('button', {
         text: this.t('publishModal_publishButton'),
