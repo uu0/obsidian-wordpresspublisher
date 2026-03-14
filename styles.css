@@ -1746,6 +1746,50 @@
   margin-top: 16px;
 }
 
+/* AI 标签页导航 */
+.wp-ai-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 0;
+  border-bottom: 2px solid var(--background-modifier-border);
+  padding-bottom: 0;
+}
+
+.wp-ai-tab-item {
+  padding: 10px 20px;
+  cursor: pointer;
+  border-radius: 6px 6px 0 0;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  font-weight: 500;
+  background: transparent;
+  border: none;
+  font-size: 14px;
+}
+
+.wp-ai-tab-item:hover {
+  background: var(--background-secondary);
+  color: var(--text-normal);
+}
+
+.wp-ai-tab-item.active {
+  background: var(--background-secondary);
+  color: var(--text-accent);
+  border-bottom: 3px solid var(--interactive-accent);
+  margin-bottom: -2px;
+}
+
+/* AI 标签页内容 */
+.wp-ai-tab-content {
+  padding: 20px;
+  background: var(--background-secondary);
+  border-radius: 0 0 8px 8px;
+  min-height: 200px;
+}
+
 .wp-ai-section {
   margin-bottom: 20px;
   padding: 16px;
@@ -1792,6 +1836,23 @@
 
 .wp-ai-buttons button.disabled:hover {
   transform: none;
+}
+
+/* 摘要编辑器 */
+.wp-ai-excerpt-editor {
+  margin-top: 16px;
+}
+
+.wp-ai-editor-label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
+  color: var(--text-normal);
+}
+
+/* 标签编辑器 */
+.wp-ai-tags-editor {
+  margin-top: 16px;
 }
 
 .wp-ai-excerpt-preview {
