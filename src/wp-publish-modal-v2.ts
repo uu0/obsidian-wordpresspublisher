@@ -755,6 +755,9 @@ export class WpPublishModalV2 extends AbstractModal {
 
     // 底部操作栏
     this.renderBottomBar(contentEl, params);
+
+    // 设置滚动监听，为 sticky 元素添加阴影效果
+    this.setupStickyScrollListener(contentEl);
   }
 
   private updateModalWidth(): void {
@@ -765,6 +768,46 @@ export class WpPublishModalV2 extends AbstractModal {
       modalEl.style.minWidth = '400px';
       modalEl.style.boxSizing = 'border-box';
     }
+  }
+
+  /**
+   * 设置滚动监听，为 sticky 元素添加阴影效果
+   */
+  private setupStickyScrollListener(container: HTMLElement): void {
+    const tabBar = container.querySelector('.wp-publish-tabs') as HTMLElement;
+    const bottomBar = container.querySelector('.wp-publish-bottom-bar') as HTMLElement;
+
+    if (!tabBar || !bottomBar) {
+      return;
+    }
+
+    // 监听容器滚动
+    const handleScroll = () => {
+      const scrollTop = container.scrollTop;
+      const scrollHeight = container.scrollHeight;
+      const clientHeight = container.clientHeight;
+      const scrollBottom = scrollHeight - scrollTop - clientHeight;
+
+      // 顶部标签栏：滚动超过 10px 时添加阴影
+      if (scrollTop > 10) {
+        tabBar.addClass('scrolled');
+      } else {
+        tabBar.removeClass('scrolled');
+      }
+
+      // 底部操作栏：距离底部超过 10px 时添加阴影
+      if (scrollBottom > 10) {
+        bottomBar.addClass('scrolled');
+      } else {
+        bottomBar.removeClass('scrolled');
+      }
+    };
+
+    // 添加滚动监听
+    container.addEventListener('scroll', handleScroll);
+
+    // 初始检查
+    handleScroll();
   }
 
   private renderTabBar(container: HTMLElement, params: WordPressPostParams): void {

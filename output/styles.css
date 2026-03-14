@@ -14,6 +14,7 @@
   /* Shadow and overlay effects */
   --wp-shadow-hover: 0 2px 8px rgba(0, 0, 0, 0.15);
   --wp-modal-overlay: rgba(0, 0, 0, 0.5);
+  --wp-sticky-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .theme-dark {
@@ -31,6 +32,7 @@
   /* Shadow and overlay effects for dark theme */
   --wp-shadow-hover: 0 2px 8px rgba(255, 255, 255, 0.1);
   --wp-modal-overlay: rgba(0, 0, 0, 0.7);
+  --wp-sticky-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .modal-header {
@@ -49,6 +51,10 @@
   width: 100%;
   max-width: 800px;
   box-sizing: border-box;
+  /* Enable sticky positioning for child elements */
+  position: relative;
+  overflow-y: auto;
+  max-height: 85vh;
 }
 
 /* 响应式布局 - 根据窗口大小自动调整 */
@@ -573,6 +579,19 @@
   padding-bottom: 0;
   width: 100%;
   box-sizing: border-box;
+  /* Sticky positioning */
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--background-primary);
+  padding-top: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0);
+  transition: box-shadow 0.2s ease;
+}
+
+/* Add shadow when scrolled */
+.wp-publish-tabs.scrolled {
+  box-shadow: var(--wp-sticky-shadow);
 }
 
 .wp-publish-tab-item {
@@ -904,6 +923,20 @@
   padding: 20px 0 0 0;
   border-top: 2px solid var(--background-modifier-border);
   flex-wrap: wrap;
+  /* Sticky positioning */
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  background: var(--background-primary);
+  padding-bottom: 12px;
+  margin-top: 20px;
+  box-shadow: 0 -2px 4px rgba(0, 0, 0, 0);
+  transition: box-shadow 0.2s ease;
+}
+
+/* Add shadow when scrolled */
+.wp-publish-bottom-bar.scrolled {
+  box-shadow: 0 -2px 8px var(--wp-sticky-shadow);
 }
 
 .wp-publish-bottom-bar button {
