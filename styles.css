@@ -15,6 +15,25 @@
   --wp-shadow-hover: 0 2px 8px rgba(0, 0, 0, 0.15);
   --wp-modal-overlay: rgba(0, 0, 0, 0.5);
   --wp-sticky-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+
+  /* Panel layout */
+  --wp-panel-width: 320px;
+  --wp-panel-collapsed-height: 48px;
+
+  /* Button colors */
+  --wp-btn-ai-bg: transparent;
+  --wp-btn-ai-border: var(--text-accent, #7c3aed);
+  --wp-btn-ai-text: var(--text-accent, #7c3aed);
+
+  --wp-btn-cancel-bg: var(--background-modifier-border, #e0e0e0);
+  --wp-btn-cancel-text: var(--text-normal, #333);
+
+  --wp-btn-save-bg: var(--interactive-accent, #0073aa);
+  --wp-btn-save-text: var(--text-on-accent, #fff);
+
+  /* Edit icon */
+  --wp-edit-icon-color: var(--text-muted);
+  --wp-edit-icon-hover: var(--interactive-accent);
 }
 
 .theme-dark {
@@ -2215,4 +2234,605 @@ button.disabled:hover {
   border-radius: 12px;
   font-size: 0.85em;
   font-weight: 500;
+}
+
+/* ==================== New Layout: Preview Priority ==================== */
+
+/* Main container - two column layout */
+.wp-layout-container {
+  display: flex;
+  gap: 20px;
+  min-height: 500px;
+}
+
+/* Preview area (left/main column) */
+.wp-layout-preview {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Panels area (right column) */
+.wp-layout-panels {
+  width: var(--wp-panel-width);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ==================== Floating Panels ==================== */
+
+.wp-floating-panels-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.wp-floating-panel {
+  background: var(--background-secondary);
+  border-radius: 8px;
+  border: 1px solid var(--background-modifier-border);
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.wp-floating-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: var(--background-primary);
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.2s ease;
+}
+
+.wp-floating-panel-header:hover {
+  background: var(--background-secondary);
+}
+
+.wp-floating-panel-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  color: var(--text-muted);
+}
+
+.wp-floating-panel-title {
+  flex: 1;
+  font-weight: 500;
+  font-size: 14px;
+  color: var(--text-normal);
+}
+
+.wp-floating-panel-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--text-muted);
+  transition: transform 0.2s ease;
+}
+
+.wp-floating-panel.expanded .wp-floating-panel-indicator {
+  transform: rotate(0deg);
+}
+
+.wp-floating-panel:not(.expanded) .wp-floating-panel-indicator {
+  transform: rotate(-90deg);
+}
+
+.wp-floating-panel-content {
+  padding: 16px;
+  border-top: 1px solid var(--background-modifier-border);
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+/* ==================== Preview Sections ==================== */
+
+.wp-preview-section {
+  background: var(--background-secondary);
+  border-radius: 8px;
+  padding: 16px;
+  border: 1px solid var(--background-modifier-border);
+}
+
+.wp-preview-section-sticky {
+  position: sticky;
+  top: 60px;
+  z-index: 5;
+}
+
+.wp-preview-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.wp-preview-section-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text-normal);
+}
+
+.wp-preview-section-content {
+  min-height: 60px;
+}
+
+/* Edit icon button */
+.wp-edit-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--wp-edit-icon-color);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.wp-edit-icon:hover {
+  background: var(--background-modifier-border);
+  color: var(--wp-edit-icon-hover);
+}
+
+.wp-edit-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* ==================== Bottom Buttons ==================== */
+
+.wp-bottom-buttons {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.wp-btn {
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* AI Generate button - purple border, transparent bg */
+.wp-btn-ai {
+  background: var(--wp-btn-ai-bg);
+  border: 1px solid var(--wp-btn-ai-border);
+  color: var(--wp-btn-ai-text);
+}
+
+.wp-btn-ai:hover:not(:disabled) {
+  background: rgba(124, 58, 237, 0.1);
+}
+
+.wp-btn-ai:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Cancel button - gray background */
+.wp-btn-cancel {
+  background: var(--wp-btn-cancel-bg);
+  border: 1px solid var(--background-modifier-border);
+  color: var(--wp-btn-cancel-text);
+}
+
+.wp-btn-cancel:hover:not(:disabled) {
+  background: var(--background-modifier-border-hover);
+}
+
+/* Save button - blue primary */
+.wp-btn-save {
+  background: var(--wp-btn-save-bg);
+  border: 1px solid var(--wp-btn-save-bg);
+  color: var(--wp-btn-save-text);
+}
+
+.wp-btn-save:hover:not(:disabled) {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.wp-btn-save:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Retry button - similar to AI button */
+.wp-btn-retry {
+  background: var(--wp-btn-ai-bg);
+  border: 1px solid var(--wp-btn-ai-border);
+  color: var(--wp-btn-ai-text);
+}
+
+.wp-btn-retry:hover:not(:disabled) {
+  background: rgba(124, 58, 237, 0.1);
+}
+
+/* Button spinner */
+.wp-btn-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--text-muted);
+  border-top-color: var(--text-normal);
+  border-radius: 50%;
+  animation: btn-spin 0.8s linear infinite;
+}
+
+@keyframes btn-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ==================== Tag Shake Animation ==================== */
+
+.wp-tag-shaking {
+  animation: wp-tag-shake 0.3s ease-in-out infinite;
+}
+
+@keyframes wp-tag-shake {
+  0%, 100% { transform: translateX(0) rotate(0deg); }
+  25% { transform: translateX(-2px) rotate(-1deg); }
+  75% { transform: translateX(2px) rotate(1deg); }
+}
+
+.wp-tag-delete-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-left: 4px;
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.wp-tag-delete-btn:hover {
+  background: rgba(255, 255, 255, 0.5);
+  transform: scale(1.1);
+}
+
+/* ==================== Preview Featured Image ==================== */
+
+.wp-preview-featured-image {
+  max-width: 100%;
+  max-height: 200px;
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+.wp-preview-image-info {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.wp-preview-placeholder {
+  color: var(--text-muted);
+  font-style: italic;
+  text-align: center;
+  padding: 20px;
+}
+
+/* ==================== Preview Excerpt ==================== */
+
+.wp-preview-excerpt-text {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-muted);
+  padding: 12px;
+  background: var(--background-primary);
+  border-radius: 6px;
+  border-left: 3px solid var(--interactive-accent);
+}
+
+/* ==================== Preview Tags ==================== */
+
+.wp-preview-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px;
+  background: var(--background-primary);
+  border-radius: 6px;
+}
+
+/* ==================== Preview Article ==================== */
+
+.wp-preview-article {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-normal);
+  padding: 12px;
+  background: var(--background-primary);
+  border-radius: 6px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+/* ==================== Excerpt Editor ==================== */
+
+.wp-excerpt-editor {
+  width: 100%;
+}
+
+.wp-excerpt-textarea {
+  width: 100%;
+  min-height: 100px;
+  padding: 12px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-size: 14px;
+  line-height: 1.6;
+  resize: vertical;
+}
+
+.wp-excerpt-textarea:focus {
+  outline: none;
+  border-color: var(--interactive-accent);
+}
+
+/* ==================== Tags Editor ==================== */
+
+.wp-tags-editor-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.wp-tags-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.wp-tag-item-editable {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #fff;
+}
+
+.wp-tag-add-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wp-tag-add-input {
+  padding: 4px 10px;
+  border: 1px solid var(--interactive-accent);
+  border-radius: 12px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-size: 12px;
+  outline: none;
+  min-width: 120px;
+}
+
+/* ==================== Article Editor Modal ==================== */
+
+.wp-article-editor-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: var(--wp-modal-overlay);
+  backdrop-filter: blur(4px);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.wp-article-editor-container {
+  background: var(--background-primary);
+  border-radius: 12px;
+  padding: 20px;
+  width: 90%;
+  max-width: 800px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.wp-article-editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.wp-article-editor-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-normal);
+}
+
+.wp-article-editor-textarea {
+  flex: 1;
+  width: 100%;
+  min-height: 400px;
+  padding: 16px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  font-family: var(--font-monospace);
+  font-size: 14px;
+  line-height: 1.6;
+  resize: none;
+}
+
+.wp-article-editor-textarea:focus {
+  outline: none;
+  border-color: var(--interactive-accent);
+}
+
+/* ==================== Responsive Layout ==================== */
+
+/* Desktop: two-column layout */
+@media (min-width: 769px) {
+  .wp-layout-container {
+    flex-direction: row;
+  }
+
+  .wp-layout-preview {
+    flex: 1;
+  }
+
+  .wp-layout-panels {
+    width: var(--wp-panel-width);
+  }
+
+  /* Mobile panels button - hidden on desktop */
+  .wp-mobile-panels-toggle {
+    display: none;
+  }
+}
+
+/* Mobile: single column layout */
+@media (max-width: 768px) {
+  .wp-layout-container {
+    flex-direction: column;
+  }
+
+  .wp-layout-preview {
+    width: 100%;
+  }
+
+  .wp-layout-panels {
+    width: 100%;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: var(--background-primary);
+    border-top: 1px solid var(--background-modifier-border);
+    z-index: 100;
+    padding: 12px;
+    display: none; /* Hidden by default on mobile */
+  }
+
+  .wp-layout-panels.mobile-visible {
+    display: flex;
+    flex-direction: column;
+    max-height: 70vh;
+    overflow-y: auto;
+    animation: slideUp 0.3s ease-out;
+  }
+
+  @keyframes slideUp {
+    from {
+      transform: translateY(100%);
+      opacity: 0;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+
+  /* Mobile toggle button */
+  .wp-mobile-panels-toggle {
+    display: flex;
+    gap: 8px;
+    padding: 12px;
+    background: var(--background-secondary);
+    border-radius: 8px;
+    margin-bottom: 12px;
+  }
+
+  .wp-mobile-panel-btn {
+    flex: 1;
+    padding: 10px 16px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    background: var(--background-primary);
+    color: var(--text-normal);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    transition: all 0.2s ease;
+  }
+
+  .wp-mobile-panel-btn:hover {
+    background: var(--background-secondary);
+  }
+
+  .wp-mobile-panel-btn.active {
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+    border-color: var(--interactive-accent);
+  }
+
+  /* Preview section sticky on mobile */
+  .wp-preview-section-sticky {
+    position: relative;
+    top: 0;
+  }
+
+  /* Bottom buttons on mobile */
+  .wp-bottom-buttons {
+    flex-wrap: wrap;
+  }
+
+  .wp-btn {
+    flex: 1;
+    min-width: 100px;
+  }
+}
+
+/* Dark theme adjustments */
+.theme-dark .wp-floating-panel-header {
+  background: var(--background-secondary);
+}
+
+.theme-dark .wp-floating-panel-header:hover {
+  background: var(--background-primary-alt);
+}
+
+.theme-dark .wp-btn-ai:hover:not(:disabled) {
+  background: rgba(167, 139, 250, 0.15);
+}
+
+.theme-dark .wp-article-editor-container {
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
 }
