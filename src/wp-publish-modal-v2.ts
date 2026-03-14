@@ -1,4 +1,4 @@
-import { Setting, Notice, TFile, requestUrl } from 'obsidian';
+import { Setting, Notice, TFile, requestUrl, setIcon } from 'obsidian';
 import { toNumber } from 'lodash-es';
 import { format, parse } from 'date-fns';
 import IMask, { DynamicMaskType, InputMask } from 'imask';
@@ -19,24 +19,25 @@ import { ImageCacheManager, CachedFeaturedImage } from './image-cache-manager';
 import { createModuleLogger } from './utils/logger';
 import { TagFormatter } from './tag-formatter';
 import { getApiCapabilities, getApiLimitations, getApiRecommendation } from './api-capability';
+import { TranslateKey } from './i18n';
 
 const log = createModuleLogger('WpPublishModalV2');
 
 // Default prompt templates will be loaded from i18n
 
 /**
- * 预定义的标签颜色池
+ * 预定义的标签颜色池 - 使用 CSS 变量以支持主题切换
  */
 const TAG_COLORS = [
-  '#5B8FF9', // 蓝色
-  '#5AD8A6', // 绿色
-  '#F6BD16', // 黄色
-  '#E86452', // 红色
-  '#6DC8EC', // 青色
-  '#945FB9', // 紫色
-  '#FF9845', // 橙色
-  '#1E9493', // 深青
-  '#FF99C3', // 粉色
+  'var(--wp-tag-color-1)',
+  'var(--wp-tag-color-2)',
+  'var(--wp-tag-color-3)',
+  'var(--wp-tag-color-4)',
+  'var(--wp-tag-color-5)',
+  'var(--wp-tag-color-6)',
+  'var(--wp-tag-color-7)',
+  'var(--wp-tag-color-8)',
+  'var(--wp-tag-color-9)',
 ];
 
 /**
@@ -80,6 +81,15 @@ function detectLanguage(text: string): 'zh' | 'en' | 'other' {
  * Get localized prompt based on language
  */
 function getLocalizedPrompt(plugin: WordpressPlugin, language: 'zh' | 'en' | 'other', type: 'summary' | 'tags' | 'image'): string {
+  // Check if user has custom prompt in settings
+  if (type === 'summary' && plugin.settings.summaryPrompt) {
+    return plugin.settings.summaryPrompt;
+  } else if (type === 'tags' && plugin.settings.tagsPrompt) {
+    return plugin.settings.tagsPrompt;
+  } else if (type === 'image' && plugin.settings.imageGenerationPrompt) {
+    return plugin.settings.imageGenerationPrompt;
+  }
+
   // Use English prompts for English or other languages
   if (language === 'en' || language === 'other') {
     if (type === 'summary') {
