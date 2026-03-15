@@ -72,6 +72,8 @@ Add plugin: WordPress Publisher
 
 WordPress Publisher is an Obsidian plugin that lets users publish Markdown notes directly to WordPress with a single click. It features a modern dual-pane publishing interface, intelligent slug generation (Pinyin conversion or AI translation), three featured image methods (local/Unsplash/AI-generated), and full AI service integration (OpenAI / Claude) for automated excerpts, tag generation, and image prompts.
 
+This plugin is based on [obsidian-wordpress](https://github.com/devbean/obsidian-wordpress) by devbean (GPL-3.0), and is licensed under GPL-3.0 accordingly.
+
 ### Checklist
 
 - [x] My plugin ID is unique and does not conflict with existing plugins

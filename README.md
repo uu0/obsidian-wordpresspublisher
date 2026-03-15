@@ -155,6 +155,8 @@ manifest.json                  # Plugin manifest
 
 GPL-3.0 License
 
+This plugin is based on [obsidian-wordpress](https://github.com/devbean/obsidian-wordpress) by devbean (GPL-3.0), and is licensed under GPL-3.0 accordingly.
+
 ## Acknowledgments
 
 This project uses the following open-source projects:

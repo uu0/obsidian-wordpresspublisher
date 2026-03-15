@@ -155,6 +155,8 @@ manifest.json                  # 插件配置
 
 GPL-3.0 License
 
+本插件基于 [obsidian-wordpress](https://github.com/devbean/obsidian-wordpress)（作者 devbean，GPL-3.0 协议），并依照 GPL-3.0 协议发布。
+
 ## 致谢
 
 本项目在开发过程中使用了以下开源项目，特此致谢：
