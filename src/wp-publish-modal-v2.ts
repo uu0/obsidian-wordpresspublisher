@@ -1584,7 +1584,7 @@ export class WpPublishModalV2 extends AbstractModal {
         new Notice(this.t('publishModal_imageFromLocal', { fileName: file.name }));
       } catch (error) {
         new Notice(this.t('notice_imageLoadFailed'));
-        console.error('Failed to load local image:', error);
+        log.error('Failed to load local image:', error);
       }
     };
 

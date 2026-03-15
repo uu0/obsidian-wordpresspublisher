@@ -108365,7 +108365,7 @@ var init_wp_publish_modal_v2 = __esm({
             new import_obsidian9.Notice(this.t("publishModal_imageFromLocal", { fileName: file.name }));
           } catch (error2) {
             new import_obsidian9.Notice(this.t("notice_imageLoadFailed"));
-            console.error("Failed to load local image:", error2);
+            log4.error("Failed to load local image:", error2);
           }
         };
         document.body.appendChild(input);
