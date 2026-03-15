@@ -107937,6 +107937,58 @@ var init_wp_publish_modal_v2 = __esm({
         } else {
           renderPreview();
         }
+        const SUPPORTED_MIME = ["image/jpeg", "image/png", "image/gif", "image/webp", "image/svg+xml"];
+        const SUPPORTED_EXT = ["jpg", "jpeg", "png", "gif", "webp", "svg"];
+        section.addEventListener("dragover", (e) => {
+          var _a5, _b, _c;
+          e.preventDefault();
+          e.stopPropagation();
+          const items = (_a5 = e.dataTransfer) == null ? void 0 : _a5.items;
+          if (items && items.length > 0 && items[0].kind === "file") {
+            body.addClass("drag-over");
+            (_b = body.querySelector(".wp-v3-featured-empty")) == null ? void 0 : _b.addClass("drag-over");
+            (_c = body.querySelector(".wp-v3-featured-img-container")) == null ? void 0 : _c.addClass("drag-over");
+          }
+        });
+        section.addEventListener("dragleave", (e) => {
+          var _a5, _b;
+          if (!section.contains(e.relatedTarget)) {
+            body.removeClass("drag-over");
+            (_a5 = body.querySelector(".wp-v3-featured-empty")) == null ? void 0 : _a5.removeClass("drag-over");
+            (_b = body.querySelector(".wp-v3-featured-img-container")) == null ? void 0 : _b.removeClass("drag-over");
+          }
+        });
+        section.addEventListener("drop", async (e) => {
+          var _a5, _b, _c, _d, _e;
+          e.preventDefault();
+          e.stopPropagation();
+          body.removeClass("drag-over");
+          (_a5 = body.querySelector(".wp-v3-featured-empty")) == null ? void 0 : _a5.removeClass("drag-over");
+          (_b = body.querySelector(".wp-v3-featured-img-container")) == null ? void 0 : _b.removeClass("drag-over");
+          const file = (_d = (_c = e.dataTransfer) == null ? void 0 : _c.files) == null ? void 0 : _d[0];
+          if (!file) return;
+          const ext = ((_e = file.name.split(".").pop()) == null ? void 0 : _e.toLowerCase()) || "";
+          const mimeOk = SUPPORTED_MIME.includes(file.type);
+          const extOk = SUPPORTED_EXT.includes(ext);
+          if (!mimeOk && !extOk) {
+            const errEl = body.createDiv("wp-v3-drop-error");
+            errEl.textContent = `\u274C \u4E0D\u652F\u6301\u7684\u56FE\u7247\u683C\u5F0F: .${ext}`;
+            setTimeout(() => errEl.remove(), 2500);
+            return;
+          }
+          try {
+            const arrayBuffer = await file.arrayBuffer();
+            const mimeType = mimeOk ? file.type : `image/${ext === "jpg" ? "jpeg" : ext}`;
+            this.featuredImage = {
+              fileName: file.name,
+              content: new Uint8Array(arrayBuffer),
+              mimeType
+            };
+            this.display(params);
+          } catch (err) {
+            new import_obsidian9.Notice("\u56FE\u7247\u52A0\u8F7D\u5931\u8D25");
+          }
+        });
       }
       // ==================== V3.1 摘要段 ====================
       renderV3ExcerptSection(container, params) {
@@ -108309,11 +108361,12 @@ var init_wp_publish_modal_v2 = __esm({
             tagsWrap.empty();
             if (this.editableTags.length > 0) {
               const tagsContainer = tagsWrap.createDiv("wp-v3-tags-container");
-              this.editableTags.forEach((tag) => {
-                const tagEl = tagsContainer.createEl("span", { cls: "wp-v3-tag-item" + (isTagEditing ? " is-shaking" : "") });
-                tagEl.style.backgroundColor = getTagColor(tag);
-                tagEl.createSpan({ text: tag });
-                if (isTagEditing) {
+              if (isTagEditing) {
+                this.editableTags.forEach((tag, index2) => {
+                  const tagEl = tagsContainer.createEl("span", { cls: "wp-v3-tag-item is-shaking is-draggable" });
+                  tagEl.style.backgroundColor = getTagColor(tag);
+                  tagEl.dataset.tagIndex = String(index2);
+                  tagEl.createSpan({ text: tag });
                   const xBtn = tagEl.createEl("button", { cls: "wp-v3-tag-delete-btn", text: "\xD7" });
                   xBtn.addEventListener("click", (e) => {
                     e.stopPropagation();
@@ -108321,13 +108374,12 @@ var init_wp_publish_modal_v2 = __esm({
                     p.tags = [...this.editableTags];
                     renderTagsContent();
                   });
-                }
-              });
-              const btnArea = tagsWrap.createDiv("wp-v3-tags-btn-area");
-              if (isTagEditing) {
-                const addBtn = btnArea.createEl("button", { cls: "wp-v3-tag-action-btn", text: "+", attr: { title: "\u6DFB\u52A0\u6807\u7B7E" } });
+                });
+                const addBtn = tagsContainer.createEl("button", { cls: "wp-v3-tag-action-btn", text: "+", attr: { title: "\u6DFB\u52A0\u6807\u7B7E" } });
                 addBtn.onclick = () => showInlineTagInput(tagsContainer, addBtn, p, renderTagsContent);
-                const doneBtn = btnArea.createEl("button", {
+                this.enableTagDragSort(tagsContainer, p, renderTagsContent);
+                const actionsRow = tagsWrap.createDiv("wp-v3-tags-editing-actions");
+                const doneBtn = actionsRow.createEl("button", {
                   text: this.t("publishModal_save") || "Done",
                   cls: "wp-v3-tag-action-btn wp-v3-tag-done-btn"
                 });
@@ -108336,7 +108388,12 @@ var init_wp_publish_modal_v2 = __esm({
                   renderTagsContent();
                 };
               } else {
-                const editBtn = btnArea.createEl("button", {
+                this.editableTags.forEach((tag) => {
+                  const tagEl = tagsContainer.createEl("span", { cls: "wp-v3-tag-item" });
+                  tagEl.style.backgroundColor = getTagColor(tag);
+                  tagEl.createSpan({ text: tag });
+                });
+                const editBtn = tagsContainer.createEl("button", {
                   text: "\u270F\uFE0F",
                   cls: "wp-v3-inline-edit-btn",
                   attr: { title: this.t("publishModal_editButton") || "Edit tags" }
@@ -108401,6 +108458,95 @@ var init_wp_publish_modal_v2 = __esm({
           input.addEventListener("blur", () => setTimeout(commit, 200));
         };
         renderHtmlPreview();
+      }
+      // ==================== 标签拖拽排序（桌面 + 移动端） ====================
+      enableTagDragSort(container, p, onReorder) {
+        let draggingEl = null;
+        let ghost = null;
+        let placeholder = null;
+        let originIndex = -1;
+        const getTagEls = () => Array.from(container.querySelectorAll(".wp-v3-tag-item.is-draggable"));
+        const getIndexOf = (el) => getTagEls().indexOf(el);
+        const createGhost = (source, clientX, clientY) => {
+          ghost = source.cloneNode(true);
+          ghost.className = "wp-v3-tag-item wp-v3-drag-ghost";
+          ghost.style.backgroundColor = source.style.backgroundColor;
+          ghost.style.left = `${clientX - source.offsetWidth / 2}px`;
+          ghost.style.top = `${clientY - source.offsetHeight / 2}px`;
+          document.body.appendChild(ghost);
+        };
+        const moveGhost = (clientX, clientY) => {
+          if (!ghost || !draggingEl) return;
+          ghost.style.left = `${clientX - draggingEl.offsetWidth / 2}px`;
+          ghost.style.top = `${clientY - draggingEl.offsetHeight / 2}px`;
+        };
+        const getTargetEl = (clientX, clientY) => {
+          const els = getTagEls().filter((el) => el !== draggingEl);
+          for (const el of els) {
+            const rect = el.getBoundingClientRect();
+            if (clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom) {
+              return el;
+            }
+          }
+          return null;
+        };
+        const applyReorder = (targetEl) => {
+          const fromIdx = getIndexOf(draggingEl);
+          const toIdx = getIndexOf(targetEl);
+          if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return;
+          const arr = [...this.editableTags];
+          const [item] = arr.splice(fromIdx, 1);
+          arr.splice(toIdx, 0, item);
+          this.editableTags = arr;
+          p.tags = [...arr];
+        };
+        const endDrag = (clientX, clientY) => {
+          if (!draggingEl) return;
+          const target = getTargetEl(clientX, clientY);
+          if (target) applyReorder(target);
+          draggingEl.classList.remove("is-dragging");
+          if (ghost) {
+            ghost.remove();
+            ghost = null;
+          }
+          if (placeholder) {
+            placeholder.remove();
+            placeholder = null;
+          }
+          draggingEl = null;
+          onReorder();
+        };
+        getTagEls().forEach((tagEl) => {
+          tagEl.addEventListener("pointerdown", (e) => {
+            if (e.target.classList.contains("wp-v3-tag-delete-btn")) return;
+            e.preventDefault();
+            draggingEl = tagEl;
+            originIndex = getIndexOf(tagEl);
+            tagEl.classList.add("is-dragging");
+            tagEl.setPointerCapture(e.pointerId);
+            createGhost(tagEl, e.clientX, e.clientY);
+          });
+          tagEl.addEventListener("pointermove", (e) => {
+            if (!draggingEl || draggingEl !== tagEl) return;
+            e.preventDefault();
+            moveGhost(e.clientX, e.clientY);
+          });
+          tagEl.addEventListener("pointerup", (e) => {
+            if (!draggingEl || draggingEl !== tagEl) return;
+            endDrag(e.clientX, e.clientY);
+          });
+          tagEl.addEventListener("pointercancel", () => {
+            if (draggingEl) {
+              draggingEl.classList.remove("is-dragging");
+              if (ghost) {
+                ghost.remove();
+                ghost = null;
+              }
+              draggingEl = null;
+              onReorder();
+            }
+          });
+        });
       }
       // ==================== V3.1 右侧：基本设置卡片 ====================
       renderV3SettingsCard(container, params) {
@@ -108608,13 +108754,21 @@ var init_wp_publish_modal_v2 = __esm({
       // ==================== V3.1 底部操作栏 ====================
       renderV3Footer(container, params) {
         const footer = container.createDiv("wp-v3-footer");
+        const editBtn = footer.createEl("button", {
+          text: "\u270F\uFE0F " + (this.t("publishModal_editButton") || "\u7F16\u8F91"),
+          cls: "wp-v3-edit-footer-btn"
+        });
+        editBtn.onclick = () => {
+          const contentEditBtn = container.querySelector(".wp-v3-section-actions .wp-v3-icon-btn");
+          if (contentEditBtn) contentEditBtn.click();
+        };
         const cancelBtn = footer.createEl("button", {
-          text: this.t("publishModal_cancel") || "Cancel",
+          text: "\u{1F519} " + (this.t("publishModal_cancel") || "\u53D6\u6D88"),
           cls: "wp-v3-cancel-footer-btn"
         });
         cancelBtn.onclick = () => this.close();
         const publishBtn = footer.createEl("button", {
-          text: this.t("publishModal_publishButton") || "Publish",
+          text: "\u{1F680} " + (this.t("publishModal_publishButton") || "\u53D1\u5E03"),
           cls: "wp-v3-publish-footer-btn"
         });
         this.publishBtn = publishBtn;

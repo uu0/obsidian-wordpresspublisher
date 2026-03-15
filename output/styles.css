@@ -67,6 +67,12 @@
 }
 
 /* V3 自定义紧凑标题栏（替代 h1 大标题） */
+
+/* 隐藏 Obsidian 自带的 modal 关闭按钮，使用我们自定义的 */
+.modal-container:has(.wp-publish-modal-v2) .modal-close-button {
+  display: none !important;
+}
+
 .wp-v3-title-bar {
   display: flex;
   align-items: center;
@@ -550,7 +556,7 @@
   margin-top: 8px;
 }
 
-/* 标签容器：flex-wrap，每行最多6个（靠间距自然换行） */
+/* 标签容器：flex-wrap，铅笔跟随最后一个标签 */
 .wp-v3-tags-container {
   display: flex;
   flex-wrap: wrap;
@@ -621,12 +627,18 @@
   background: rgba(220, 38, 38, 0.9);
 }
 
-/* 标签行按钮区（末尾右侧）*/
+/* 标签行按钮区：直接嵌入 tags-container 内，铅笔跟随最后一个标签 */
 .wp-v3-tags-btn-area {
+  display: contents; /* 让内部按钮直接参与 flex 布局 */
+}
+
+/* 编辑模式下，按钮区恢复正常行布局（+ Done 两个按钮需要并排） */
+.wp-v3-tags-editing-actions {
   display: flex;
   justify-content: flex-end;
   gap: 6px;
   margin-top: 6px;
+  width: 100%;
 }
 
 /* 标签操作按钮（+ / Done） */
@@ -689,6 +701,87 @@
 
 .wp-v3-tag-input:focus {
   box-shadow: 0 0 0 2px rgba(var(--interactive-accent-rgb, 0, 115, 170), 0.2);
+}
+
+/* ==================== 标签拖拽排序 ==================== */
+
+/* 拖拽中的标签 */
+.wp-v3-tag-item.is-dragging {
+  opacity: 0.4;
+  cursor: grabbing !important;
+  transform: scale(0.95);
+}
+
+/* 可拖拽状态（编辑模式）*/
+.wp-v3-tag-item.is-draggable {
+  cursor: grab;
+  touch-action: none; /* 确保移动端 Pointer Events 生效 */
+}
+
+.wp-v3-tag-item.is-draggable:active {
+  cursor: grabbing;
+}
+
+/* 拖拽占位符 */
+.wp-v3-drag-placeholder {
+  display: inline-flex;
+  align-items: center;
+  min-width: 40px;
+  height: 24px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  border: 2px dashed var(--interactive-accent);
+  background: var(--background-modifier-hover);
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+/* 拖拽悬浮卡片（跟随手指/鼠标的视觉副本） */
+.wp-v3-drag-ghost {
+  position: fixed;
+  pointer-events: none;
+  z-index: 10000;
+  opacity: 0.85;
+  transform: rotate(3deg) scale(1.05);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  transition: transform 0.1s ease;
+}
+
+/* ==================== 特色图片拖入区 ==================== */
+
+.wp-v3-featured-empty.drag-over,
+.wp-v3-featured-img-container.drag-over {
+  border: 2px dashed var(--interactive-accent) !important;
+  background: rgba(var(--interactive-accent-rgb, 0, 115, 170), 0.08) !important;
+  box-shadow: 0 0 0 3px rgba(var(--interactive-accent-rgb, 0, 115, 170), 0.2);
+}
+
+.wp-v3-featured-empty {
+  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+
+/* 拖入错误提示 */
+.wp-v3-drop-error {
+  position: absolute;
+  bottom: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--background-modifier-error, rgba(220, 38, 38, 0.9));
+  color: #fff;
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: fadeInOut 2.5s ease forwards;
+  z-index: 100;
+}
+
+@keyframes fadeInOut {
+  0% { opacity: 0; transform: translateX(-50%) translateY(4px); }
+  15% { opacity: 1; transform: translateX(-50%) translateY(0); }
+  75% { opacity: 1; }
+  100% { opacity: 0; }
 }
 
 
@@ -769,7 +862,7 @@
   background: var(--background-primary);
   border-radius: 8px;
   border: 1px solid var(--background-modifier-border);
-  overflow: hidden;
+  overflow: visible; /* tooltip 需要溢出 */
 }
 
 .wp-v3-settings-card-title {
@@ -840,6 +933,8 @@
   cursor: default;
   transition: color 0.15s ease;
   user-select: none;
+  /* 让 tooltip 能够溢出任何父级 overflow */
+  z-index: 10;
 }
 
 .wp-v3-hint-icon:hover {
@@ -849,7 +944,7 @@
 /* tooltip 本体 */
 .wp-v3-tooltip {
   position: absolute;
-  z-index: 200;
+  z-index: 9999;
   bottom: calc(100% + 6px);
   left: 50%;
   transform: translateX(-50%);
@@ -866,6 +961,9 @@
   pointer-events: none;
   opacity: 0;
   transition: opacity 0.15s ease;
+  /* 确保不被父容器裁剪 */
+  clip: auto;
+  overflow: visible;
 }
 
 .wp-v3-hint-icon:hover .wp-v3-tooltip {
@@ -1030,12 +1128,32 @@
 .wp-v3-footer {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 12px 20px;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 10px 20px;
   border-top: 1px solid var(--background-modifier-border);
   background: var(--background-primary);
   flex-shrink: 0;
+}
+
+/* 编辑按钮（✏️编辑内容） */
+.wp-v3-edit-footer-btn {
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  margin-right: auto; /* 靠左 */
+}
+
+.wp-v3-edit-footer-btn:hover {
+  border-color: var(--interactive-accent);
+  color: var(--interactive-accent);
+  background: var(--background-modifier-hover);
 }
 
 .wp-v3-cancel-footer-btn {
@@ -1090,19 +1208,30 @@
 
 /* 移动端单列 */
 @media (max-width: 680px) {
+  /* 覆盖 JS 设置的 minWidth，确保移动端真正缩小 */
+  .modal-container:has(.wp-publish-modal-v2) {
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+
   .wp-v3-layout {
     flex-direction: column;
+    overflow-y: auto;
+    overflow-x: hidden;
   }
 
   .wp-v3-sidebar {
     max-width: 100%;
     min-width: unset;
+    width: 100%;
     border-left: none;
     border-top: 1px solid var(--background-modifier-border);
+    overflow-y: visible !important; /* 单列时侧栏不独立滚动 */
   }
 
   .wp-v3-preview {
     padding: 12px;
+    overflow-y: visible; /* 单列时主内容不独立滚动 */
   }
 }
 

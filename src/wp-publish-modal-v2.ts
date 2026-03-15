@@ -1006,6 +1006,67 @@ export class WpPublishModalV2 extends AbstractModal {
     } else {
       renderPreview();
     }
+
+    // ── 拖入图片支持（body 区域） ──
+    const SUPPORTED_MIME = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml'];
+    const SUPPORTED_EXT = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'];
+
+    section.addEventListener('dragover', (e: DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const items = e.dataTransfer?.items;
+      if (items && items.length > 0 && items[0].kind === 'file') {
+        body.addClass('drag-over');
+        // 高亮空状态区域
+        body.querySelector('.wp-v3-featured-empty')?.addClass('drag-over');
+        body.querySelector('.wp-v3-featured-img-container')?.addClass('drag-over');
+      }
+    });
+
+    section.addEventListener('dragleave', (e: DragEvent) => {
+      if (!section.contains(e.relatedTarget as Node)) {
+        body.removeClass('drag-over');
+        body.querySelector('.wp-v3-featured-empty')?.removeClass('drag-over');
+        body.querySelector('.wp-v3-featured-img-container')?.removeClass('drag-over');
+      }
+    });
+
+    section.addEventListener('drop', async (e: DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      body.removeClass('drag-over');
+      body.querySelector('.wp-v3-featured-empty')?.removeClass('drag-over');
+      body.querySelector('.wp-v3-featured-img-container')?.removeClass('drag-over');
+
+      const file = e.dataTransfer?.files?.[0];
+      if (!file) return;
+
+      const ext = file.name.split('.').pop()?.toLowerCase() || '';
+      const mimeOk = SUPPORTED_MIME.includes(file.type);
+      const extOk = SUPPORTED_EXT.includes(ext);
+
+      if (!mimeOk && !extOk) {
+        // 格式不支持：显示错误提示，保持原状
+        const errEl = body.createDiv('wp-v3-drop-error');
+        errEl.textContent = `❌ 不支持的图片格式: .${ext}`;
+        setTimeout(() => errEl.remove(), 2500);
+        return;
+      }
+
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        const mimeType = mimeOk ? file.type : `image/${ext === 'jpg' ? 'jpeg' : ext}`;
+        this.featuredImage = {
+          fileName: file.name,
+          content: new Uint8Array(arrayBuffer),
+          mimeType
+        };
+        // 重新渲染
+        this.display(params);
+      } catch (err) {
+        new Notice('图片加载失败');
+      }
+    });
   }
 
   // ==================== V3.1 摘要段 ====================
@@ -1402,15 +1463,17 @@ export class WpPublishModalV2 extends AbstractModal {
         tagsWrap.empty();
 
         if (this.editableTags.length > 0) {
-          // 标签容器（每行最多 6 个，自动换行）
+          // 标签容器（flex-wrap，铅笔跟随最后一个标签）
           const tagsContainer = tagsWrap.createDiv('wp-v3-tags-container');
 
-          this.editableTags.forEach(tag => {
-            const tagEl = tagsContainer.createEl('span', { cls: 'wp-v3-tag-item' + (isTagEditing ? ' is-shaking' : '') });
-            tagEl.style.backgroundColor = getTagColor(tag);
-            tagEl.createSpan({ text: tag });
+          if (isTagEditing) {
+            // 编辑模式：标签可拖拽排序，显示×删除和抖动动画
+            this.editableTags.forEach((tag, index) => {
+              const tagEl = tagsContainer.createEl('span', { cls: 'wp-v3-tag-item is-shaking is-draggable' });
+              tagEl.style.backgroundColor = getTagColor(tag);
+              tagEl.dataset.tagIndex = String(index);
+              tagEl.createSpan({ text: tag });
 
-            if (isTagEditing) {
               const xBtn = tagEl.createEl('button', { cls: 'wp-v3-tag-delete-btn', text: '×' });
               xBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -1418,26 +1481,32 @@ export class WpPublishModalV2 extends AbstractModal {
                 p.tags = [...this.editableTags];
                 renderTagsContent();
               });
-            }
-          });
+            });
 
-          // 按钮行：最后一行右侧
-          const btnArea = tagsWrap.createDiv('wp-v3-tags-btn-area');
-
-          if (isTagEditing) {
-            // + 按钮
-            const addBtn = btnArea.createEl('button', { cls: 'wp-v3-tag-action-btn', text: '+', attr: { title: '添加标签' } });
+            // 编辑模式：+ 按钮直接放在 tagsContainer 内（跟标签并列）
+            const addBtn = tagsContainer.createEl('button', { cls: 'wp-v3-tag-action-btn', text: '+', attr: { title: '添加标签' } });
             addBtn.onclick = () => showInlineTagInput(tagsContainer, addBtn, p, renderTagsContent);
 
-            // 完成按钮
-            const doneBtn = btnArea.createEl('button', {
+            // 启用拖拽排序
+            this.enableTagDragSort(tagsContainer, p, renderTagsContent);
+
+            // 完成按钮独立一行
+            const actionsRow = tagsWrap.createDiv('wp-v3-tags-editing-actions');
+            const doneBtn = actionsRow.createEl('button', {
               text: this.t('publishModal_save') || 'Done',
               cls: 'wp-v3-tag-action-btn wp-v3-tag-done-btn'
             });
             doneBtn.onclick = () => { isTagEditing = false; renderTagsContent(); };
           } else {
-            // ✏️ 按钮
-            const editBtn = btnArea.createEl('button', {
+            // 普通模式：标签 + 铅笔按钮（跟随最后一个标签）
+            this.editableTags.forEach(tag => {
+              const tagEl = tagsContainer.createEl('span', { cls: 'wp-v3-tag-item' });
+              tagEl.style.backgroundColor = getTagColor(tag);
+              tagEl.createSpan({ text: tag });
+            });
+
+            // ✏️ 按钮直接放在 tagsContainer 内，跟随最后一个标签
+            const editBtn = tagsContainer.createEl('button', {
               text: '✏️',
               cls: 'wp-v3-inline-edit-btn',
               attr: { title: this.t('publishModal_editButton') || 'Edit tags' }
@@ -1508,6 +1577,104 @@ export class WpPublishModalV2 extends AbstractModal {
     };
 
     renderHtmlPreview();
+  }
+
+  // ==================== 标签拖拽排序（桌面 + 移动端） ====================
+
+  private enableTagDragSort(
+    container: HTMLElement,
+    p: WordPressPostParams,
+    onReorder: () => void
+  ): void {
+    let draggingEl: HTMLElement | null = null;
+    let ghost: HTMLElement | null = null;
+    let placeholder: HTMLElement | null = null;
+    let originIndex = -1;
+
+    const getTagEls = () => Array.from(container.querySelectorAll<HTMLElement>('.wp-v3-tag-item.is-draggable'));
+
+    const getIndexOf = (el: HTMLElement) => getTagEls().indexOf(el);
+
+    const createGhost = (source: HTMLElement, clientX: number, clientY: number) => {
+      ghost = source.cloneNode(true) as HTMLElement;
+      ghost.className = 'wp-v3-tag-item wp-v3-drag-ghost';
+      ghost.style.backgroundColor = source.style.backgroundColor;
+      ghost.style.left = `${clientX - source.offsetWidth / 2}px`;
+      ghost.style.top = `${clientY - source.offsetHeight / 2}px`;
+      document.body.appendChild(ghost);
+    };
+
+    const moveGhost = (clientX: number, clientY: number) => {
+      if (!ghost || !draggingEl) return;
+      ghost.style.left = `${clientX - draggingEl.offsetWidth / 2}px`;
+      ghost.style.top = `${clientY - draggingEl.offsetHeight / 2}px`;
+    };
+
+    const getTargetEl = (clientX: number, clientY: number): HTMLElement | null => {
+      const els = getTagEls().filter(el => el !== draggingEl);
+      for (const el of els) {
+        const rect = el.getBoundingClientRect();
+        if (clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom) {
+          return el;
+        }
+      }
+      return null;
+    };
+
+    const applyReorder = (targetEl: HTMLElement) => {
+      const fromIdx = getIndexOf(draggingEl!);
+      const toIdx = getIndexOf(targetEl);
+      if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return;
+      const arr = [...this.editableTags];
+      const [item] = arr.splice(fromIdx, 1);
+      arr.splice(toIdx, 0, item);
+      this.editableTags = arr;
+      p.tags = [...arr];
+    };
+
+    const endDrag = (clientX: number, clientY: number) => {
+      if (!draggingEl) return;
+      const target = getTargetEl(clientX, clientY);
+      if (target) applyReorder(target);
+      draggingEl.classList.remove('is-dragging');
+      if (ghost) { ghost.remove(); ghost = null; }
+      if (placeholder) { placeholder.remove(); placeholder = null; }
+      draggingEl = null;
+      onReorder();
+    };
+
+    // ── 指针事件（统一处理鼠标和触摸） ──
+    getTagEls().forEach(tagEl => {
+      tagEl.addEventListener('pointerdown', (e: PointerEvent) => {
+        if ((e.target as HTMLElement).classList.contains('wp-v3-tag-delete-btn')) return;
+        e.preventDefault();
+        draggingEl = tagEl;
+        originIndex = getIndexOf(tagEl);
+        tagEl.classList.add('is-dragging');
+        tagEl.setPointerCapture(e.pointerId);
+        createGhost(tagEl, e.clientX, e.clientY);
+      });
+
+      tagEl.addEventListener('pointermove', (e: PointerEvent) => {
+        if (!draggingEl || draggingEl !== tagEl) return;
+        e.preventDefault();
+        moveGhost(e.clientX, e.clientY);
+      });
+
+      tagEl.addEventListener('pointerup', (e: PointerEvent) => {
+        if (!draggingEl || draggingEl !== tagEl) return;
+        endDrag(e.clientX, e.clientY);
+      });
+
+      tagEl.addEventListener('pointercancel', () => {
+        if (draggingEl) {
+          draggingEl.classList.remove('is-dragging');
+          if (ghost) { ghost.remove(); ghost = null; }
+          draggingEl = null;
+          onReorder();
+        }
+      });
+    });
   }
 
   // ==================== V3.1 右侧：基本设置卡片 ====================
@@ -1748,14 +1915,25 @@ export class WpPublishModalV2 extends AbstractModal {
   private renderV3Footer(container: HTMLElement, params: WordPressPostParams): void {
     const footer = container.createDiv('wp-v3-footer');
 
+    // ✏️ 编辑按钮（靠左，进入文章内容编辑模式）
+    const editBtn = footer.createEl('button', {
+      text: '✏️ ' + (this.t('publishModal_editButton') || '编辑'),
+      cls: 'wp-v3-edit-footer-btn'
+    });
+    editBtn.onclick = () => {
+      // 找到文章内容区的编辑按钮并触发
+      const contentEditBtn = container.querySelector('.wp-v3-section-actions .wp-v3-icon-btn') as HTMLButtonElement | null;
+      if (contentEditBtn) contentEditBtn.click();
+    };
+
     const cancelBtn = footer.createEl('button', {
-      text: this.t('publishModal_cancel') || 'Cancel',
+      text: '🔙 ' + (this.t('publishModal_cancel') || '取消'),
       cls: 'wp-v3-cancel-footer-btn'
     });
     cancelBtn.onclick = () => this.close();
 
     const publishBtn = footer.createEl('button', {
-      text: this.t('publishModal_publishButton') || 'Publish',
+      text: '🚀 ' + (this.t('publishModal_publishButton') || '发布'),
       cls: 'wp-v3-publish-footer-btn'
     }) as HTMLButtonElement;
     this.publishBtn = publishBtn;
