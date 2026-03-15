@@ -107716,7 +107716,11 @@ var init_wp_publish_modal_v2 = __esm({
         this.currentParams = params;
         contentEl.empty();
         contentEl.addClass("wp-publish-modal-v2");
-        this.createHeader(this.t("publishModal_title"));
+        const titleBar = contentEl.createDiv("wp-v3-title-bar");
+        titleBar.createSpan({ cls: "wp-v3-title-bar-name", text: "WordPress Publisher" });
+        const closeBtn = titleBar.createEl("button", { cls: "wp-v3-title-bar-close", attr: { "aria-label": "Close" } });
+        closeBtn.innerHTML = "\u2715";
+        closeBtn.onclick = () => this.close();
         this.updateModalWidth();
         const profile = this.plugin.settings.profiles.find((p) => p.name === params.profileName);
         if (profile && profile.apiType === "xml-rpc") {
@@ -107726,6 +107730,13 @@ var init_wp_publish_modal_v2 = __esm({
         const previewArea = layoutContainer.createDiv("wp-v3-preview");
         this.renderV3PreviewArea(previewArea, params);
         const sidebarArea = layoutContainer.createDiv("wp-v3-sidebar");
+        sidebarArea.style.overflowY = "hidden";
+        sidebarArea.addEventListener("click", () => {
+          sidebarArea.style.overflowY = "auto";
+        });
+        previewArea.addEventListener("click", () => {
+          sidebarArea.style.overflowY = "hidden";
+        });
         this.renderV3SidebarArea(sidebarArea, params);
         this.renderV3Footer(contentEl, params);
       }
@@ -107799,7 +107810,7 @@ var init_wp_publish_modal_v2 = __esm({
         );
         const body = section.createDiv("wp-v3-section-body");
         let isSetupMode = !hasImage;
-        const updateHeaderActions = (fileName) => {
+        const updateHeaderActions = (fileName, showEdit = true) => {
           const actionsEl = section.querySelector(".wp-v3-section-actions");
           if (!actionsEl) return;
           actionsEl.empty();
@@ -107808,11 +107819,11 @@ var init_wp_publish_modal_v2 = __esm({
             nameEl.textContent = fileName;
             nameEl.title = fileName;
           }
-          if (hasImage || !isSetupMode) {
+          if (showEdit) {
             const editBtn = actionsEl.createEl("button", {
               text: "\u270F\uFE0F",
               cls: "wp-v3-icon-btn",
-              attr: { title: isSetupMode ? this.t("publishModal_previewFeaturedImage") || "Preview" : this.t("publishModal_editButton") || "Edit" }
+              attr: { title: isSetupMode ? this.t("publishModal_editButton") || "Edit" : this.t("publishModal_editButton") || "Edit" }
             });
             editBtn.onclick = () => toggleEdit();
           }
@@ -107826,7 +107837,7 @@ var init_wp_publish_modal_v2 = __esm({
             loading.style.padding = "20px";
             loading.style.color = "var(--text-muted)";
             loading.createEl("p", { text: this.t("publishModal_loadingRemoteImage") || "\u6B63\u5728\u52A0\u8F7D\u8FDC\u7A0B\u56FE\u7247..." });
-            updateHeaderActions();
+            updateHeaderActions(void 0, false);
           } else if (this.remoteImageLoadFailed) {
             const errDiv = wrap2.createDiv();
             errDiv.style.textAlign = "center";
@@ -107855,20 +107866,20 @@ var init_wp_publish_modal_v2 = __esm({
               this.remoteImagePostId = null;
               this.display(params);
             };
-            updateHeaderActions();
+            updateHeaderActions(void 0, false);
           } else if (imageToDisplay) {
             const blob = new Blob([imageToDisplay.content], { type: imageToDisplay.mimeType });
             const url = URL.createObjectURL(blob);
             const imgContainer = wrap2.createDiv("wp-v3-featured-img-container");
             imgContainer.createEl("img", { cls: "wp-v3-featured-img", attr: { src: url, alt: "Featured Image" } });
-            updateHeaderActions(`${imageToDisplay.fileName} (${this.formatFileSize(imageToDisplay.content.byteLength)})`);
+            updateHeaderActions(`${imageToDisplay.fileName} (${this.formatFileSize(imageToDisplay.content.byteLength)})`, true);
           } else if (this.matterData.featurePicture) {
             const imgContainer = wrap2.createDiv("wp-v3-featured-img-container");
             imgContainer.createEl("img", {
               cls: "wp-v3-featured-img",
               attr: { src: this.matterData.featurePicture, alt: "Featured Image" }
             });
-            updateHeaderActions(this.t("publishModal_previewFeaturedImageUploaded") || "Uploaded");
+            updateHeaderActions(this.t("publishModal_previewFeaturedImageUploaded") || "Uploaded", true);
           } else {
             renderSetup();
             return;
@@ -108187,11 +108198,11 @@ var init_wp_publish_modal_v2 = __esm({
         const renderHtmlPreview = () => {
           body.empty();
           section.removeClass("is-editing");
+          renderExcerptRow(body, params);
+          renderTagsRow(body, params);
           const previewDiv = body.createDiv("wp-v3-content-preview");
           const html3 = AppState.markdownParser.render(this.editableContent);
           previewDiv.innerHTML = html3;
-          renderExcerptRow(body, params);
-          renderTagsRow(body, params);
         };
         const enterContentEdit = () => {
           if (isContentEditing) return;
@@ -108243,12 +108254,12 @@ var init_wp_publish_modal_v2 = __esm({
             const placeholder = excerptWrap.createDiv("wp-v3-excerpt-placeholder");
             const btnRow = placeholder.createDiv("wp-v3-placeholder-btn-row");
             const aiBtn = btnRow.createEl("button", {
-              text: "\u{1F916} " + (this.t("publishModal_generateSummary") || "AI \u751F\u6210"),
+              text: "\u{1F916}\u751F\u6210\u6458\u8981",
               cls: "wp-v3-placeholder-btn"
             });
             aiBtn.onclick = () => this.generateSummary(p);
             const manualBtn = btnRow.createEl("button", {
-              text: "\u270F\uFE0F " + (this.t("publishModal_editButton") || "\u624B\u52A8\u8F93\u5165"),
+              text: "\u{1F4DD}\u624B\u52A8\u8F93\u5165",
               cls: "wp-v3-placeholder-btn"
             });
             manualBtn.onclick = () => openExcerptModal(p);
@@ -108351,7 +108362,7 @@ var init_wp_publish_modal_v2 = __esm({
                 showInlineTagInput(tagsContainer, plusBtn, p, renderTagsContent);
               };
               const aiBtn = emptyRow.createEl("button", {
-                text: "\u{1F916} " + (this.t("publishModal_generateTags") || "AI \u751F\u6210"),
+                text: "\u{1F916}\u751F\u6210\u6807\u7B7E",
                 cls: "wp-v3-placeholder-btn"
               });
               aiBtn.onclick = () => this.generateTags(p);
@@ -108418,7 +108429,6 @@ var init_wp_publish_modal_v2 = __esm({
           });
         });
         this.renderV3Field(body, this.t("publishModal_slugName"), "publishModal_slugInfo", (fieldEl) => {
-          var _a5;
           const slugRow = fieldEl.createDiv();
           slugRow.style.display = "flex";
           slugRow.style.gap = "6px";
@@ -108435,36 +108445,6 @@ var init_wp_publish_modal_v2 = __esm({
               this.lastAutoGeneratedSlug = "";
             }
           });
-          if (this.plugin.settings.slugGenerationMode === "ai-translate" && ((_a5 = this.aiService) == null ? void 0 : _a5.hasTextAIKey())) {
-            const aiBtn = fieldEl.createEl("button", {
-              text: this.t("publishModal_slugAIButton"),
-              cls: "wp-v3-cancel-btn"
-            });
-            aiBtn.style.fontSize = "11px";
-            aiBtn.style.padding = "4px 8px";
-            aiBtn.style.marginTop = "4px";
-            aiBtn.onclick = async () => {
-              if (!params.title) {
-                new import_obsidian9.Notice(this.t("publishModal_slugNeedTitle"));
-                return;
-              }
-              aiBtn.disabled = true;
-              aiBtn.textContent = this.t("publishModal_slugAIButtonTranslating");
-              try {
-                const slug = await this.aiService.translateToSlug(params.title);
-                if (this.slugInput) {
-                  this.slugInput.value = slug;
-                  params.slug = slug;
-                }
-                new import_obsidian9.Notice(this.t("publishModal_slugGenerated"));
-              } catch (e) {
-                new import_obsidian9.Notice(this.t("publishModal_slugTranslateFailed", { error: e instanceof Error ? e.message : "Unknown" }));
-              } finally {
-                aiBtn.disabled = false;
-                aiBtn.textContent = this.t("publishModal_slugAIButton");
-              }
-            };
-          }
         });
         body.createDiv("wp-v3-divider");
         this.renderV3Field(body, this.t("publishModal_statusName"), "publishModal_statusDesc", (fieldEl) => {
@@ -108534,7 +108514,7 @@ var init_wp_publish_modal_v2 = __esm({
                 tag.style.backgroundColor = "var(--interactive-accent)";
                 tag.style.fontSize = "11px";
                 tag.createSpan({ text: cat.name });
-                const removeBtn = tag.createEl("button", { cls: "wp-v3-tag-remove", text: "\xD7" });
+                const removeBtn = tag.createEl("button", { cls: "wp-v3-tag-delete-btn", text: "\xD7" });
                 removeBtn.addEventListener("click", (e) => {
                   e.stopPropagation();
                   params.categories = params.categories.filter((id) => id !== catId);
@@ -108594,23 +108574,36 @@ var init_wp_publish_modal_v2 = __esm({
         renderControl(field);
       }
       /**
-       * 添加 ❕ hover tooltip 按钮
+       * 添加 ⓘ hover tooltip 图标（非按钮，纯显示）
        */
       addV3HintBtn(container, hintText) {
-        const btn = container.createEl("button", { cls: "wp-v3-hint-btn", text: "\u24D8" });
-        const tooltip = btn.createDiv("wp-v3-tooltip");
+        const icon = container.createEl("span", { cls: "wp-v3-hint-icon", text: "\u24D8" });
+        const tooltip = icon.createDiv("wp-v3-tooltip");
         tooltip.textContent = hintText;
       }
       // ==================== V3.1 右侧：历史记录卡片 ====================
       renderV3HistoryCard(container, params) {
-        const card = container.createDiv("wp-v3-settings-card");
-        card.createDiv({
-          cls: "wp-v3-settings-card-title",
-          text: this.plugin.t("publishModal_historyPanel") || "History"
-        });
-        const body = card.createDiv("wp-v3-settings-body");
+        const card = container.createDiv("wp-v3-settings-card wp-v3-collapsible-card");
+        card.addClass("is-collapsed");
+        const titleRow = card.createDiv("wp-v3-settings-card-title wp-v3-card-title-clickable");
+        titleRow.createSpan({ text: this.plugin.t("publishModal_historyPanel") || "History" });
+        const chevron = titleRow.createSpan({ cls: "wp-v3-collapse-chevron", text: "\u25B6" });
+        const body = card.createDiv("wp-v3-settings-body wp-v3-collapsible-body");
+        body.style.display = "none";
         const historyList = body.createDiv("wp-v3-history-list");
         historyList.createDiv({ cls: "wp-v3-history-empty", text: this.plugin.t("publishModal_noHistory") || "No history yet" });
+        titleRow.addEventListener("click", () => {
+          const collapsed = card.hasClass("is-collapsed");
+          if (collapsed) {
+            card.removeClass("is-collapsed");
+            body.style.display = "";
+            chevron.textContent = "\u25BC";
+          } else {
+            card.addClass("is-collapsed");
+            body.style.display = "none";
+            chevron.textContent = "\u25B6";
+          }
+        });
       }
       // ==================== V3.1 底部操作栏 ====================
       renderV3Footer(container, params) {

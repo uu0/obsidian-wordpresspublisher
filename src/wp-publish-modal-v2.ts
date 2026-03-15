@@ -731,7 +731,12 @@ export class WpPublishModalV2 extends AbstractModal {
     contentEl.empty();
     contentEl.addClass('wp-publish-modal-v2');
 
-    this.createHeader(this.t('publishModal_title'));
+    // 自定义紧凑标题栏：插件名 + 关闭按钮同行（替代原 createHeader 的 h1）
+    const titleBar = contentEl.createDiv('wp-v3-title-bar');
+    titleBar.createSpan({ cls: 'wp-v3-title-bar-name', text: 'WordPress Publisher' });
+    const closeBtn = titleBar.createEl('button', { cls: 'wp-v3-title-bar-close', attr: { 'aria-label': 'Close' } });
+    closeBtn.innerHTML = '✕';
+    closeBtn.onclick = () => this.close();
 
     // 自适应窗口宽度
     this.updateModalWidth();
@@ -749,8 +754,15 @@ export class WpPublishModalV2 extends AbstractModal {
     const previewArea = layoutContainer.createDiv('wp-v3-preview');
     this.renderV3PreviewArea(previewArea, params);
 
-    // 右侧：设置区（flex: 1）
+    // 右侧：设置区（flex: 1），默认不可滚动，点击激活后可滚动
     const sidebarArea = layoutContainer.createDiv('wp-v3-sidebar');
+    sidebarArea.style.overflowY = 'hidden';
+    sidebarArea.addEventListener('click', () => {
+      sidebarArea.style.overflowY = 'auto';
+    });
+    previewArea.addEventListener('click', () => {
+      sidebarArea.style.overflowY = 'hidden';
+    });
     this.renderV3SidebarArea(sidebarArea, params);
 
     // 底部操作栏
@@ -850,7 +862,7 @@ export class WpPublishModalV2 extends AbstractModal {
     let isSetupMode = !hasImage;
 
     /** 更新 header 右侧区域：文件名（截断）+ ✏️ 按钮 */
-    const updateHeaderActions = (fileName?: string) => {
+    const updateHeaderActions = (fileName?: string, showEdit = true) => {
       const actionsEl = section.querySelector('.wp-v3-section-actions') as HTMLElement | null;
       if (!actionsEl) return;
       actionsEl.empty();
@@ -862,12 +874,12 @@ export class WpPublishModalV2 extends AbstractModal {
         nameEl.title = fileName;
       }
 
-      if (hasImage || !isSetupMode) {
+      if (showEdit) {
         const editBtn = actionsEl.createEl('button', {
           text: '✏️',
           cls: 'wp-v3-icon-btn',
           attr: { title: isSetupMode
-            ? (this.t('publishModal_previewFeaturedImage') || 'Preview')
+            ? (this.t('publishModal_editButton') || 'Edit')
             : (this.t('publishModal_editButton') || 'Edit') }
         });
         editBtn.onclick = () => toggleEdit();
@@ -884,7 +896,7 @@ export class WpPublishModalV2 extends AbstractModal {
         loading.style.padding = '20px';
         loading.style.color = 'var(--text-muted)';
         loading.createEl('p', { text: this.t('publishModal_loadingRemoteImage') || '正在加载远程图片...' });
-        updateHeaderActions();
+        updateHeaderActions(undefined, false);
       } else if (this.remoteImageLoadFailed) {
         const errDiv = wrap.createDiv();
         errDiv.style.textAlign = 'center';
@@ -913,21 +925,21 @@ export class WpPublishModalV2 extends AbstractModal {
           this.remoteImagePostId = null;
           this.display(params);
         };
-        updateHeaderActions();
+        updateHeaderActions(undefined, false);
       } else if (imageToDisplay) {
         const blob = new Blob([imageToDisplay.content], { type: imageToDisplay.mimeType });
         const url = URL.createObjectURL(blob);
         const imgContainer = wrap.createDiv('wp-v3-featured-img-container');
         imgContainer.createEl('img', { cls: 'wp-v3-featured-img', attr: { src: url, alt: 'Featured Image' } });
-        // 文件名 + 文件大小显示在 header，移除 ❌ 按钮
-        updateHeaderActions(`${imageToDisplay.fileName} (${this.formatFileSize(imageToDisplay.content.byteLength)})`);
+        // 文件名 + 文件大小显示在 header
+        updateHeaderActions(`${imageToDisplay.fileName} (${this.formatFileSize(imageToDisplay.content.byteLength)})`, true);
       } else if (this.matterData.featurePicture) {
         const imgContainer = wrap.createDiv('wp-v3-featured-img-container');
         imgContainer.createEl('img', {
           cls: 'wp-v3-featured-img',
           attr: { src: this.matterData.featurePicture as string, alt: 'Featured Image' }
         });
-        updateHeaderActions(this.t('publishModal_previewFeaturedImageUploaded') || 'Uploaded');
+        updateHeaderActions(this.t('publishModal_previewFeaturedImageUploaded') || 'Uploaded', true);
       } else {
         renderSetup();
         return;
@@ -1273,14 +1285,14 @@ export class WpPublishModalV2 extends AbstractModal {
       body.empty();
       section.removeClass('is-editing');
 
+      // 摘要行（上方）
+      renderExcerptRow(body, params);
+      // 标签行（摘要下方，内容上方）
+      renderTagsRow(body, params);
+
       const previewDiv = body.createDiv('wp-v3-content-preview');
       const html = AppState.markdownParser.render(this.editableContent);
       previewDiv.innerHTML = html;
-
-      // 摘要行（content section 底部）
-      renderExcerptRow(body, params);
-      // 标签行
-      renderTagsRow(body, params);
     };
 
     // ── 文章内容编辑模式 ──
@@ -1337,13 +1349,13 @@ export class WpPublishModalV2 extends AbstractModal {
         const btnRow = placeholder.createDiv('wp-v3-placeholder-btn-row');
 
         const aiBtn = btnRow.createEl('button', {
-          text: '🤖 ' + (this.t('publishModal_generateSummary') || 'AI 生成'),
+          text: '🤖生成摘要',
           cls: 'wp-v3-placeholder-btn'
         });
         aiBtn.onclick = () => this.generateSummary(p);
 
         const manualBtn = btnRow.createEl('button', {
-          text: '✏️ ' + (this.t('publishModal_editButton') || '手动输入'),
+          text: '📝手动输入',
           cls: 'wp-v3-placeholder-btn'
         });
         manualBtn.onclick = () => openExcerptModal(p);
@@ -1452,7 +1464,7 @@ export class WpPublishModalV2 extends AbstractModal {
           };
 
           const aiBtn = emptyRow.createEl('button', {
-            text: '🤖 ' + (this.t('publishModal_generateTags') || 'AI 生成'),
+            text: '🤖生成标签',
             cls: 'wp-v3-placeholder-btn'
           });
           aiBtn.onclick = () => this.generateTags(p);
@@ -1546,32 +1558,6 @@ export class WpPublishModalV2 extends AbstractModal {
           this.lastAutoGeneratedSlug = '';
         }
       });
-
-      // AI 翻译按钮（仅 ai-translate 模式）
-      if (this.plugin.settings.slugGenerationMode === 'ai-translate' && this.aiService?.hasTextAIKey()) {
-        const aiBtn = fieldEl.createEl('button', {
-          text: this.t('publishModal_slugAIButton'),
-          cls: 'wp-v3-cancel-btn'
-        });
-        aiBtn.style.fontSize = '11px';
-        aiBtn.style.padding = '4px 8px';
-        aiBtn.style.marginTop = '4px';
-        aiBtn.onclick = async () => {
-          if (!params.title) { new Notice(this.t('publishModal_slugNeedTitle')); return; }
-          aiBtn.disabled = true;
-          aiBtn.textContent = this.t('publishModal_slugAIButtonTranslating');
-          try {
-            const slug = await this.aiService!.translateToSlug(params.title);
-            if (this.slugInput) { this.slugInput.value = slug; params.slug = slug; }
-            new Notice(this.t('publishModal_slugGenerated'));
-          } catch (e) {
-            new Notice(this.t('publishModal_slugTranslateFailed', { error: e instanceof Error ? e.message : 'Unknown' }));
-          } finally {
-            aiBtn.disabled = false;
-            aiBtn.textContent = this.t('publishModal_slugAIButton');
-          }
-        };
-      }
     });
 
     // 分隔线
@@ -1650,7 +1636,8 @@ export class WpPublishModalV2 extends AbstractModal {
             tag.style.backgroundColor = 'var(--interactive-accent)';
             tag.style.fontSize = '11px';
             tag.createSpan({ text: cat.name });
-            const removeBtn = tag.createEl('button', { cls: 'wp-v3-tag-remove', text: '×' });
+            // × 在右上角（同内容标签）
+            const removeBtn = tag.createEl('button', { cls: 'wp-v3-tag-delete-btn', text: '×' });
             removeBtn.addEventListener('click', (e) => {
               e.stopPropagation();
               params.categories = params.categories.filter(id => id !== catId);
@@ -1718,26 +1705,42 @@ export class WpPublishModalV2 extends AbstractModal {
   }
 
   /**
-   * 添加 ❕ hover tooltip 按钮
+   * 添加 ⓘ hover tooltip 图标（非按钮，纯显示）
    */
   private addV3HintBtn(container: HTMLElement, hintText: string): void {
-    const btn = container.createEl('button', { cls: 'wp-v3-hint-btn', text: 'ⓘ' });
-    const tooltip = btn.createDiv('wp-v3-tooltip');
+    const icon = container.createEl('span', { cls: 'wp-v3-hint-icon', text: 'ⓘ' });
+    const tooltip = icon.createDiv('wp-v3-tooltip');
     tooltip.textContent = hintText;
   }
 
   // ==================== V3.1 右侧：历史记录卡片 ====================
 
   private renderV3HistoryCard(container: HTMLElement, params: WordPressPostParams): void {
-    const card = container.createDiv('wp-v3-settings-card');
-    card.createDiv({
-      cls: 'wp-v3-settings-card-title',
-      text: this.plugin.t('publishModal_historyPanel') || 'History'
-    });
-    const body = card.createDiv('wp-v3-settings-body');
+    const card = container.createDiv('wp-v3-settings-card wp-v3-collapsible-card');
+    card.addClass('is-collapsed'); // 默认折叠
+
+    const titleRow = card.createDiv('wp-v3-settings-card-title wp-v3-card-title-clickable');
+    titleRow.createSpan({ text: this.plugin.t('publishModal_historyPanel') || 'History' });
+    const chevron = titleRow.createSpan({ cls: 'wp-v3-collapse-chevron', text: '▶' });
+
+    const body = card.createDiv('wp-v3-settings-body wp-v3-collapsible-body');
+    body.style.display = 'none'; // 默认隐藏
 
     const historyList = body.createDiv('wp-v3-history-list');
     historyList.createDiv({ cls: 'wp-v3-history-empty', text: this.plugin.t('publishModal_noHistory') || 'No history yet' });
+
+    titleRow.addEventListener('click', () => {
+      const collapsed = card.hasClass('is-collapsed');
+      if (collapsed) {
+        card.removeClass('is-collapsed');
+        body.style.display = '';
+        chevron.textContent = '▼';
+      } else {
+        card.addClass('is-collapsed');
+        body.style.display = 'none';
+        chevron.textContent = '▶';
+      }
+    });
   }
 
   // ==================== V3.1 底部操作栏 ====================
