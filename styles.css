@@ -211,6 +211,8 @@
   display: flex;
   align-items: center;
   gap: 4px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 /* ✏️ 编辑 / 🤖 AI 通用按钮 */
@@ -386,34 +388,75 @@
   cursor: not-allowed;
 }
 
-/* ==================== V3.1 摘要段 ==================== */
+/* ==================== V3.1 特色图片：header 文件名显示 ==================== */
 
-.wp-v3-excerpt-text {
+/* 文件名：固定宽度，direction: rtl 实现前截断（只显示后半段文件名） */
+.wp-v3-img-filename {
+  display: inline-block;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;          /* 从右往左截断，保留文件名尾部 */
+  unicode-bidi: plaintext; /* 保证文字内容本身不被 bidi 影响 */
+  font-size: 11px;
+  color: var(--text-muted);
+  vertical-align: middle;
+  cursor: default;
+}
+
+/* ==================== V3.1 内嵌摘要行 ==================== */
+
+/* 摘要行容器：紧贴文章内容下方 */
+.wp-v3-excerpt-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 8px 10px;
+  background: var(--background-secondary);
+  border-left: 3px solid var(--interactive-accent);
+  border-radius: 0 6px 6px 0;
+  position: relative;
+}
+
+/* 摘要文字：撑满左侧空间 */
+.wp-v3-excerpt-inline-text {
+  flex: 1;
+  min-width: 0;
   font-size: 13px;
   line-height: 1.6;
   color: var(--text-muted);
-  padding: 6px 10px;
-  background: var(--background-secondary);
-  border-radius: 4px;
-  border-left: 3px solid var(--interactive-accent);
+  font-style: italic;
   white-space: pre-wrap;
   word-break: break-word;
 }
 
-/* 空状态：文字按钮行 */
-.wp-v3-empty-action-row {
+/* 摘要占位框（无摘要时） */
+.wp-v3-excerpt-placeholder {
+  width: 100%;
+  padding: 10px 0 4px 0;
   display: flex;
+  flex-direction: column;
   align-items: center;
   gap: 8px;
-  flex-wrap: nowrap;
 }
 
-.wp-v3-empty-action-btn {
+/* 占位框按钮行 */
+.wp-v3-placeholder-btn-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* 占位框按钮（AI生成 / 手动输入） */
+.wp-v3-placeholder-btn {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 5px 12px;
-  border-radius: 5px;
+  padding: 5px 14px;
+  border-radius: 6px;
   border: 1px dashed var(--background-modifier-border);
   background: transparent;
   color: var(--text-muted);
@@ -423,25 +466,58 @@
   white-space: nowrap;
 }
 
-.wp-v3-empty-action-btn:hover {
+.wp-v3-placeholder-btn:hover {
   border-color: var(--interactive-accent);
   color: var(--interactive-accent);
   background: var(--background-modifier-hover);
 }
 
-/* ==================== V3.1 标签段 ==================== */
+/* 内联编辑按钮（✏️ 右对齐浮动） */
+.wp-v3-inline-edit-btn {
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--text-muted);
+  transition: all 0.15s ease;
+  align-self: flex-end;
+}
 
-/* 标签行：标签和+按钮同行，超出时可水平滚动 */
+.wp-v3-inline-edit-btn:hover {
+  color: var(--interactive-accent);
+  background: var(--background-modifier-hover);
+}
+
+/* 摘要弹出编辑覆盖层 */
+.wp-v3-excerpt-edit-overlay {
+  margin-top: 8px;
+  padding: 10px;
+  background: var(--background-secondary);
+  border: 1px solid var(--interactive-accent);
+  border-radius: 6px;
+}
+
+/* ==================== V3.1 内嵌标签行 ==================== */
+
+/* 标签行容器 */
+.wp-v3-tags-row {
+  margin-top: 8px;
+}
+
+/* 标签容器：flex-wrap，每行最多6个（靠间距自然换行） */
 .wp-v3-tags-container {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
   align-items: center;
-  overflow-x: auto;
-  padding-bottom: 2px;
+  max-width: 100%;
 }
 
-/* dev 分支彩色圆角标签 */
+/* 彩色圆角标签 */
 .wp-v3-tag-item {
   display: inline-flex;
   align-items: center;
@@ -453,6 +529,7 @@
   color: #fff;
   cursor: default;
   transition: all 0.2s ease;
+  position: relative;
 }
 
 .wp-v3-tag-item:hover {
@@ -460,43 +537,100 @@
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
-.wp-v3-tag-remove {
-  background: transparent;
-  border: none;
-  color: rgba(255, 255, 255, 0.8);
+/* 标签抖动动画 */
+@keyframes wp-tag-shake {
+  0%, 100% { transform: rotate(0deg); }
+  20% { transform: rotate(-4deg); }
+  40% { transform: rotate(4deg); }
+  60% { transform: rotate(-3deg); }
+  80% { transform: rotate(3deg); }
+}
+
+.wp-v3-tag-item.is-shaking {
+  animation: wp-tag-shake 0.5s ease infinite;
   cursor: pointer;
-  font-size: 14px;
-  font-weight: bold;
-  line-height: 1;
-  padding: 0;
-  transition: color 0.15s ease;
 }
 
-.wp-v3-tag-remove:hover {
+/* 编辑模式下标签右上角 × 删除按钮 */
+.wp-v3-tag-delete-btn {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
   color: #fff;
+  border: none;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: bold;
+  line-height: 14px;
+  text-align: center;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease;
+  z-index: 1;
 }
 
-/* + 添加标签按钮 */
-.wp-v3-tag-add-btn {
+.wp-v3-tag-delete-btn:hover {
+  background: rgba(220, 38, 38, 0.9);
+}
+
+/* 标签行按钮区（末尾右侧）*/
+.wp-v3-tags-btn-area {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+/* 标签操作按钮（+ / Done） */
+.wp-v3-tag-action-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: var(--interactive-accent);
-  color: var(--text-on-accent);
-  font-size: 16px;
-  font-weight: bold;
-  border: none;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 12px;
+  background: var(--background-secondary);
+  color: var(--text-muted);
+  border: 1px solid var(--background-modifier-border);
   cursor: pointer;
-  transition: all 0.2s ease;
-  line-height: 1;
+  font-size: 14px;
+  font-weight: bold;
+  transition: all 0.15s ease;
 }
 
-.wp-v3-tag-add-btn:hover {
-  transform: scale(1.1);
-  background: var(--interactive-accent-hover, var(--interactive-accent));
+.wp-v3-tag-action-btn:hover {
+  border-color: var(--interactive-accent);
+  color: var(--interactive-accent);
+  background: var(--background-modifier-hover);
+}
+
+.wp-v3-tag-done-btn {
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border-color: var(--interactive-accent);
+}
+
+.wp-v3-tag-done-btn:hover {
+  opacity: 0.88;
+  color: var(--text-on-accent);
+}
+
+/* 无标签占位行：左 + 按钮，右 AI 按钮 */
+.wp-v3-tags-empty-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 0;
 }
 
 /* 标签输入框 */
@@ -515,27 +649,7 @@
   box-shadow: 0 0 0 2px rgba(var(--interactive-accent-rgb, 0, 115, 170), 0.2);
 }
 
-/* 文章预览区内嵌：摘要区块 */
-.wp-v3-inline-excerpt {
-  margin-bottom: 12px;
-  padding: 10px 14px;
-  background: var(--background-secondary);
-  border-left: 3px solid var(--interactive-accent);
-  border-radius: 0 6px 6px 0;
-  font-size: 13px;
-  color: var(--text-muted);
-  line-height: 1.6;
-  font-style: italic;
-}
 
-/* 文章预览区内嵌：标签行 */
-.wp-v3-inline-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-  align-items: center;
-  margin-bottom: 14px;
-}
 
 /* ==================== V3.1 文章预览段 ==================== */
 

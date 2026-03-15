@@ -107758,8 +107758,6 @@ var init_wp_publish_modal_v2 = __esm({
        */
       renderV3PreviewArea(container, params) {
         this.renderV3FeaturedImageSection(container, params);
-        this.renderV3ExcerptSection(container, params);
-        this.renderV3TagsSection(container, params);
         this.renderV3ContentSection(container, params);
       }
       /**
@@ -107794,14 +107792,31 @@ var init_wp_publish_modal_v2 = __esm({
       renderV3FeaturedImageSection(container, params) {
         const imageToDisplay = this.featuredImage || this.autoFeaturedImage;
         const hasImage = !!imageToDisplay || !!this.matterData.featurePicture;
-        const actions = hasImage ? [{ emoji: "\u270F\uFE0F", label: this.t("publishModal_editButton") || "Edit", onClick: () => toggleEdit() }] : [];
         const section = this.createV3Section(
           container,
           this.t("publishModal_previewFeaturedImage") || "Featured Image",
-          actions
+          []
         );
         const body = section.createDiv("wp-v3-section-body");
         let isSetupMode = !hasImage;
+        const updateHeaderActions = (fileName) => {
+          const actionsEl = section.querySelector(".wp-v3-section-actions");
+          if (!actionsEl) return;
+          actionsEl.empty();
+          if (fileName) {
+            const nameEl = actionsEl.createSpan({ cls: "wp-v3-img-filename" });
+            nameEl.textContent = fileName;
+            nameEl.title = fileName;
+          }
+          if (hasImage || !isSetupMode) {
+            const editBtn = actionsEl.createEl("button", {
+              text: "\u270F\uFE0F",
+              cls: "wp-v3-icon-btn",
+              attr: { title: isSetupMode ? this.t("publishModal_previewFeaturedImage") || "Preview" : this.t("publishModal_editButton") || "Edit" }
+            });
+            editBtn.onclick = () => toggleEdit();
+          }
+        };
         const renderPreview = () => {
           body.empty();
           const wrap2 = body.createDiv("wp-v3-featured-image-wrap");
@@ -107811,6 +107826,7 @@ var init_wp_publish_modal_v2 = __esm({
             loading.style.padding = "20px";
             loading.style.color = "var(--text-muted)";
             loading.createEl("p", { text: this.t("publishModal_loadingRemoteImage") || "\u6B63\u5728\u52A0\u8F7D\u8FDC\u7A0B\u56FE\u7247..." });
+            updateHeaderActions();
           } else if (this.remoteImageLoadFailed) {
             const errDiv = wrap2.createDiv();
             errDiv.style.textAlign = "center";
@@ -107839,43 +107855,20 @@ var init_wp_publish_modal_v2 = __esm({
               this.remoteImagePostId = null;
               this.display(params);
             };
+            updateHeaderActions();
           } else if (imageToDisplay) {
             const blob = new Blob([imageToDisplay.content], { type: imageToDisplay.mimeType });
             const url = URL.createObjectURL(blob);
             const imgContainer = wrap2.createDiv("wp-v3-featured-img-container");
             imgContainer.createEl("img", { cls: "wp-v3-featured-img", attr: { src: url, alt: "Featured Image" } });
-            const bottomRow = wrap2.createDiv();
-            bottomRow.style.display = "flex";
-            bottomRow.style.alignItems = "center";
-            bottomRow.style.justifyContent = "space-between";
-            bottomRow.style.marginTop = "6px";
-            const info = bottomRow.createDiv();
-            info.style.fontSize = "12px";
-            info.style.color = "var(--text-muted)";
-            info.textContent = `${imageToDisplay.fileName} (${this.formatFileSize(imageToDisplay.content.byteLength)})`;
-            const removeBtn = bottomRow.createEl("button", {
-              text: this.t("publishModal_removeImage") || "\u79FB\u9664\u56FE\u7247",
-              cls: "wp-v3-feature-btn"
-            });
-            removeBtn.style.flex = "0 0 auto";
-            removeBtn.onclick = async () => {
-              this.featuredImage = null;
-              this.imageSource = "auto";
-              await this.clearImageCache();
-              this.display(params);
-            };
+            updateHeaderActions(`${imageToDisplay.fileName} (${this.formatFileSize(imageToDisplay.content.byteLength)})`);
           } else if (this.matterData.featurePicture) {
             const imgContainer = wrap2.createDiv("wp-v3-featured-img-container");
             imgContainer.createEl("img", {
               cls: "wp-v3-featured-img",
               attr: { src: this.matterData.featurePicture, alt: "Featured Image" }
             });
-            const info = wrap2.createDiv();
-            info.style.textAlign = "center";
-            info.style.marginTop = "6px";
-            info.style.fontSize = "12px";
-            info.style.color = "var(--text-muted)";
-            info.textContent = this.t("publishModal_previewFeaturedImageUploaded");
+            updateHeaderActions(this.t("publishModal_previewFeaturedImageUploaded") || "Uploaded");
           } else {
             renderSetup();
             return;
@@ -107884,6 +107877,7 @@ var init_wp_publish_modal_v2 = __esm({
         const renderSetup = () => {
           var _a5;
           body.empty();
+          isSetupMode = true;
           const setup = body.createDiv("wp-v3-featured-setup");
           setup.createDiv({ cls: "wp-v3-featured-empty", text: this.t("publishModal_noImageSelected") || "\u6682\u65E0\u7279\u8272\u56FE\u7247" });
           const btnRow = setup.createDiv("wp-v3-featured-btn-row");
@@ -107917,6 +107911,7 @@ var init_wp_publish_modal_v2 = __esm({
             });
             aiBtn.onclick = () => new import_obsidian9.Notice(this.t("notice_imageAIApiKeyRequired"));
           }
+          updateHeaderActions();
         };
         const toggleEdit = () => {
           isSetupMode = !isSetupMode;
@@ -108176,12 +108171,12 @@ var init_wp_publish_modal_v2 = __esm({
       }
       // ==================== V3.1 文章内容段（含嵌入摘要/标签） ====================
       renderV3ContentSection(container, params) {
-        let isEditing = false;
+        let isContentEditing = false;
         let originalContent = "";
         const editAction = {
           emoji: "\u270F\uFE0F",
           label: this.t("publishModal_editButton") || "Edit",
-          onClick: () => enterEdit()
+          onClick: () => enterContentEdit()
         };
         const section = this.createV3Section(
           container,
@@ -108192,25 +108187,15 @@ var init_wp_publish_modal_v2 = __esm({
         const renderHtmlPreview = () => {
           body.empty();
           section.removeClass("is-editing");
-          if (params.excerpt) {
-            const excerptEl = body.createDiv("wp-v3-inline-excerpt");
-            excerptEl.textContent = params.excerpt;
-          }
-          if (this.editableTags && this.editableTags.length > 0) {
-            const tagsEl = body.createDiv("wp-v3-inline-tags");
-            this.editableTags.forEach((tag) => {
-              const tagEl = tagsEl.createEl("span", { cls: "wp-v3-tag-item" });
-              tagEl.style.backgroundColor = getTagColor(tag);
-              tagEl.createSpan({ text: tag });
-            });
-          }
           const previewDiv = body.createDiv("wp-v3-content-preview");
           const html3 = AppState.markdownParser.render(this.editableContent);
           previewDiv.innerHTML = html3;
+          renderExcerptRow(body, params);
+          renderTagsRow(body, params);
         };
-        const enterEdit = () => {
-          if (isEditing) return;
-          isEditing = true;
+        const enterContentEdit = () => {
+          if (isContentEditing) return;
+          isContentEditing = true;
           originalContent = this.editableContent;
           section.addClass("is-editing");
           body.empty();
@@ -108222,19 +108207,19 @@ var init_wp_publish_modal_v2 = __esm({
           const cancelBtn = actions.createEl("button", { text: this.t("publishModal_cancel") || "Cancel", cls: "wp-v3-cancel-btn" });
           saveBtn.onclick = () => {
             this.editableContent = textarea.value;
-            isEditing = false;
+            isContentEditing = false;
             renderHtmlPreview();
           };
           cancelBtn.onclick = () => {
             this.editableContent = originalContent;
-            isEditing = false;
+            isContentEditing = false;
             renderHtmlPreview();
           };
           textarea.addEventListener("keydown", (e) => {
             if (e.key === "Escape") {
               e.preventDefault();
               this.editableContent = originalContent;
-              isEditing = false;
+              isContentEditing = false;
               renderHtmlPreview();
             } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
               e.preventDefault();
@@ -108242,6 +108227,167 @@ var init_wp_publish_modal_v2 = __esm({
             }
           });
           textarea.focus();
+        };
+        const renderExcerptRow = (parent2, p) => {
+          const excerptWrap = parent2.createDiv("wp-v3-excerpt-row");
+          if (p.excerpt) {
+            const textEl = excerptWrap.createDiv("wp-v3-excerpt-inline-text");
+            textEl.textContent = p.excerpt;
+            const editBtn = excerptWrap.createEl("button", {
+              text: "\u270F\uFE0F",
+              cls: "wp-v3-inline-edit-btn",
+              attr: { title: this.t("publishModal_editButton") || "Edit excerpt" }
+            });
+            editBtn.onclick = () => openExcerptModal(p);
+          } else {
+            const placeholder = excerptWrap.createDiv("wp-v3-excerpt-placeholder");
+            const btnRow = placeholder.createDiv("wp-v3-placeholder-btn-row");
+            const aiBtn = btnRow.createEl("button", {
+              text: "\u{1F916} " + (this.t("publishModal_generateSummary") || "AI \u751F\u6210"),
+              cls: "wp-v3-placeholder-btn"
+            });
+            aiBtn.onclick = () => this.generateSummary(p);
+            const manualBtn = btnRow.createEl("button", {
+              text: "\u270F\uFE0F " + (this.t("publishModal_editButton") || "\u624B\u52A8\u8F93\u5165"),
+              cls: "wp-v3-placeholder-btn"
+            });
+            manualBtn.onclick = () => openExcerptModal(p);
+          }
+        };
+        const openExcerptModal = (p) => {
+          const overlay = body.createDiv("wp-v3-excerpt-edit-overlay");
+          const originalVal = p.excerpt || "";
+          const textarea = overlay.createEl("textarea", {
+            cls: "wp-v3-textarea",
+            attr: { placeholder: this.t("publishModal_excerptPlaceholder") || "Enter excerpt..." }
+          });
+          textarea.value = originalVal;
+          textarea.rows = 4;
+          const actions = overlay.createDiv("wp-v3-edit-actions");
+          const saveBtn = actions.createEl("button", { text: this.t("publishModal_save") || "Save", cls: "wp-v3-save-btn" });
+          const cancelBtn = actions.createEl("button", { text: this.t("publishModal_cancel") || "Cancel", cls: "wp-v3-cancel-btn" });
+          saveBtn.onclick = () => {
+            p.excerpt = textarea.value;
+            overlay.remove();
+            renderHtmlPreview();
+          };
+          cancelBtn.onclick = () => {
+            p.excerpt = originalVal;
+            overlay.remove();
+            renderHtmlPreview();
+          };
+          textarea.addEventListener("keydown", (e) => {
+            if (e.key === "Escape") {
+              p.excerpt = originalVal;
+              overlay.remove();
+              renderHtmlPreview();
+            } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+              e.preventDefault();
+              saveBtn.click();
+            }
+          });
+          textarea.focus();
+        };
+        const renderTagsRow = (parent2, p) => {
+          if ((p.tags || []).length > 0 && JSON.stringify(p.tags) !== JSON.stringify(this.editableTags)) {
+            this.editableTags = p.tags ? [...p.tags] : [];
+          }
+          const tagsWrap = parent2.createDiv("wp-v3-tags-row");
+          let isTagEditing = false;
+          const renderTagsContent = () => {
+            tagsWrap.empty();
+            if (this.editableTags.length > 0) {
+              const tagsContainer = tagsWrap.createDiv("wp-v3-tags-container");
+              this.editableTags.forEach((tag) => {
+                const tagEl = tagsContainer.createEl("span", { cls: "wp-v3-tag-item" + (isTagEditing ? " is-shaking" : "") });
+                tagEl.style.backgroundColor = getTagColor(tag);
+                tagEl.createSpan({ text: tag });
+                if (isTagEditing) {
+                  const xBtn = tagEl.createEl("button", { cls: "wp-v3-tag-delete-btn", text: "\xD7" });
+                  xBtn.addEventListener("click", (e) => {
+                    e.stopPropagation();
+                    this.editableTags = this.editableTags.filter((t) => t !== tag);
+                    p.tags = [...this.editableTags];
+                    renderTagsContent();
+                  });
+                }
+              });
+              const btnArea = tagsWrap.createDiv("wp-v3-tags-btn-area");
+              if (isTagEditing) {
+                const addBtn = btnArea.createEl("button", { cls: "wp-v3-tag-action-btn", text: "+", attr: { title: "\u6DFB\u52A0\u6807\u7B7E" } });
+                addBtn.onclick = () => showInlineTagInput(tagsContainer, addBtn, p, renderTagsContent);
+                const doneBtn = btnArea.createEl("button", {
+                  text: this.t("publishModal_save") || "Done",
+                  cls: "wp-v3-tag-action-btn wp-v3-tag-done-btn"
+                });
+                doneBtn.onclick = () => {
+                  isTagEditing = false;
+                  renderTagsContent();
+                };
+              } else {
+                const editBtn = btnArea.createEl("button", {
+                  text: "\u270F\uFE0F",
+                  cls: "wp-v3-inline-edit-btn",
+                  attr: { title: this.t("publishModal_editButton") || "Edit tags" }
+                });
+                editBtn.onclick = () => {
+                  isTagEditing = true;
+                  renderTagsContent();
+                };
+              }
+            } else {
+              const emptyRow = tagsWrap.createDiv("wp-v3-tags-empty-row");
+              const addBtn = emptyRow.createEl("button", {
+                text: "+ \u6DFB\u52A0\u6807\u7B7E",
+                cls: "wp-v3-placeholder-btn"
+              });
+              addBtn.onclick = () => {
+                isTagEditing = true;
+                tagsWrap.empty();
+                const tagsContainer = tagsWrap.createDiv("wp-v3-tags-container");
+                const btnArea = tagsWrap.createDiv("wp-v3-tags-btn-area");
+                const plusBtn = btnArea.createEl("button", { cls: "wp-v3-tag-action-btn", text: "+", attr: { title: "\u6DFB\u52A0\u6807\u7B7E" } });
+                plusBtn.onclick = () => showInlineTagInput(tagsContainer, plusBtn, p, renderTagsContent);
+                showInlineTagInput(tagsContainer, plusBtn, p, renderTagsContent);
+              };
+              const aiBtn = emptyRow.createEl("button", {
+                text: "\u{1F916} " + (this.t("publishModal_generateTags") || "AI \u751F\u6210"),
+                cls: "wp-v3-placeholder-btn"
+              });
+              aiBtn.onclick = () => this.generateTags(p);
+            }
+          };
+          renderTagsContent();
+        };
+        const showInlineTagInput = (parent2, triggerBtn, p, onDone) => {
+          triggerBtn.style.display = "none";
+          const input = parent2.createEl("input", { cls: "wp-v3-tag-input", type: "text" });
+          input.placeholder = this.plugin.t("publishModal_tagInputPlaceholder") || "\u8F93\u5165\u6807\u7B7E...";
+          input.focus();
+          let committed = false;
+          const commit = () => {
+            if (committed) return;
+            committed = true;
+            const val2 = input.value.trim();
+            if (val2 && !this.editableTags.includes(val2)) {
+              this.editableTags.push(val2);
+              p.tags = [...this.editableTags];
+            }
+            input.remove();
+            triggerBtn.style.display = "";
+            onDone();
+          };
+          input.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              commit();
+            } else if (e.key === "Escape") {
+              committed = true;
+              input.remove();
+              triggerBtn.style.display = "";
+            }
+          });
+          input.addEventListener("blur", () => setTimeout(commit, 200));
         };
         renderHtmlPreview();
       }
@@ -108451,7 +108597,7 @@ var init_wp_publish_modal_v2 = __esm({
        * 添加 ❕ hover tooltip 按钮
        */
       addV3HintBtn(container, hintText) {
-        const btn = container.createEl("button", { cls: "wp-v3-hint-btn", text: "\u2755" });
+        const btn = container.createEl("button", { cls: "wp-v3-hint-btn", text: "\u24D8" });
         const tooltip = btn.createDiv("wp-v3-tooltip");
         tooltip.textContent = hintText;
       }
