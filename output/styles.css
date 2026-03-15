@@ -122,6 +122,9 @@
   background: var(--background-secondary);
   border-radius: 8px;
   overflow: hidden;
+  margin-bottom: 16px;
+  position: relative;
+  transition: all 0.3s ease;
 }
 
 .wp-panel-header {
@@ -130,10 +133,90 @@
   background: var(--background-modifier-border);
   cursor: pointer;
   user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: background 0.2s ease;
+}
+
+.wp-panel-header:hover {
+  background: var(--background-modifier-border-hover);
+}
+
+.wp-panel-collapse-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  transition: transform 0.3s ease;
+}
+
+.wp-panel-title {
+  flex: 1;
+  font-size: 14px;
 }
 
 .wp-panel-content {
   padding: 16px;
+  overflow-y: auto;
+  transition: max-height 0.3s ease, opacity 0.3s ease;
+}
+
+/* 折叠状态 */
+.wp-panel.collapsed .wp-panel-content {
+  max-height: 0;
+  padding: 0 16px;
+  opacity: 0;
+  overflow: hidden;
+}
+
+.wp-panel.collapsed {
+  height: var(--wp-panel-collapsed-height);
+}
+
+/* 拖拽调整大小手柄 */
+.wp-panel-resize-handle {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  cursor: ns-resize;
+  background: transparent;
+  transition: background 0.2s ease;
+}
+
+.wp-panel-resize-handle:hover {
+  background: var(--interactive-accent);
+}
+
+.wp-panel.resizing {
+  user-select: none;
+  transition: none;
+}
+
+.wp-panel.resizing .wp-panel-resize-handle {
+  background: var(--interactive-accent);
+}
+
+/* 全局拖拽状态 */
+body.wp-resizing {
+  cursor: ns-resize;
+  user-select: none;
+}
+
+body.wp-resizing * {
+  cursor: ns-resize !important;
+}
+
+/* 空状态 */
+.wp-panel-empty {
+  display: block;
+  text-align: center;
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 20px;
 }
 
 /* 响应式：移动端单列布局 */

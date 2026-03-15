@@ -107794,9 +107794,76 @@ var init_wp_publish_modal_v2 = __esm({
       // ==================== 新布局：面板区 ====================
       renderPanelsArea(container, params) {
         const settingsPanel = container.createDiv("wp-panel wp-panel-settings");
-        this.renderSettingsPanel(settingsPanel, params);
+        this.renderCollapsiblePanel(
+          settingsPanel,
+          this.plugin.t("publishModal_settingsPanel") || "Settings",
+          "settings",
+          (content) => this.renderSettingsPanel(content, params)
+        );
         const historyPanel = container.createDiv("wp-panel wp-panel-history");
-        this.renderHistoryPanel(historyPanel, params);
+        this.renderCollapsiblePanel(
+          historyPanel,
+          this.plugin.t("publishModal_historyPanel") || "History",
+          "history",
+          (content) => this.renderHistoryPanel(content, params)
+        );
+      }
+      /**
+       * 渲染可折叠面板
+       */
+      renderCollapsiblePanel(container, title, panelId, renderContent) {
+        const header = container.createDiv("wp-panel-header");
+        const collapseIcon = header.createSpan("wp-panel-collapse-icon");
+        (0, import_obsidian9.setIcon)(collapseIcon, "chevron-down");
+        header.createSpan({ text: title, cls: "wp-panel-title" });
+        const content = container.createDiv("wp-panel-content");
+        renderContent(content);
+        let isCollapsed = false;
+        header.onclick = () => {
+          isCollapsed = !isCollapsed;
+          if (isCollapsed) {
+            container.addClass("collapsed");
+            (0, import_obsidian9.setIcon)(collapseIcon, "chevron-right");
+          } else {
+            container.removeClass("collapsed");
+            (0, import_obsidian9.setIcon)(collapseIcon, "chevron-down");
+          }
+        };
+        this.setupPanelResize(container);
+      }
+      /**
+       * 设置面板拖拽调整大小
+       */
+      setupPanelResize(panel) {
+        const resizeHandle = panel.createDiv("wp-panel-resize-handle");
+        let isResizing = false;
+        let startY = 0;
+        let startHeight = 0;
+        resizeHandle.addEventListener("mousedown", (e) => {
+          isResizing = true;
+          startY = e.clientY;
+          startHeight = panel.offsetHeight;
+          document.body.addClass("wp-resizing");
+          panel.addClass("resizing");
+          e.preventDefault();
+        });
+        document.addEventListener("mousemove", (e) => {
+          if (!isResizing) return;
+          const deltaY = e.clientY - startY;
+          const newHeight = startHeight + deltaY;
+          const minHeight = 100;
+          const maxHeight = window.innerHeight * 0.8;
+          if (newHeight >= minHeight && newHeight <= maxHeight) {
+            panel.style.height = `${newHeight}px`;
+          }
+        });
+        document.addEventListener("mouseup", () => {
+          if (isResizing) {
+            isResizing = false;
+            document.body.removeClass("wp-resizing");
+            panel.removeClass("resizing");
+          }
+        });
       }
       renderSettingsPanel(container, params) {
         const aiSection = container.createDiv("wp-settings-ai");
@@ -107805,10 +107872,7 @@ var init_wp_publish_modal_v2 = __esm({
         this.renderBasicSettings(basicSection, params);
       }
       renderHistoryPanel(container, params) {
-        const header = container.createDiv("wp-panel-header");
-        header.createSpan({ text: "History" });
-        const content = container.createDiv("wp-panel-content");
-        content.createSpan({ text: "No history yet" });
+        container.createSpan({ text: this.plugin.t("publishModal_noHistory") || "No history yet", cls: "wp-panel-empty" });
       }
       // ==================== 四段式预览区 ====================
       /**
@@ -114662,6 +114726,8 @@ __export(en_exports, {
   publishModal_advancedNotice: () => publishModal_advancedNotice,
   publishModal_advancedTab: () => publishModal_advancedTab,
   publishModal_advancedTitle: () => publishModal_advancedTitle,
+  publishModal_aiExcerpt: () => publishModal_aiExcerpt,
+  publishModal_aiGenerate: () => publishModal_aiGenerate,
   publishModal_aiGenerateBtn: () => publishModal_aiGenerateBtn,
   publishModal_aiGenerateImage: () => publishModal_aiGenerateImage,
   publishModal_aiGenerateImageButton: () => publishModal_aiGenerateImageButton,
@@ -114671,10 +114737,12 @@ __export(en_exports, {
   publishModal_aiImageGenerated: () => publishModal_aiImageGenerated,
   publishModal_aiPrompts_tab: () => publishModal_aiPrompts_tab,
   publishModal_aiServiceRequired: () => publishModal_aiServiceRequired,
+  publishModal_aiTags: () => publishModal_aiTags,
   publishModal_basicSettings: () => publishModal_basicSettings,
   publishModal_cancelButton: () => publishModal_cancelButton,
   publishModal_category: () => publishModal_category,
   publishModal_categoryDesc: () => publishModal_categoryDesc,
+  publishModal_categoryInfo: () => publishModal_categoryInfo,
   publishModal_categoryName: () => publishModal_categoryName,
   publishModal_closeButton: () => publishModal_closeButton,
   publishModal_commentClosed: () => publishModal_commentClosed,
@@ -114693,6 +114761,8 @@ __export(en_exports, {
   publishModal_editButton: () => publishModal_editButton,
   publishModal_emptyContent: () => publishModal_emptyContent,
   publishModal_emptyContentForTags: () => publishModal_emptyContentForTags,
+  publishModal_excerptLabel: () => publishModal_excerptLabel,
+  publishModal_excerptPlaceholder: () => publishModal_excerptPlaceholder,
   publishModal_featuredImage: () => publishModal_featuredImage,
   publishModal_featuredImageUploaded: () => publishModal_featuredImageUploaded,
   publishModal_featuredImage_tab: () => publishModal_featuredImage_tab,
@@ -114707,6 +114777,7 @@ __export(en_exports, {
   publishModal_generatingPrompt: () => publishModal_generatingPrompt,
   publishModal_generatingSummary: () => publishModal_generatingSummary,
   publishModal_generatingTags: () => publishModal_generatingTags,
+  publishModal_historyPanel: () => publishModal_historyPanel,
   publishModal_imageAIRequired: () => publishModal_imageAIRequired,
   publishModal_imageFromGallery: () => publishModal_imageFromGallery,
   publishModal_imagePromptTitle: () => publishModal_imagePromptTitle,
@@ -114716,7 +114787,11 @@ __export(en_exports, {
   publishModal_loadingRemoteImage: () => publishModal_loadingRemoteImage,
   publishModal_localImage: () => publishModal_localImage,
   publishModal_localImageButton: () => publishModal_localImageButton,
+  publishModal_noExcerpt: () => publishModal_noExcerpt,
   publishModal_noFeaturedImage: () => publishModal_noFeaturedImage,
+  publishModal_noHistory: () => publishModal_noHistory,
+  publishModal_noImageSelected: () => publishModal_noImageSelected,
+  publishModal_noTags: () => publishModal_noTags,
   publishModal_onlineImage: () => publishModal_onlineImage,
   publishModal_postDateTime: () => publishModal_postDateTime,
   publishModal_postDateTimeDesc: () => publishModal_postDateTimeDesc,
@@ -114751,22 +114826,28 @@ __export(en_exports, {
   publishModal_regenerateButton: () => publishModal_regenerateButton,
   publishModal_regenerating: () => publishModal_regenerating,
   publishModal_remoteImageLoadFailed: () => publishModal_remoteImageLoadFailed,
+  publishModal_removeImage: () => publishModal_removeImage,
   publishModal_retry: () => publishModal_retry,
   publishModal_retryButton: () => publishModal_retryButton,
+  publishModal_retryLoadImage: () => publishModal_retryLoadImage,
   publishModal_saveAndUseButton: () => publishModal_saveAndUseButton,
   publishModal_saveButton: () => publishModal_saveButton,
   publishModal_saveSettings: () => publishModal_saveSettings,
   publishModal_selectCategory: () => publishModal_selectCategory,
   publishModal_selectFeaturedImage: () => publishModal_selectFeaturedImage,
+  publishModal_selectFromVault: () => publishModal_selectFromVault,
+  publishModal_settingsPanel: () => publishModal_settingsPanel,
   publishModal_settingsSaved: () => publishModal_settingsSaved,
   publishModal_settingsTab: () => publishModal_settingsTab,
   publishModal_skip: () => publishModal_skip,
+  publishModal_skipRemoteImage: () => publishModal_skipRemoteImage,
   publishModal_slugAIButton: () => publishModal_slugAIButton,
   publishModal_slugAIButtonNeedConfig: () => publishModal_slugAIButtonNeedConfig,
   publishModal_slugAIButtonTranslating: () => publishModal_slugAIButtonTranslating,
   publishModal_slugAutoUpdated: () => publishModal_slugAutoUpdated,
   publishModal_slugDesc: () => publishModal_slugDesc,
   publishModal_slugGenerated: () => publishModal_slugGenerated,
+  publishModal_slugInfo: () => publishModal_slugInfo,
   publishModal_slugName: () => publishModal_slugName,
   publishModal_slugNeedTitle: () => publishModal_slugNeedTitle,
   publishModal_slugPlaceholder: () => publishModal_slugPlaceholder,
@@ -114785,9 +114866,12 @@ __export(en_exports, {
   publishModal_tagInputPlaceholder: () => publishModal_tagInputPlaceholder,
   publishModal_tagsGenerateFailed: () => publishModal_tagsGenerateFailed,
   publishModal_tagsGenerated: () => publishModal_tagsGenerated,
+  publishModal_tagsLabel: () => publishModal_tagsLabel,
+  publishModal_tagsPlaceholder: () => publishModal_tagsPlaceholder,
   publishModal_tagsPromptTitle: () => publishModal_tagsPromptTitle,
   publishModal_title: () => publishModal_title,
   publishModal_titleDesc: () => publishModal_titleDesc,
+  publishModal_titleInfo: () => publishModal_titleInfo,
   publishModal_titleName: () => publishModal_titleName,
   publishModal_titlePlaceholder: () => publishModal_titlePlaceholder,
   publishModal_title_tab: () => publishModal_title_tab,
@@ -115302,6 +115386,26 @@ var defaultPrompt_image = "Generate an English image description suitable for a 
 var defaultPrompt_summaryEn = "Please generate a concise summary of 100-200 words based on the following article content.\nRequirements:\n1. Summarize the core content and main points\n2. Use fluent and natural language\n3. Return only the summary text without any prefix or explanation\n\nArticle content:\n{content}";
 var defaultPrompt_tagsEn = "Please extract 1-4 most relevant keywords as tags based on the following article content.\nRequirements:\n1. Each tag should be concise (2-4 words)\n2. Separate tags with commas\n3. Return only comma-separated tags without any prefix or explanation\n\nArticle content:\n{content}";
 var defaultPrompt_imageEn = "Generate an English image description suitable for a blog cover image based on the following article summary or tags.\nRequirements: Concise, visual, professional, suitable for AI image generation.\nReturn only the English image description without any prefix or explanation.\n\nArticle title: {title}\nArticle summary/tags: {content}";
+var publishModal_excerptLabel = "Excerpt";
+var publishModal_noExcerpt = "No excerpt";
+var publishModal_excerptPlaceholder = "Enter excerpt...";
+var publishModal_tagsLabel = "Tags";
+var publishModal_noTags = "No tags";
+var publishModal_tagsPlaceholder = "Enter tags, separated by commas...";
+var publishModal_titleInfo = "Post title";
+var publishModal_slugInfo = "URL slug (permalink)";
+var publishModal_categoryInfo = "Post category";
+var publishModal_aiExcerpt = "AI Excerpt";
+var publishModal_aiTags = "AI Tags";
+var publishModal_retryLoadImage = "Retry";
+var publishModal_skipRemoteImage = "Skip";
+var publishModal_removeImage = "Remove";
+var publishModal_noImageSelected = "No image selected";
+var publishModal_selectFromVault = "Select from Vault";
+var publishModal_aiGenerate = "AI Generate";
+var publishModal_settingsPanel = "Settings";
+var publishModal_historyPanel = "History";
+var publishModal_noHistory = "No history yet";
 var en_default = {
   error_noEndpoint,
   error_notWpCom,
@@ -115682,7 +115786,27 @@ var en_default = {
   defaultPrompt_image,
   defaultPrompt_summaryEn,
   defaultPrompt_tagsEn,
-  defaultPrompt_imageEn
+  defaultPrompt_imageEn,
+  publishModal_excerptLabel,
+  publishModal_noExcerpt,
+  publishModal_excerptPlaceholder,
+  publishModal_tagsLabel,
+  publishModal_noTags,
+  publishModal_tagsPlaceholder,
+  publishModal_titleInfo,
+  publishModal_slugInfo,
+  publishModal_categoryInfo,
+  publishModal_aiExcerpt,
+  publishModal_aiTags,
+  publishModal_retryLoadImage,
+  publishModal_skipRemoteImage,
+  publishModal_removeImage,
+  publishModal_noImageSelected,
+  publishModal_selectFromVault,
+  publishModal_aiGenerate,
+  publishModal_settingsPanel,
+  publishModal_historyPanel,
+  publishModal_noHistory
 };
 
 // src/i18n/zh-cn.json
@@ -115810,6 +115934,8 @@ __export(zh_cn_exports, {
   publishModal_advancedNotice: () => publishModal_advancedNotice2,
   publishModal_advancedTab: () => publishModal_advancedTab2,
   publishModal_advancedTitle: () => publishModal_advancedTitle2,
+  publishModal_aiExcerpt: () => publishModal_aiExcerpt2,
+  publishModal_aiGenerate: () => publishModal_aiGenerate2,
   publishModal_aiGenerateBtn: () => publishModal_aiGenerateBtn2,
   publishModal_aiGenerateImage: () => publishModal_aiGenerateImage2,
   publishModal_aiGenerateImageButton: () => publishModal_aiGenerateImageButton2,
@@ -115819,10 +115945,12 @@ __export(zh_cn_exports, {
   publishModal_aiImageGenerated: () => publishModal_aiImageGenerated2,
   publishModal_aiPrompts_tab: () => publishModal_aiPrompts_tab2,
   publishModal_aiServiceRequired: () => publishModal_aiServiceRequired2,
+  publishModal_aiTags: () => publishModal_aiTags2,
   publishModal_basicSettings: () => publishModal_basicSettings2,
   publishModal_cancelButton: () => publishModal_cancelButton2,
   publishModal_category: () => publishModal_category2,
   publishModal_categoryDesc: () => publishModal_categoryDesc2,
+  publishModal_categoryInfo: () => publishModal_categoryInfo2,
   publishModal_categoryName: () => publishModal_categoryName2,
   publishModal_closeButton: () => publishModal_closeButton2,
   publishModal_commentClosed: () => publishModal_commentClosed2,
@@ -115841,6 +115969,8 @@ __export(zh_cn_exports, {
   publishModal_editButton: () => publishModal_editButton2,
   publishModal_emptyContent: () => publishModal_emptyContent2,
   publishModal_emptyContentForTags: () => publishModal_emptyContentForTags2,
+  publishModal_excerptLabel: () => publishModal_excerptLabel2,
+  publishModal_excerptPlaceholder: () => publishModal_excerptPlaceholder2,
   publishModal_featuredImage: () => publishModal_featuredImage2,
   publishModal_featuredImageUploaded: () => publishModal_featuredImageUploaded2,
   publishModal_featuredImage_tab: () => publishModal_featuredImage_tab2,
@@ -115855,6 +115985,7 @@ __export(zh_cn_exports, {
   publishModal_generatingPrompt: () => publishModal_generatingPrompt2,
   publishModal_generatingSummary: () => publishModal_generatingSummary2,
   publishModal_generatingTags: () => publishModal_generatingTags2,
+  publishModal_historyPanel: () => publishModal_historyPanel2,
   publishModal_imageAIRequired: () => publishModal_imageAIRequired2,
   publishModal_imageFromGallery: () => publishModal_imageFromGallery2,
   publishModal_imagePromptTitle: () => publishModal_imagePromptTitle2,
@@ -115864,7 +115995,11 @@ __export(zh_cn_exports, {
   publishModal_loadingRemoteImage: () => publishModal_loadingRemoteImage2,
   publishModal_localImage: () => publishModal_localImage2,
   publishModal_localImageButton: () => publishModal_localImageButton2,
+  publishModal_noExcerpt: () => publishModal_noExcerpt2,
   publishModal_noFeaturedImage: () => publishModal_noFeaturedImage2,
+  publishModal_noHistory: () => publishModal_noHistory2,
+  publishModal_noImageSelected: () => publishModal_noImageSelected2,
+  publishModal_noTags: () => publishModal_noTags2,
   publishModal_onlineImage: () => publishModal_onlineImage2,
   publishModal_postDateTime: () => publishModal_postDateTime2,
   publishModal_postDateTimeDesc: () => publishModal_postDateTimeDesc2,
@@ -115899,22 +116034,28 @@ __export(zh_cn_exports, {
   publishModal_regenerateButton: () => publishModal_regenerateButton2,
   publishModal_regenerating: () => publishModal_regenerating2,
   publishModal_remoteImageLoadFailed: () => publishModal_remoteImageLoadFailed2,
+  publishModal_removeImage: () => publishModal_removeImage2,
   publishModal_retry: () => publishModal_retry2,
   publishModal_retryButton: () => publishModal_retryButton2,
+  publishModal_retryLoadImage: () => publishModal_retryLoadImage2,
   publishModal_saveAndUseButton: () => publishModal_saveAndUseButton2,
   publishModal_saveButton: () => publishModal_saveButton2,
   publishModal_saveSettings: () => publishModal_saveSettings2,
   publishModal_selectCategory: () => publishModal_selectCategory2,
   publishModal_selectFeaturedImage: () => publishModal_selectFeaturedImage2,
+  publishModal_selectFromVault: () => publishModal_selectFromVault2,
+  publishModal_settingsPanel: () => publishModal_settingsPanel2,
   publishModal_settingsSaved: () => publishModal_settingsSaved2,
   publishModal_settingsTab: () => publishModal_settingsTab2,
   publishModal_skip: () => publishModal_skip2,
+  publishModal_skipRemoteImage: () => publishModal_skipRemoteImage2,
   publishModal_slugAIButton: () => publishModal_slugAIButton2,
   publishModal_slugAIButtonNeedConfig: () => publishModal_slugAIButtonNeedConfig2,
   publishModal_slugAIButtonTranslating: () => publishModal_slugAIButtonTranslating2,
   publishModal_slugAutoUpdated: () => publishModal_slugAutoUpdated2,
   publishModal_slugDesc: () => publishModal_slugDesc2,
   publishModal_slugGenerated: () => publishModal_slugGenerated2,
+  publishModal_slugInfo: () => publishModal_slugInfo2,
   publishModal_slugName: () => publishModal_slugName2,
   publishModal_slugNeedTitle: () => publishModal_slugNeedTitle2,
   publishModal_slugPlaceholder: () => publishModal_slugPlaceholder2,
@@ -115933,9 +116074,12 @@ __export(zh_cn_exports, {
   publishModal_tagInputPlaceholder: () => publishModal_tagInputPlaceholder2,
   publishModal_tagsGenerateFailed: () => publishModal_tagsGenerateFailed2,
   publishModal_tagsGenerated: () => publishModal_tagsGenerated2,
+  publishModal_tagsLabel: () => publishModal_tagsLabel2,
+  publishModal_tagsPlaceholder: () => publishModal_tagsPlaceholder2,
   publishModal_tagsPromptTitle: () => publishModal_tagsPromptTitle2,
   publishModal_title: () => publishModal_title2,
   publishModal_titleDesc: () => publishModal_titleDesc2,
+  publishModal_titleInfo: () => publishModal_titleInfo2,
   publishModal_titleName: () => publishModal_titleName2,
   publishModal_titlePlaceholder: () => publishModal_titlePlaceholder2,
   publishModal_title_tab: () => publishModal_title_tab2,
@@ -116450,6 +116594,26 @@ var defaultPrompt_image2 = "\u6839\u636E\u4EE5\u4E0B\u6587\u7AE0\u6458\u8981\u62
 var defaultPrompt_summaryEn2 = "Please generate a concise summary of 100-200 words based on the following article content.\nRequirements:\n1. Summarize the core content and main points\n2. Use fluent and natural language\n3. Return only the summary text without any prefix or explanation\n\nArticle content:\n{content}";
 var defaultPrompt_tagsEn2 = "Please extract 1-4 most relevant keywords as tags based on the following article content.\nRequirements:\n1. Each tag should be concise (2-4 words)\n2. Separate tags with commas\n3. Return only comma-separated tags without any prefix or explanation\n\nArticle content:\n{content}";
 var defaultPrompt_imageEn2 = "Generate an English image description suitable for a blog cover image based on the following article summary or tags.\nRequirements: Concise, visual, professional, suitable for AI image generation.\nReturn only the English image description without any prefix or explanation.\n\nArticle title: {title}\nArticle summary/tags: {content}";
+var publishModal_excerptLabel2 = "\u6458\u8981";
+var publishModal_noExcerpt2 = "\u6682\u65E0\u6458\u8981";
+var publishModal_excerptPlaceholder2 = "\u8F93\u5165\u6458\u8981...";
+var publishModal_tagsLabel2 = "\u6807\u7B7E";
+var publishModal_noTags2 = "\u6682\u65E0\u6807\u7B7E";
+var publishModal_tagsPlaceholder2 = "\u8F93\u5165\u6807\u7B7E\uFF0C\u7528\u9017\u53F7\u5206\u9694...";
+var publishModal_titleInfo2 = "\u6587\u7AE0\u6807\u9898";
+var publishModal_slugInfo2 = "URL \u522B\u540D\uFF08\u56FA\u5B9A\u94FE\u63A5\uFF09";
+var publishModal_categoryInfo2 = "\u6587\u7AE0\u5206\u7C7B";
+var publishModal_aiExcerpt2 = "AI \u6458\u8981";
+var publishModal_aiTags2 = "AI \u6807\u7B7E";
+var publishModal_retryLoadImage2 = "\u91CD\u8BD5";
+var publishModal_skipRemoteImage2 = "\u8DF3\u8FC7";
+var publishModal_removeImage2 = "\u79FB\u9664";
+var publishModal_noImageSelected2 = "\u672A\u9009\u62E9\u56FE\u7247";
+var publishModal_selectFromVault2 = "\u4ECE\u4ED3\u5E93\u9009\u62E9";
+var publishModal_aiGenerate2 = "AI \u751F\u6210";
+var publishModal_settingsPanel2 = "\u8BBE\u7F6E";
+var publishModal_historyPanel2 = "\u5386\u53F2\u8BB0\u5F55";
+var publishModal_noHistory2 = "\u6682\u65E0\u5386\u53F2\u8BB0\u5F55";
 var zh_cn_default = {
   error_noEndpoint: error_noEndpoint2,
   error_notWpCom: error_notWpCom2,
@@ -116830,7 +116994,27 @@ var zh_cn_default = {
   defaultPrompt_image: defaultPrompt_image2,
   defaultPrompt_summaryEn: defaultPrompt_summaryEn2,
   defaultPrompt_tagsEn: defaultPrompt_tagsEn2,
-  defaultPrompt_imageEn: defaultPrompt_imageEn2
+  defaultPrompt_imageEn: defaultPrompt_imageEn2,
+  publishModal_excerptLabel: publishModal_excerptLabel2,
+  publishModal_noExcerpt: publishModal_noExcerpt2,
+  publishModal_excerptPlaceholder: publishModal_excerptPlaceholder2,
+  publishModal_tagsLabel: publishModal_tagsLabel2,
+  publishModal_noTags: publishModal_noTags2,
+  publishModal_tagsPlaceholder: publishModal_tagsPlaceholder2,
+  publishModal_titleInfo: publishModal_titleInfo2,
+  publishModal_slugInfo: publishModal_slugInfo2,
+  publishModal_categoryInfo: publishModal_categoryInfo2,
+  publishModal_aiExcerpt: publishModal_aiExcerpt2,
+  publishModal_aiTags: publishModal_aiTags2,
+  publishModal_retryLoadImage: publishModal_retryLoadImage2,
+  publishModal_skipRemoteImage: publishModal_skipRemoteImage2,
+  publishModal_removeImage: publishModal_removeImage2,
+  publishModal_noImageSelected: publishModal_noImageSelected2,
+  publishModal_selectFromVault: publishModal_selectFromVault2,
+  publishModal_aiGenerate: publishModal_aiGenerate2,
+  publishModal_settingsPanel: publishModal_settingsPanel2,
+  publishModal_historyPanel: publishModal_historyPanel2,
+  publishModal_noHistory: publishModal_noHistory2
 };
 
 // src/i18n/langs.ts

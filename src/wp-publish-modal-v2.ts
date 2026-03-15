@@ -849,11 +849,107 @@ export class WpPublishModalV2 extends AbstractModal {
   private renderPanelsArea(container: HTMLElement, params: WordPressPostParams): void {
     // 设置面板（可折叠）
     const settingsPanel = container.createDiv('wp-panel wp-panel-settings');
-    this.renderSettingsPanel(settingsPanel, params);
+    this.renderCollapsiblePanel(
+      settingsPanel,
+      this.plugin.t('publishModal_settingsPanel') || 'Settings',
+      'settings',
+      (content) => this.renderSettingsPanel(content, params)
+    );
 
     // 历史面板（可折叠）
     const historyPanel = container.createDiv('wp-panel wp-panel-history');
-    this.renderHistoryPanel(historyPanel, params);
+    this.renderCollapsiblePanel(
+      historyPanel,
+      this.plugin.t('publishModal_historyPanel') || 'History',
+      'history',
+      (content) => this.renderHistoryPanel(content, params)
+    );
+  }
+
+  /**
+   * 渲染可折叠面板
+   */
+  private renderCollapsiblePanel(
+    container: HTMLElement,
+    title: string,
+    panelId: string,
+    renderContent: (content: HTMLElement) => void
+  ): void {
+    // 面板头部
+    const header = container.createDiv('wp-panel-header');
+
+    // 折叠图标
+    const collapseIcon = header.createSpan('wp-panel-collapse-icon');
+    setIcon(collapseIcon, 'chevron-down');
+
+    // 标题
+    header.createSpan({ text: title, cls: 'wp-panel-title' });
+
+    // 面板内容
+    const content = container.createDiv('wp-panel-content');
+    renderContent(content);
+
+    // 折叠/展开功能
+    let isCollapsed = false;
+    header.onclick = () => {
+      isCollapsed = !isCollapsed;
+      if (isCollapsed) {
+        container.addClass('collapsed');
+        setIcon(collapseIcon, 'chevron-right');
+      } else {
+        container.removeClass('collapsed');
+        setIcon(collapseIcon, 'chevron-down');
+      }
+    };
+
+    // 添加拖拽调整大小功能
+    this.setupPanelResize(container);
+  }
+
+  /**
+   * 设置面板拖拽调整大小
+   */
+  private setupPanelResize(panel: HTMLElement): void {
+    const resizeHandle = panel.createDiv('wp-panel-resize-handle');
+
+    let isResizing = false;
+    let startY = 0;
+    let startHeight = 0;
+
+    resizeHandle.addEventListener('mousedown', (e: MouseEvent) => {
+      isResizing = true;
+      startY = e.clientY;
+      startHeight = panel.offsetHeight;
+
+      // 添加拖拽样式
+      document.body.addClass('wp-resizing');
+      panel.addClass('resizing');
+
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', (e: MouseEvent) => {
+      if (!isResizing) return;
+
+      const deltaY = e.clientY - startY;
+      const newHeight = startHeight + deltaY;
+
+      // 限制最小和最大高度
+      const minHeight = 100;
+      const maxHeight = window.innerHeight * 0.8;
+
+      if (newHeight >= minHeight && newHeight <= maxHeight) {
+        panel.style.height = `${newHeight}px`;
+      }
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (isResizing) {
+        isResizing = false;
+        document.body.removeClass('wp-resizing');
+        panel.removeClass('resizing');
+      }
+    });
   }
 
   private renderSettingsPanel(container: HTMLElement, params: WordPressPostParams): void {
@@ -867,11 +963,7 @@ export class WpPublishModalV2 extends AbstractModal {
   }
 
   private renderHistoryPanel(container: HTMLElement, params: WordPressPostParams): void {
-    const header = container.createDiv('wp-panel-header');
-    header.createSpan({ text: 'History' });
-
-    const content = container.createDiv('wp-panel-content');
-    content.createSpan({ text: 'No history yet' });
+    container.createSpan({ text: this.plugin.t('publishModal_noHistory') || 'No history yet', cls: 'wp-panel-empty' });
   }
 
   // ==================== 四段式预览区 ====================
