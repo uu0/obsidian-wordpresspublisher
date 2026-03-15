@@ -107761,12 +107761,21 @@ var init_wp_publish_modal_v2 = __esm({
         }
         const { contentEl } = this;
         if (contentEl) {
-          contentEl.style.flex = "1";
-          contentEl.style.minHeight = "0";
-          contentEl.style.display = "flex";
-          contentEl.style.flexDirection = "column";
-          contentEl.style.overflow = "hidden";
-          contentEl.style.padding = "0";
+          if (isMobile) {
+            contentEl.style.flex = "";
+            contentEl.style.minHeight = "";
+            contentEl.style.display = "";
+            contentEl.style.flexDirection = "";
+            contentEl.style.overflow = "";
+            contentEl.style.padding = "0";
+          } else {
+            contentEl.style.flex = "1";
+            contentEl.style.minHeight = "0";
+            contentEl.style.display = "flex";
+            contentEl.style.flexDirection = "column";
+            contentEl.style.overflow = "hidden";
+            contentEl.style.padding = "0";
+          }
         }
       }
       // ==================== V3.1 主布局 ====================

@@ -1198,40 +1198,46 @@
 
 /* 移动端单列 */
 @media (max-width: 680px) {
-  /* 1. 覆盖 JS / Obsidian 设置，允许窗口缩到屏幕宽度，高度自适应内容 */
+  /* 1. modal-container：固定视口高度，不自己滚动 */
   .modal-container:has(.wp-publish-modal-v2) {
     min-width: 0 !important;
     width: 96vw !important;
     max-width: 96vw !important;
-    height: auto !important;
+    height: 92vh !important;
     max-height: 92vh !important;
-    overflow-y: auto !important;
-    overflow-x: hidden !important;
+    overflow: hidden !important;
     margin: 4vh auto !important;
+    display: flex !important;
+    flex-direction: column !important;
   }
 
-  /* 2. modal-content：高度跟随内容，允许整体滚动 */
+  /* 2. modal-content：撑满容器，作为唯一滚动层 */
   .modal-container:has(.wp-publish-modal-v2) .modal-content {
+    flex: 1 !important;
+    min-height: 0 !important;
+    height: 0 !important;           /* 配合 flex:1 撑满 */
     overflow-y: auto !important;
     overflow-x: hidden !important;
-    height: auto !important;
-    max-height: none !important;
-    flex: none !important;
+    display: flex !important;
+    flex-direction: column !important;
   }
 
-  /* 3. 根容器高度自适应 */
+  /* 3. 根容器：撑满 modal-content，flex 列布局 */
   .wp-publish-modal-v2 {
+    flex: 1 !important;
+    min-height: 0 !important;
     overflow: visible !important;
     height: auto !important;
-    flex: none !important;
+    display: flex !important;
+    flex-direction: column !important;
   }
 
-  /* 4. 双栏 → 单列 */
+  /* 4. 双栏 → 单列，内容自然撑高 */
   .wp-v3-layout {
     flex-direction: column !important;
     overflow: visible !important;
     min-height: unset !important;
-    flex: none !important;
+    flex: 1 !important;
     height: auto !important;
   }
 
@@ -1253,6 +1259,15 @@
     overflow: visible !important;
     flex: none !important;
     height: auto !important;
+  }
+
+  /* 7. footer：sticky 粘在 modal-content 滚动容器底部 */
+  .wp-v3-footer {
+    position: sticky !important;
+    bottom: 0 !important;
+    z-index: 10 !important;
+    background: var(--background-primary) !important;
+    box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.12) !important;
   }
 }
 
