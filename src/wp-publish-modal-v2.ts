@@ -848,8 +848,9 @@ export class WpPublishModalV2 extends AbstractModal {
     const header = section.createDiv('wp-v3-section-header');
     header.createSpan({ text: title, cls: 'wp-v3-section-title' });
 
+    // 始终创建 actions 容器，以便后续 updateHeaderActions 动态写入按钮
+    const actionsEl = header.createDiv('wp-v3-section-actions');
     if (actions && actions.length > 0) {
-      const actionsEl = header.createDiv('wp-v3-section-actions');
       actions.forEach(action => {
         const btn = actionsEl.createEl('button', {
           text: action.emoji,
@@ -1351,12 +1352,28 @@ export class WpPublishModalV2 extends AbstractModal {
       this.t('publishModal_previewContent') || 'Content Preview',
       []
     );
+    section.dataset.contentSection = 'true';
     const body = section.createDiv('wp-v3-section-body');
 
     // ── 渲染文章内容主区域 ──
     const renderHtmlPreview = () => {
       body.empty();
       section.removeClass('is-editing');
+
+      // 更新 Content section header：显示 ✏️ 编辑按钮（带 data-content-edit-trigger，供底部 footer 按钮触发）
+      const actionsEl = section.querySelector('.wp-v3-section-actions') as HTMLElement | null;
+      if (actionsEl) {
+        actionsEl.empty();
+        const editBtn = actionsEl.createEl('button', {
+          text: '✏️',
+          cls: 'wp-v3-icon-btn',
+          attr: {
+            title: this.t('publishModal_editButton') || 'Edit',
+            'data-content-edit-trigger': 'true'
+          }
+        });
+        editBtn.onclick = () => enterContentEdit();
+      }
 
       // 摘要行（上方）
       renderExcerptRow(body, params);
@@ -1933,8 +1950,8 @@ export class WpPublishModalV2 extends AbstractModal {
       cls: 'wp-v3-edit-footer-btn'
     });
     editBtn.onclick = () => {
-      // 找到文章内容区的编辑按钮并触发
-      const contentEditBtn = container.querySelector('.wp-v3-section-actions .wp-v3-icon-btn') as HTMLButtonElement | null;
+      // 精确定位 Content section 的 ✏️ 触发按钮
+      const contentEditBtn = container.querySelector('[data-content-edit-trigger="true"]') as HTMLButtonElement | null;
       if (contentEditBtn) contentEditBtn.click();
     };
 

@@ -107801,8 +107801,8 @@ var init_wp_publish_modal_v2 = __esm({
         const section = container.createDiv("wp-v3-section");
         const header = section.createDiv("wp-v3-section-header");
         header.createSpan({ text: title, cls: "wp-v3-section-title" });
+        const actionsEl = header.createDiv("wp-v3-section-actions");
         if (actions && actions.length > 0) {
-          const actionsEl = header.createDiv("wp-v3-section-actions");
           actions.forEach((action) => {
             const btn = actionsEl.createEl("button", {
               text: action.emoji,
@@ -108256,10 +108256,24 @@ var init_wp_publish_modal_v2 = __esm({
           this.t("publishModal_previewContent") || "Content Preview",
           []
         );
+        section.dataset.contentSection = "true";
         const body = section.createDiv("wp-v3-section-body");
         const renderHtmlPreview = () => {
           body.empty();
           section.removeClass("is-editing");
+          const actionsEl = section.querySelector(".wp-v3-section-actions");
+          if (actionsEl) {
+            actionsEl.empty();
+            const editBtn = actionsEl.createEl("button", {
+              text: "\u270F\uFE0F",
+              cls: "wp-v3-icon-btn",
+              attr: {
+                title: this.t("publishModal_editButton") || "Edit",
+                "data-content-edit-trigger": "true"
+              }
+            });
+            editBtn.onclick = () => enterContentEdit();
+          }
           renderExcerptRow(body, params);
           renderTagsRow(body, params);
           const previewDiv = body.createDiv("wp-v3-content-preview");
@@ -108769,7 +108783,7 @@ var init_wp_publish_modal_v2 = __esm({
           cls: "wp-v3-edit-footer-btn"
         });
         editBtn.onclick = () => {
-          const contentEditBtn = container.querySelector(".wp-v3-section-actions .wp-v3-icon-btn");
+          const contentEditBtn = container.querySelector('[data-content-edit-trigger="true"]');
           if (contentEditBtn) contentEditBtn.click();
         };
         const cancelBtn = footer.createEl("button", {
