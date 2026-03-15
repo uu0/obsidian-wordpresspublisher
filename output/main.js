@@ -107833,40 +107833,43 @@ var init_wp_publish_modal_v2 = __esm({
           []
         );
         const body = section.createDiv("wp-v3-section-body");
-        let isSetupMode = !hasImage;
-        const updateHeaderActions = (fileName, showEdit = true) => {
+        const updateHeaderActions = (opts = {}) => {
+          var _a5;
           const actionsEl = section.querySelector(".wp-v3-section-actions");
           if (!actionsEl) return;
           actionsEl.empty();
-          if (fileName) {
-            const nameEl = actionsEl.createSpan({ cls: "wp-v3-img-filename" });
-            nameEl.textContent = this.truncateMiddle(fileName);
-            nameEl.title = fileName;
+          if (opts.sourceLabel) {
+            const tag = actionsEl.createSpan({ cls: `wp-v3-featured-source-tag ${(_a5 = opts.sourceCls) != null ? _a5 : ""}` });
+            tag.textContent = opts.sourceLabel;
           }
-          if (showEdit) {
-            const editBtn = actionsEl.createEl("button", {
-              text: "\u270F\uFE0F",
-              cls: "wp-v3-icon-btn",
-              attr: { title: this.t("publishModal_editButton") || "Edit" }
+          if (opts.fileName) {
+            const nameEl = actionsEl.createSpan({ cls: "wp-v3-img-filename" });
+            nameEl.textContent = this.truncateMiddle(opts.fileName);
+            nameEl.title = opts.fileName;
+          }
+          if (opts.showDelete) {
+            const delBtn = actionsEl.createEl("button", {
+              text: "\u274C",
+              cls: "wp-v3-icon-btn wp-v3-icon-btn-delete",
+              attr: { title: this.t("publishModal_removeImage") || "Remove image" }
             });
-            editBtn.onclick = () => toggleEdit();
+            delBtn.onclick = () => {
+              this.featuredImage = null;
+              this.autoFeaturedImage = null;
+              this.matterData.featurePicture = "";
+              renderSetup();
+            };
           }
         };
         const renderPreview = () => {
           body.empty();
           const wrap2 = body.createDiv("wp-v3-featured-image-wrap");
           if (this.isLoadingRemoteImage) {
-            const loading = wrap2.createDiv();
-            loading.style.textAlign = "center";
-            loading.style.padding = "20px";
-            loading.style.color = "var(--text-muted)";
+            const loading = wrap2.createDiv("wp-v3-featured-status-wrap");
             loading.createEl("p", { text: this.t("publishModal_loadingRemoteImage") || "\u6B63\u5728\u52A0\u8F7D\u8FDC\u7A0B\u56FE\u7247..." });
-            updateHeaderActions(void 0, false);
+            updateHeaderActions();
           } else if (this.remoteImageLoadFailed) {
-            const errDiv = wrap2.createDiv();
-            errDiv.style.textAlign = "center";
-            errDiv.style.padding = "12px";
-            errDiv.style.color = "var(--text-error, #e53e3e)";
+            const errDiv = wrap2.createDiv("wp-v3-featured-status-wrap wp-v3-featured-status-error");
             errDiv.createEl("p", { text: "\u274C " + (this.remoteImageError || "") });
             const btnRow = errDiv.createDiv("wp-v3-featured-btn-row");
             const retryBtn = btnRow.createEl("button", {
@@ -107890,20 +107893,31 @@ var init_wp_publish_modal_v2 = __esm({
               this.remoteImagePostId = null;
               this.display(params);
             };
-            updateHeaderActions(void 0, false);
+            updateHeaderActions();
           } else if (imageToDisplay) {
+            const imgContainer = wrap2.createDiv("wp-v3-featured-img-container");
             const blob = new Blob([imageToDisplay.content], { type: imageToDisplay.mimeType });
             const url = URL.createObjectURL(blob);
-            const imgContainer = wrap2.createDiv("wp-v3-featured-img-container");
             imgContainer.createEl("img", { cls: "wp-v3-featured-img", attr: { src: url, alt: "Featured Image" } });
-            updateHeaderActions(`${imageToDisplay.fileName} (${this.formatFileSize(imageToDisplay.content.byteLength)})`, true);
+            updateHeaderActions({
+              sourceLabel: "\u{1F4BE} Local",
+              sourceCls: "wp-v3-source-local",
+              fileName: `${imageToDisplay.fileName} (${this.formatFileSize(imageToDisplay.content.byteLength)})`,
+              showDelete: true
+            });
           } else if (this.matterData.featurePicture) {
             const imgContainer = wrap2.createDiv("wp-v3-featured-img-container");
             imgContainer.createEl("img", {
               cls: "wp-v3-featured-img",
               attr: { src: this.matterData.featurePicture, alt: "Featured Image" }
             });
-            updateHeaderActions(this.t("publishModal_previewFeaturedImageUploaded") || "Uploaded", true);
+            const urlStr = String(this.matterData.featurePicture);
+            updateHeaderActions({
+              sourceLabel: "\u2601\uFE0F WordPress",
+              sourceCls: "wp-v3-source-uploaded",
+              fileName: urlStr,
+              showDelete: true
+            });
           } else {
             renderSetup();
             return;
@@ -107912,55 +107926,8 @@ var init_wp_publish_modal_v2 = __esm({
         const renderSetup = () => {
           var _a5;
           body.empty();
-          isSetupMode = true;
           const setup = body.createDiv("wp-v3-featured-setup");
-          const currentImage = this.featuredImage || this.autoFeaturedImage;
-          const hasCurrentImage = !!currentImage || !!this.matterData.featurePicture;
-          if (hasCurrentImage) {
-            const currentWrap = setup.createDiv("wp-v3-featured-current-wrap");
-            const thumbContainer = currentWrap.createDiv("wp-v3-featured-thumb-container");
-            if (currentImage) {
-              const blob = new Blob([currentImage.content], { type: currentImage.mimeType });
-              const url = URL.createObjectURL(blob);
-              thumbContainer.createEl("img", { cls: "wp-v3-featured-thumb", attr: { src: url, alt: "Current Image" } });
-            } else if (this.matterData.featurePicture) {
-              thumbContainer.createEl("img", {
-                cls: "wp-v3-featured-thumb",
-                attr: { src: this.matterData.featurePicture, alt: "Current Image" }
-              });
-            }
-            const infoRow = currentWrap.createDiv("wp-v3-featured-current-info");
-            if (currentImage) {
-              const sourceTag = infoRow.createSpan({ cls: "wp-v3-featured-source-tag wp-v3-source-local" });
-              sourceTag.textContent = "\u{1F4BE} Local";
-              const nameSpan = infoRow.createSpan({ cls: "wp-v3-featured-current-name" });
-              nameSpan.textContent = this.truncateMiddle(currentImage.fileName);
-              nameSpan.title = currentImage.fileName;
-              const sizeSpan = infoRow.createSpan({ cls: "wp-v3-featured-current-size" });
-              sizeSpan.textContent = this.formatFileSize(currentImage.content.byteLength);
-            } else if (this.matterData.featurePicture) {
-              const sourceTag = infoRow.createSpan({ cls: "wp-v3-featured-source-tag wp-v3-source-uploaded" });
-              sourceTag.textContent = "\u2601\uFE0F WordPress";
-              const urlSpan = infoRow.createSpan({ cls: "wp-v3-featured-current-name" });
-              const urlStr = String(this.matterData.featurePicture);
-              urlSpan.textContent = this.truncateMiddle(urlStr, 12, 10);
-              urlSpan.title = urlStr;
-            }
-            const removeBtn = currentWrap.createEl("button", {
-              text: "\u{1F5D1}\uFE0F " + (this.t("publishModal_removeImage") || "Remove"),
-              cls: "wp-v3-feature-btn wp-v3-feature-btn-danger"
-            });
-            removeBtn.onclick = () => {
-              this.featuredImage = null;
-              this.autoFeaturedImage = null;
-              this.matterData.featurePicture = "";
-              renderSetup();
-              updateHeaderActions(void 0, false);
-            };
-            setup.createDiv({ cls: "wp-v3-featured-divider" });
-          } else {
-            setup.createDiv({ cls: "wp-v3-featured-empty", text: this.t("publishModal_noImageSelected") || "\u6682\u65E0\u7279\u8272\u56FE\u7247" });
-          }
+          setup.createDiv({ cls: "wp-v3-featured-empty", text: this.t("publishModal_noImageSelected") || "\u6682\u65E0\u7279\u8272\u56FE\u7247" });
           const btnRow = setup.createDiv("wp-v3-featured-btn-row");
           const localBtn = btnRow.createEl("button", {
             text: "\u{1F4BE} " + this.t("publishModal_selectFromLocal"),
@@ -107992,25 +107959,12 @@ var init_wp_publish_modal_v2 = __esm({
             });
             aiBtn.onclick = () => new import_obsidian9.Notice(this.t("notice_imageAIApiKeyRequired"));
           }
-          if (hasCurrentImage) {
-            const label = currentImage ? `${this.truncateMiddle(currentImage.fileName)} (${this.formatFileSize(currentImage.content.byteLength)})` : this.t("publishModal_previewFeaturedImageUploaded") || "Uploaded";
-            updateHeaderActions(label, true);
-          } else {
-            updateHeaderActions(void 0, false);
-          }
+          updateHeaderActions();
         };
-        const toggleEdit = () => {
-          isSetupMode = !isSetupMode;
-          if (isSetupMode) {
-            renderSetup();
-          } else {
-            renderPreview();
-          }
-        };
-        if (isSetupMode) {
-          renderSetup();
-        } else {
+        if (hasImage) {
           renderPreview();
+        } else {
+          renderSetup();
         }
         const SUPPORTED_MIME = ["image/jpeg", "image/png", "image/gif", "image/webp", "image/svg+xml"];
         const SUPPORTED_EXT = ["jpg", "jpeg", "png", "gif", "webp", "svg"];

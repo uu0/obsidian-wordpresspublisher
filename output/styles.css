@@ -438,49 +438,10 @@
   cursor: default;
 }
 
-/* ==================== V3.1 特色图片：选图界面当前图片预览 ==================== */
 
-/* 当前图片预览区（缩略图 + 信息）*/
-.wp-v3-featured-current-wrap {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  background: var(--background-secondary);
-  border-radius: 6px;
-  margin-bottom: 4px;
-}
+/* ==================== V3.1 特色图片：header 来源标签 ==================== */
 
-/* 缩略图容器 */
-.wp-v3-featured-thumb-container {
-  flex-shrink: 0;
-  width: 64px;
-  height: 40px;
-  border-radius: 4px;
-  overflow: hidden;
-  background: var(--background-modifier-border);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.wp-v3-featured-thumb {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-/* 信息行：来源标签 + 文件名 + 大小 */
-.wp-v3-featured-current-info {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 5px;
-}
-
-/* 来源标签（Local / WordPress）*/
+/* 来源标签（用于 header actions 区，Local / WordPress）*/
 .wp-v3-featured-source-tag {
   display: inline-flex;
   align-items: center;
@@ -490,6 +451,7 @@
   font-weight: 600;
   white-space: nowrap;
   flex-shrink: 0;
+  line-height: 18px;
 }
 
 .wp-v3-source-local {
@@ -504,41 +466,27 @@
   border: 1px solid rgba(99, 179, 237, 0.3);
 }
 
-/* 文件名 */
-.wp-v3-featured-current-name {
-  font-size: 11px;
-  color: var(--text-normal);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 160px;
-  cursor: default;
-}
-
-/* 文件大小 */
-.wp-v3-featured-current-size {
-  font-size: 10px;
-  color: var(--text-faint);
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-/* 分隔线 */
-.wp-v3-featured-divider {
-  height: 1px;
-  background: var(--background-modifier-border);
-  margin: 8px 0 6px;
-}
-
-/* 危险按钮（移除图片）*/
-.wp-v3-feature-btn-danger {
+/* ❌ 删除按钮（header 右侧）*/
+.wp-v3-icon-btn-delete {
   color: var(--text-error, #e53e3e) !important;
-  border-color: var(--text-error, #e53e3e) !important;
-  opacity: 0.85;
+  opacity: 0.75;
+  font-size: 12px;
 }
-.wp-v3-feature-btn-danger:hover {
-  background: rgba(229, 62, 62, 0.1) !important;
+.wp-v3-icon-btn-delete:hover {
   opacity: 1;
+  background: rgba(229, 62, 62, 0.12) !important;
+  border-radius: 4px;
+}
+
+/* 加载 / 错误状态包裹层 */
+.wp-v3-featured-status-wrap {
+  text-align: center;
+  padding: 20px;
+  color: var(--text-muted);
+}
+.wp-v3-featured-status-error {
+  color: var(--text-error, #e53e3e);
+  padding: 12px;
 }
 
 /* ==================== V3.1 内嵌摘要行 ==================== */
