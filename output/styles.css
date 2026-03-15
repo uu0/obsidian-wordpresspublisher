@@ -1,3 +1,59 @@
+/* ==================== WordPress Publisher Theme Variables ==================== */
+:root {
+  /* Tag colors for light theme */
+  --wp-tag-color-1: #5B8FF9;
+  --wp-tag-color-2: #5AD8A6;
+  --wp-tag-color-3: #F6BD16;
+  --wp-tag-color-4: #E86452;
+  --wp-tag-color-5: #6DC8EC;
+  --wp-tag-color-6: #945FB9;
+  --wp-tag-color-7: #FF9845;
+  --wp-tag-color-8: #1E9493;
+  --wp-tag-color-9: #FF99C3;
+
+  /* Shadow and overlay effects */
+  --wp-shadow-hover: 0 2px 8px rgba(0, 0, 0, 0.15);
+  --wp-modal-overlay: rgba(0, 0, 0, 0.5);
+  --wp-sticky-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+
+  /* Panel layout */
+  --wp-panel-width: 320px;
+  --wp-panel-collapsed-height: 48px;
+
+  /* Button colors */
+  --wp-btn-ai-bg: transparent;
+  --wp-btn-ai-border: var(--text-accent, #7c3aed);
+  --wp-btn-ai-text: var(--text-accent, #7c3aed);
+
+  --wp-btn-cancel-bg: var(--background-modifier-border, #e0e0e0);
+  --wp-btn-cancel-text: var(--text-normal, #333);
+
+  --wp-btn-save-bg: var(--interactive-accent, #0073aa);
+  --wp-btn-save-text: var(--text-on-accent, #fff);
+
+  /* Edit icon */
+  --wp-edit-icon-color: var(--text-muted);
+  --wp-edit-icon-hover: var(--interactive-accent);
+}
+
+.theme-dark {
+  /* Tag colors for dark theme - brighter variants */
+  --wp-tag-color-1: #7BA3FF;
+  --wp-tag-color-2: #6FE8B8;
+  --wp-tag-color-3: #FFD13D;
+  --wp-tag-color-4: #FF7A6B;
+  --wp-tag-color-5: #85D9F7;
+  --wp-tag-color-6: #A87FD1;
+  --wp-tag-color-7: #FFB066;
+  --wp-tag-color-8: #3EAFAE;
+  --wp-tag-color-9: #FFB3D9;
+
+  /* Shadow and overlay effects for dark theme */
+  --wp-shadow-hover: 0 2px 8px rgba(255, 255, 255, 0.1);
+  --wp-modal-overlay: rgba(0, 0, 0, 0.7);
+  --wp-sticky-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
 .modal-header {
   display: flex;
   justify-content: space-between;
@@ -37,6 +93,57 @@
   .wp-publish-container {
     flex-direction: column;
     gap: 12px;
+  }
+}
+
+/* ==================== 新布局：两列布局 ==================== */
+.wp-layout-container {
+  display: flex;
+  gap: 20px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.wp-layout-preview {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+}
+
+.wp-layout-panels {
+  width: var(--wp-panel-width);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.wp-panel {
+  background: var(--background-secondary);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.wp-panel-header {
+  padding: 12px 16px;
+  font-weight: 600;
+  background: var(--background-modifier-border);
+  cursor: pointer;
+  user-select: none;
+}
+
+.wp-panel-content {
+  padding: 16px;
+}
+
+/* 响应式：移动端单列布局 */
+@media (max-width: 768px) {
+  .wp-layout-container {
+    flex-direction: column;
+  }
+
+  .wp-layout-panels {
+    width: 100%;
   }
 }
 
@@ -1704,4 +1811,270 @@
 @keyframes shimmer {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
+}
+
+/* ==================== 四段式预览区样式 ==================== */
+
+.wp-preview-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.wp-preview-section {
+  background: var(--background-secondary);
+  border-radius: 8px;
+  padding: 16px;
+  border: 1px solid var(--background-modifier-border);
+  transition: box-shadow 0.2s ease;
+}
+
+.wp-preview-section:hover {
+  box-shadow: var(--wp-shadow-hover);
+}
+
+.wp-preview-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.wp-preview-section-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-normal);
+}
+
+.wp-preview-edit-btn {
+  background: transparent;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--wp-edit-icon-color);
+  transition: all 0.2s ease;
+}
+
+.wp-preview-edit-btn:hover {
+  color: var(--wp-edit-icon-hover);
+  border-color: var(--wp-edit-icon-hover);
+  background: var(--background-modifier-hover);
+}
+
+.wp-preview-section-content {
+  color: var(--text-normal);
+}
+
+/* 特色图片预览 */
+.wp-preview-image-container {
+  text-align: center;
+  margin-bottom: 8px;
+}
+
+.wp-preview-image {
+  max-width: 100%;
+  max-height: 300px;
+  border-radius: 6px;
+  border: 1px solid var(--background-modifier-border);
+  object-fit: contain;
+}
+
+.wp-preview-image-info {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 8px;
+}
+
+/* 摘要预览 */
+.wp-preview-excerpt-text {
+  line-height: 1.6;
+  color: var(--text-normal);
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+/* 标签预览 */
+.wp-preview-tags-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.wp-preview-tag {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  color: var(--text-normal);
+}
+
+/* 标签编辑模式 */
+.wp-preview-tags-edit {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.wp-preview-tag-editable {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  color: var(--text-normal);
+}
+
+.wp-preview-tag-remove {
+  background: transparent;
+  border: none;
+  color: var(--text-error);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0;
+  line-height: 1;
+  transition: opacity 0.2s ease;
+}
+
+.wp-preview-tag-remove:hover {
+  opacity: 0.7;
+}
+
+.wp-preview-tag-input-container {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.wp-preview-tag-input {
+  flex: 1;
+  padding: 6px 12px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-size: 13px;
+}
+
+.wp-preview-tag-add-btn {
+  padding: 6px 16px;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: opacity 0.2s ease;
+}
+
+.wp-preview-tag-add-btn:hover {
+  opacity: 0.9;
+}
+
+/* 文章内容预览 */
+.wp-preview-content-text {
+  line-height: 1.8;
+  color: var(--text-normal);
+  max-height: 400px;
+  overflow-y: auto;
+  padding: 12px;
+  background: var(--background-primary);
+  border-radius: 6px;
+  border: 1px solid var(--background-modifier-border);
+  font-family: var(--font-text);
+  font-size: 14px;
+}
+
+.wp-preview-content-text h1,
+.wp-preview-content-text h2,
+.wp-preview-content-text h3,
+.wp-preview-content-text h4,
+.wp-preview-content-text h5,
+.wp-preview-content-text h6 {
+  margin-top: 1em;
+  margin-bottom: 0.5em;
+  font-weight: 600;
+}
+
+.wp-preview-content-text p {
+  margin-bottom: 1em;
+}
+
+.wp-preview-content-text code {
+  background: var(--background-modifier-border);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: var(--font-monospace);
+  font-size: 0.9em;
+}
+
+.wp-preview-content-text pre {
+  background: var(--background-modifier-border);
+  padding: 12px;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin-bottom: 1em;
+}
+
+.wp-preview-content-text pre code {
+  background: transparent;
+  padding: 0;
+}
+
+/* 空状态 */
+.wp-preview-empty {
+  text-align: center;
+  padding: 24px;
+  color: var(--text-muted);
+}
+
+.wp-preview-empty-text {
+  font-style: italic;
+}
+
+/* 文本域通用样式 */
+.wp-preview-textarea {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-family: var(--font-text);
+  font-size: 14px;
+  line-height: 1.6;
+  resize: vertical;
+  transition: border-color 0.2s ease;
+}
+
+.wp-preview-textarea:focus {
+  outline: none;
+  border-color: var(--interactive-accent);
+}
+
+/* 高亮动画（用于滚动定位） */
+.wp-highlight-section {
+  animation: highlight-pulse 2s ease;
+}
+
+@keyframes highlight-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+  50% {
+    box-shadow: 0 0 0 4px var(--interactive-accent-hover);
+  }
 }

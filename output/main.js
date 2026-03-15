@@ -107181,6 +107181,13 @@ function detectLanguage(text4) {
   return "other";
 }
 function getLocalizedPrompt(plugin4, language, type) {
+  if (type === "summary" && plugin4.settings.summaryPrompt) {
+    return plugin4.settings.summaryPrompt;
+  } else if (type === "tags" && plugin4.settings.tagsPrompt) {
+    return plugin4.settings.tagsPrompt;
+  } else if (type === "image" && plugin4.settings.imageGenerationPrompt) {
+    return plugin4.settings.imageGenerationPrompt;
+  }
   if (language === "en" || language === "other") {
     if (type === "summary") {
       return plugin4.t("defaultPrompt_summaryEn");
@@ -107219,24 +107226,15 @@ var init_wp_publish_modal_v2 = __esm({
     init_api_capability();
     log4 = createModuleLogger("WpPublishModalV2");
     TAG_COLORS = [
-      "#5B8FF9",
-      // 蓝色
-      "#5AD8A6",
-      // 绿色
-      "#F6BD16",
-      // 黄色
-      "#E86452",
-      // 红色
-      "#6DC8EC",
-      // 青色
-      "#945FB9",
-      // 紫色
-      "#FF9845",
-      // 橙色
-      "#1E9493",
-      // 深青
-      "#FF99C3"
-      // 粉色
+      "var(--wp-tag-color-1)",
+      "var(--wp-tag-color-2)",
+      "var(--wp-tag-color-3)",
+      "var(--wp-tag-color-4)",
+      "var(--wp-tag-color-5)",
+      "var(--wp-tag-color-6)",
+      "var(--wp-tag-color-7)",
+      "var(--wp-tag-color-8)",
+      "var(--wp-tag-color-9)"
     ];
     WpPublishModalV2 = class extends AbstractModal {
       constructor(plugin4, categories, postTypes, onSubmit, matterData, articleContent = "", noteTitle = "", notePath = "") {
@@ -107255,6 +107253,8 @@ var init_wp_publish_modal_v2 = __esm({
         this.slugInput = null;
         this.titleInput = null;
         this.currentTab = "settings";
+        this.currentAITab = "featured-image";
+        // AI 标签页状态
         this.editableContent = "";
         this.isEditingPreview = false;
         this.autoFeaturedImage = null;
@@ -107611,6 +107611,31 @@ var init_wp_publish_modal_v2 = __esm({
         };
         return mimeTypes[extension.toLowerCase()] || "image/jpeg";
       }
+      /**
+       * 将 ArrayBuffer 转换为 Base64 字符串
+       */
+      arrayBufferToBase64(buffer) {
+        const bytes = new Uint8Array(buffer);
+        let binary = "";
+        for (let i = 0; i < bytes.byteLength; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        return btoa(binary);
+      }
+      /**
+       * 格式化文件大小
+       */
+      formatFileSize(bytes) {
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+        return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+      }
+      /**
+       * 加载远程特色图片（别名方法）
+       */
+      async loadRemoteFeaturedImage(postId, params) {
+        await this.loadFeaturePictureFromRemote(postId);
+      }
       onOpen() {
         log4.info("onOpen called");
         const params = {
@@ -107693,22 +107718,16 @@ var init_wp_publish_modal_v2 = __esm({
         contentEl.addClass("wp-publish-modal-v2");
         this.createHeader(this.t("publishModal_title"));
         this.updateModalWidth();
-        this.renderTabBar(contentEl, params);
         const profile = this.plugin.settings.profiles.find((p) => p.name === params.profileName);
         if (profile && profile.apiType === "xml-rpc") {
           this.renderApiWarning(contentEl, profile.apiType);
         }
-        const mainContainer = contentEl.createDiv("wp-publish-container");
-        if (this.currentTab === "settings") {
-          this.renderSettingsTab(mainContainer, params);
-        } else if (this.currentTab === "preview") {
-          this.renderPreviewTab(mainContainer, params);
-        } else if (this.currentTab === "advanced") {
-          this.renderAdvancedTab(mainContainer, params);
-        }
-        if (this.currentTab !== "advanced") {
-          this.renderBottomBar(contentEl, params);
-        }
+        const layoutContainer = contentEl.createDiv("wp-layout-container");
+        const previewArea = layoutContainer.createDiv("wp-layout-preview");
+        this.renderPreviewArea(previewArea, params);
+        const panelsArea = layoutContainer.createDiv("wp-layout-panels");
+        this.renderPanelsArea(panelsArea, params);
+        this.renderBottomBar(contentEl, params);
       }
       updateModalWidth() {
         const modalEl = this.modalEl;
@@ -107719,12 +107738,39 @@ var init_wp_publish_modal_v2 = __esm({
           modalEl.style.boxSizing = "border-box";
         }
       }
+      /**
+       * 设置滚动监听，为 sticky 元素添加阴影效果
+       */
+      setupStickyScrollListener(container) {
+        const tabBar = container.querySelector(".wp-publish-tabs");
+        const bottomBar = container.querySelector(".wp-publish-bottom-bar");
+        if (!tabBar || !bottomBar) {
+          return;
+        }
+        const handleScroll = () => {
+          const scrollTop = container.scrollTop;
+          const scrollHeight = container.scrollHeight;
+          const clientHeight = container.clientHeight;
+          const scrollBottom = scrollHeight - scrollTop - clientHeight;
+          if (scrollTop > 10) {
+            tabBar.addClass("scrolled");
+          } else {
+            tabBar.removeClass("scrolled");
+          }
+          if (scrollBottom > 10) {
+            bottomBar.addClass("scrolled");
+          } else {
+            bottomBar.removeClass("scrolled");
+          }
+        };
+        container.addEventListener("scroll", handleScroll);
+        handleScroll();
+      }
       renderTabBar(container, params) {
         const tabContainer = container.createDiv("wp-publish-tabs");
         const tabs = [
           { id: "settings", label: this.plugin.t("publishModal_settingsTab") },
-          { id: "preview", label: this.plugin.t("publishModal_previewTab") },
-          { id: "advanced", label: this.plugin.t("publishModal_advancedTab") }
+          { id: "preview", label: this.plugin.t("publishModal_previewTab") }
         ];
         tabs.forEach((tab) => {
           const tabEl = tabContainer.createDiv({
@@ -107737,146 +107783,235 @@ var init_wp_publish_modal_v2 = __esm({
           };
         });
       }
-      // ==================== 设置标签 ====================
-      renderSettingsTab(container, params) {
-        const topSection = container.createDiv("wp-settings-top");
-        this.renderFeaturedImageSettings(topSection, params);
-        const bottomSection = container.createDiv("wp-settings-bottom");
-        this.renderBasicSettings(bottomSection, params);
+      // ==================== 新布局：预览区 ====================
+      renderPreviewArea(container, params) {
+        const previewContainer = container.createDiv("wp-preview-container");
+        this.renderFeaturedImageSection(previewContainer, params);
+        this.renderExcerptSection(previewContainer, params);
+        this.renderTagsSection(previewContainer, params);
+        this.renderContentSection(previewContainer, params);
       }
-      renderFeaturedImageSettings(container, params) {
-        var _a5;
-        const card = container.createDiv("wp-settings-card");
-        card.createEl("h3", { text: this.t("publishModal_featuredImage"), cls: "wp-settings-section-title" });
-        const previewContainer = card.createDiv("featured-image-preview-large");
-        if (this.isLoadingRemoteImage) {
-          const loadingDiv = previewContainer.createDiv("featured-image-loading");
-          loadingDiv.style.display = "flex";
-          loadingDiv.style.flexDirection = "column";
-          loadingDiv.style.alignItems = "center";
-          loadingDiv.style.justifyContent = "center";
-          loadingDiv.style.padding = "40px 20px";
-          loadingDiv.style.color = "var(--text-muted)";
-          const spinner = loadingDiv.createDiv("featured-image-spinner");
-          spinner.style.width = "32px";
-          spinner.style.height = "32px";
-          spinner.style.border = "3px solid var(--background-modifier-border)";
-          spinner.style.borderTop = "3px solid var(--interactive-accent)";
-          spinner.style.borderRadius = "50%";
-          spinner.style.animation = "spin 1s linear infinite";
-          spinner.style.marginBottom = "12px";
-          loadingDiv.createEl("p", {
-            text: this.t("publishModal_loadingRemoteImage") || "\u6B63\u5728\u52A0\u8F7D\u8FDC\u7A0B\u56FE\u7247...",
-            cls: "featured-image-loading-text"
-          });
-          if (!document.getElementById("featured-image-spinner-style")) {
-            const style = document.createElement("style");
-            style.id = "featured-image-spinner-style";
-            style.textContent = `
-          @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-          }
-        `;
-            document.head.appendChild(style);
-          }
-        } else if (this.remoteImageLoadFailed) {
-          const errorDiv = previewContainer.createDiv("featured-image-error");
-          errorDiv.style.display = "flex";
-          errorDiv.style.flexDirection = "column";
-          errorDiv.style.alignItems = "center";
-          errorDiv.style.justifyContent = "center";
-          errorDiv.style.padding = "40px 20px";
-          errorDiv.style.color = "var(--text-error)";
-          errorDiv.createEl("p", {
-            text: "\u26A0\uFE0F " + (this.remoteImageError || this.t("publishModal_remoteImageLoadFailed") || "\u8FDC\u7A0B\u56FE\u7247\u52A0\u8F7D\u5931\u8D25"),
-            cls: "featured-image-error-text"
-          });
-          const btnContainer = errorDiv.createDiv("featured-image-error-buttons");
-          btnContainer.style.display = "flex";
-          btnContainer.style.gap = "8px";
-          btnContainer.style.marginTop = "12px";
-          const retryBtn = btnContainer.createEl("button", {
-            text: this.t("publishModal_retry") || "\u91CD\u8BD5",
-            cls: "mod-cta"
-          });
-          retryBtn.onclick = async () => {
-            if (this.remoteImagePostId) {
-              await this.loadFeaturePictureFromRemote(this.remoteImagePostId);
-            }
-          };
-          const skipBtn = btnContainer.createEl("button", {
-            text: this.t("publishModal_skip") || "\u8DF3\u8FC7"
-          });
-          skipBtn.onclick = () => {
-            this.remoteImageLoadFailed = false;
-            this.autoFeaturedImage = null;
-            this.display(params);
-          };
-          const closeBtn = btnContainer.createEl("button", {
-            text: this.t("confirmModal_cancel") || "\u5173\u95ED"
-          });
-          closeBtn.onclick = () => {
-            this.close();
-          };
-        } else {
-          const imageToDisplay = this.featuredImage || this.autoFeaturedImage;
-          if (imageToDisplay) {
-            const blob = new Blob([imageToDisplay.content], { type: imageToDisplay.mimeType });
-            const url = URL.createObjectURL(blob);
-            const img = previewContainer.createEl("img", {
-              attr: { src: url },
-              cls: "featured-image-full"
-            });
-            img.style.maxWidth = "100%";
-            img.style.maxHeight = "160px";
-            img.style.objectFit = "cover";
-            img.style.borderRadius = "6px";
-            const info = previewContainer.createDiv("featured-image-info");
-            info.createSpan({ text: imageToDisplay.fileName });
-            if (this.featuredImage) {
-              const removeBtn = previewContainer.createEl("button", {
-                text: this.t("confirmModal_cancel"),
-                cls: "featured-image-remove-btn"
-              });
-              removeBtn.onclick = async () => {
-                await this.clearImageCache();
-                this.featuredImage = null;
-                this.display(params);
-              };
-            }
-          } else {
-            previewContainer.createEl("p", {
-              text: this.t("publishModal_noFeaturedImage"),
-              cls: "featured-image-placeholder-text"
-            });
-          }
-        }
-        const btnRow = card.createDiv("featured-image-btn-row");
-        const localBtn = btnRow.createEl("button", { text: this.t("publishModal_localImage"), cls: "feature-btn" });
-        localBtn.onclick = () => this.selectLocalImage(params);
-        const onlineBtn = btnRow.createEl("button", { text: this.t("publishModal_onlineImage"), cls: "feature-btn" });
-        onlineBtn.onclick = () => {
-          if (!this.plugin.settings.unsplashAccessKey) {
-            new import_obsidian9.Notice(this.t("publishModal_unsplashKeyRequired"));
-          } else {
-            this.selectUnsplashImage(params);
+      // ==================== 新布局：面板区 ====================
+      renderPanelsArea(container, params) {
+        const settingsPanel = container.createDiv("wp-panel wp-panel-settings");
+        this.renderSettingsPanel(settingsPanel, params);
+        const historyPanel = container.createDiv("wp-panel wp-panel-history");
+        this.renderHistoryPanel(historyPanel, params);
+      }
+      renderSettingsPanel(container, params) {
+        const aiSection = container.createDiv("wp-settings-ai");
+        this.renderAIAssistSection(aiSection, params);
+        const basicSection = container.createDiv("wp-settings-bottom");
+        this.renderBasicSettings(basicSection, params);
+      }
+      renderHistoryPanel(container, params) {
+        const header = container.createDiv("wp-panel-header");
+        header.createSpan({ text: "History" });
+        const content = container.createDiv("wp-panel-content");
+        content.createSpan({ text: "No history yet" });
+      }
+      // ==================== 四段式预览区 ====================
+      /**
+       * 1. 特色图片段落
+       */
+      renderFeaturedImageSection(container, params) {
+        const section = container.createDiv("wp-preview-section wp-preview-featured-image-section");
+        const header = section.createDiv("wp-preview-section-header");
+        header.createEl("h4", { text: this.t("publishModal_previewFeaturedImage"), cls: "wp-preview-section-title" });
+        const editBtn = header.createEl("button", {
+          text: "\u270F\uFE0F",
+          cls: "wp-preview-edit-btn",
+          attr: { "aria-label": "Edit featured image" }
+        });
+        editBtn.onclick = () => {
+          const imageSection = this.contentEl.querySelector(".wp-ai-featured-image");
+          if (imageSection) {
+            imageSection.scrollIntoView({ behavior: "smooth", block: "center" });
+            imageSection.classList.add("wp-highlight-section");
+            setTimeout(() => imageSection.classList.remove("wp-highlight-section"), 2e3);
           }
         };
-        const aiBtn = btnRow.createEl("button", { text: this.t("publishModal_aiGenerateBtn"), cls: "feature-btn" });
-        if (!this.plugin.settings.aiConfig) {
-          aiBtn.onclick = () => {
-            new import_obsidian9.Notice(this.t("publishModal_imageAIRequired"));
-          };
-        } else if (!((_a5 = this.aiService) == null ? void 0 : _a5.hasImageAIKey())) {
-          aiBtn.onclick = () => {
-            new import_obsidian9.Notice(this.t("notice_imageAIApiKeyRequired"));
-          };
+        const content = section.createDiv("wp-preview-section-content");
+        const imageToDisplay = this.featuredImage || this.autoFeaturedImage;
+        if (imageToDisplay) {
+          const imgContainer = content.createDiv("wp-preview-image-container");
+          const blob = new Blob([imageToDisplay.content], { type: imageToDisplay.mimeType });
+          const url = URL.createObjectURL(blob);
+          const img = imgContainer.createEl("img", { cls: "wp-preview-image" });
+          img.src = url;
+          img.alt = "Featured Image";
+          const info = content.createDiv("wp-preview-image-info");
+          info.createSpan({ text: `${imageToDisplay.fileName} (${this.formatFileSize(imageToDisplay.content.byteLength)})` });
+        } else if (this.matterData.featurePicture) {
+          const imgContainer = content.createDiv("wp-preview-image-container");
+          const img = imgContainer.createEl("img", { cls: "wp-preview-image" });
+          img.src = this.matterData.featurePicture;
+          img.alt = "Featured Image";
+          const info = content.createDiv("wp-preview-image-info");
+          info.createSpan({ text: this.t("publishModal_previewFeaturedImageUploaded") });
         } else {
-          aiBtn.onclick = () => this.generateAImage(params);
+          content.createDiv("wp-preview-empty").createSpan({
+            text: this.t("publishModal_noFeaturedImage") || "No featured image",
+            cls: "wp-preview-empty-text"
+          });
         }
-        const galleryBtn = btnRow.createEl("button", { text: this.t("publishModal_galleryImage"), cls: "feature-btn" });
-        galleryBtn.onclick = () => this.selectVaultImage(params);
+      }
+      /**
+       * 2. 摘要段落
+       */
+      renderExcerptSection(container, params) {
+        const section = container.createDiv("wp-preview-section wp-preview-excerpt-section");
+        const header = section.createDiv("wp-preview-section-header");
+        header.createEl("h4", { text: this.t("publishModal_excerptLabel") || "Excerpt", cls: "wp-preview-section-title" });
+        const editBtn = header.createEl("button", {
+          text: "\u270F\uFE0F",
+          cls: "wp-preview-edit-btn",
+          attr: { "aria-label": "Edit excerpt" }
+        });
+        const content = section.createDiv("wp-preview-section-content");
+        if (params.excerpt) {
+          const excerptText = content.createDiv("wp-preview-excerpt-text");
+          excerptText.textContent = params.excerpt;
+        } else {
+          content.createDiv("wp-preview-empty").createSpan({
+            text: this.t("publishModal_noExcerpt") || "No excerpt",
+            cls: "wp-preview-empty-text"
+          });
+        }
+        let isEditing = false;
+        editBtn.onclick = () => {
+          isEditing = !isEditing;
+          content.empty();
+          if (isEditing) {
+            editBtn.textContent = "\u2713";
+            const textarea = content.createEl("textarea", {
+              cls: "wp-preview-textarea",
+              attr: { placeholder: this.t("publishModal_excerptPlaceholder") || "Enter excerpt..." }
+            });
+            textarea.value = params.excerpt || "";
+            textarea.style.width = "100%";
+            textarea.style.minHeight = "100px";
+            textarea.focus();
+            textarea.addEventListener("input", () => {
+              params.excerpt = textarea.value;
+            });
+          } else {
+            editBtn.textContent = "\u270F\uFE0F";
+            if (params.excerpt) {
+              const excerptText = content.createDiv("wp-preview-excerpt-text");
+              excerptText.textContent = params.excerpt;
+            } else {
+              content.createDiv("wp-preview-empty").createSpan({
+                text: this.t("publishModal_noExcerpt") || "No excerpt",
+                cls: "wp-preview-empty-text"
+              });
+            }
+          }
+        };
+      }
+      /**
+       * 3. 标签段落
+       */
+      renderTagsSection(container, params) {
+        const section = container.createDiv("wp-preview-section wp-preview-tags-section");
+        const header = section.createDiv("wp-preview-section-header");
+        header.createEl("h4", { text: this.t("publishModal_tagsLabel") || "Tags", cls: "wp-preview-section-title" });
+        const editBtn = header.createEl("button", {
+          text: "\u270F\uFE0F",
+          cls: "wp-preview-edit-btn",
+          attr: { "aria-label": "Edit tags" }
+        });
+        const content = section.createDiv("wp-preview-section-content");
+        const renderTagsDisplay = () => {
+          content.empty();
+          if (this.editableTags && this.editableTags.length > 0) {
+            const tagsContainer = content.createDiv("wp-preview-tags-container");
+            this.editableTags.forEach((tag) => {
+              const tagEl = tagsContainer.createDiv("wp-preview-tag");
+              tagEl.textContent = tag;
+            });
+          } else {
+            content.createDiv("wp-preview-empty").createSpan({
+              text: this.t("publishModal_noTags") || "No tags",
+              cls: "wp-preview-empty-text"
+            });
+          }
+        };
+        renderTagsDisplay();
+        let isEditing = false;
+        editBtn.onclick = () => {
+          isEditing = !isEditing;
+          content.empty();
+          if (isEditing) {
+            editBtn.textContent = "\u2713";
+            const textarea = content.createEl("textarea", {
+              cls: "wp-preview-textarea",
+              attr: { placeholder: this.t("publishModal_tagsPlaceholder") || "Enter tags, separated by commas..." }
+            });
+            textarea.value = this.editableTags.join(", ");
+            textarea.style.width = "100%";
+            textarea.style.minHeight = "60px";
+            textarea.focus();
+            textarea.addEventListener("input", () => {
+              const tagsStr = textarea.value;
+              this.editableTags = tagsStr.split(",").map((t) => t.trim()).filter((t) => t.length > 0);
+              params.tags = [...this.editableTags];
+            });
+          } else {
+            editBtn.textContent = "\u270F\uFE0F";
+            renderTagsDisplay();
+          }
+        };
+      }
+      /**
+       * 4. 文章内容段落
+       */
+      renderContentSection(container, params) {
+        const section = container.createDiv("wp-preview-section wp-preview-content-section");
+        const header = section.createDiv("wp-preview-section-header");
+        header.createEl("h4", { text: this.t("publishModal_previewContent") || "Content", cls: "wp-preview-section-title" });
+        const editBtn = header.createEl("button", {
+          text: "\u270F\uFE0F",
+          cls: "wp-preview-edit-btn",
+          attr: { "aria-label": "Edit content" }
+        });
+        const content = section.createDiv("wp-preview-section-content");
+        const renderContentDisplay = () => {
+          content.empty();
+          const previewDiv = content.createDiv("wp-preview-html-content");
+          previewDiv.innerHTML = this.editableContent;
+        };
+        renderContentDisplay();
+        let isEditing = false;
+        editBtn.onclick = () => {
+          isEditing = !isEditing;
+          content.empty();
+          if (isEditing) {
+            editBtn.textContent = "\u2713";
+            const textarea = content.createEl("textarea", {
+              cls: "wp-preview-textarea",
+              attr: { placeholder: this.t("publishModal_previewEditPlaceholder") || "Edit HTML content..." }
+            });
+            textarea.value = this.editableContent;
+            textarea.style.width = "100%";
+            textarea.style.minHeight = "300px";
+            textarea.style.fontFamily = "var(--font-mono)";
+            textarea.focus();
+            textarea.addEventListener("input", () => {
+              this.editableContent = textarea.value;
+            });
+          } else {
+            editBtn.textContent = "\u270F\uFE0F";
+            renderContentDisplay();
+          }
+        };
+      }
+      // ==================== 设置标签 ====================
+      renderSettingsTab(container, params) {
+        const aiSection = container.createDiv("wp-settings-ai");
+        this.renderAIAssistSection(aiSection, params);
+        const bottomSection = container.createDiv("wp-settings-bottom");
+        this.renderBasicSettings(bottomSection, params);
       }
       selectLocalImage(params) {
         const fileInput = document.createElement("input");
@@ -107985,6 +108120,12 @@ var init_wp_publish_modal_v2 = __esm({
           new import_obsidian9.Notice(this.t("publishModal_aiImageGenerateFailed", { error: error2 instanceof Error ? error2.message : "Unknown error" }));
         }
       }
+      /**
+       * 别名方法：生成特色图片（用于新的 AI 标签页）
+       */
+      async generateFeaturedImage(params) {
+        return this.generateAImage(params);
+      }
       async getImagePromptContent(params) {
         var _a5;
         if (params.excerpt) {
@@ -108044,11 +108185,24 @@ var init_wp_publish_modal_v2 = __esm({
         );
         modal.open();
       }
+      /**
+       * 为 Setting 添加信息按钮
+       */
+      addInfoButton(setting, infoKey) {
+        setting.addExtraButton((btn) => {
+          btn.setIcon("info").setTooltip(this.t(infoKey)).onClick(() => {
+            new import_obsidian9.Notice(this.t(infoKey), 5e3);
+          });
+          btn.extraSettingsEl.addClass("wp-info-button");
+        });
+      }
       renderBasicSettings(container, params) {
         var _a5;
         const card = container.createDiv("wp-settings-card");
         card.createEl("h3", { text: this.plugin.t("publishModal_basicSettings"), cls: "wp-settings-section-title" });
-        new import_obsidian9.Setting(card).setName(this.t("publishModal_titleName")).setDesc(this.t("publishModal_titleDesc")).addText((text4) => {
+        const gridContainer = card.createDiv("wp-settings-grid");
+        const titleWrapper = gridContainer.createDiv("wp-grid-full");
+        const titleSetting = new import_obsidian9.Setting(titleWrapper).setName(this.t("publishModal_titleName")).addText((text4) => {
           this.titleInput = text4.inputEl;
           text4.setPlaceholder(this.t("publishModal_titlePlaceholder")).setValue(params.title || "").onChange((value) => {
             params.title = value;
@@ -108073,7 +108227,9 @@ var init_wp_publish_modal_v2 = __esm({
             autoUpdateSlug();
           });
         });
-        const slugSetting = new import_obsidian9.Setting(card).setName(this.t("publishModal_slugName")).setDesc(this.t("publishModal_slugDesc"));
+        this.addInfoButton(titleSetting, "publishModal_titleInfo");
+        const slugWrapper = gridContainer.createDiv("wp-grid-full");
+        const slugSetting = new import_obsidian9.Setting(slugWrapper).setName(this.t("publishModal_slugName"));
         const initialSlugValue = params.slug;
         slugSetting.addText((text4) => {
           this.slugInput = text4.inputEl;
@@ -108121,11 +108277,19 @@ var init_wp_publish_modal_v2 = __esm({
             });
           }
         }
+        this.addInfoButton(slugSetting, "publishModal_slugInfo");
         const validCategories = this.categories.items.filter((it) => it.name && it.name.trim());
         if (params.postType === "post" /* Post */ && validCategories.length > 0) {
-          const categoryHeader = card.createDiv("wp-category-header");
-          categoryHeader.createEl("div", { cls: "setting-item-name", text: this.t("publishModal_categoryName") });
-          categoryHeader.createEl("div", { cls: "setting-item-description", text: this.t("publishModal_categoryDesc") });
+          const categoryWrapper = gridContainer.createDiv("wp-grid-full");
+          const categoryHeader = categoryWrapper.createDiv("wp-category-header");
+          const titleRow = categoryHeader.createDiv("wp-category-title-row");
+          titleRow.createEl("div", { cls: "setting-item-name", text: this.t("publishModal_categoryName") });
+          const infoBtn = titleRow.createEl("button", { cls: "wp-info-button clickable-icon" });
+          infoBtn.setAttribute("aria-label", this.t("publishModal_categoryInfo"));
+          (0, import_obsidian9.setIcon)(infoBtn, "info");
+          infoBtn.addEventListener("click", () => {
+            new import_obsidian9.Notice(this.t("publishModal_categoryInfo"), 5e3);
+          });
           const tagsContainer = document.createElement("div");
           tagsContainer.className = "wp-category-tags-container";
           categoryHeader.appendChild(tagsContainer);
@@ -108207,37 +108371,283 @@ var init_wp_publish_modal_v2 = __esm({
             }
           }
         }
-        new import_obsidian9.Setting(card).setName(this.t("publishModal_statusName")).setDesc(this.t("publishModal_statusDesc")).addDropdown((dropdown) => {
+        const statusWrapper = gridContainer.createDiv();
+        new import_obsidian9.Setting(statusWrapper).setName(this.t("publishModal_statusName")).setDesc(this.t("publishModal_statusDesc")).addDropdown((dropdown) => {
           dropdown.addOption("draft" /* Draft */, this.plugin.t("publishModal_statusDraft")).addOption("publish" /* Publish */, this.plugin.t("publishModal_statusPublish")).addOption("private" /* Private */, this.plugin.t("publishModal_statusPrivate")).addOption("future" /* Future */, this.plugin.t("publishModal_statusFuture")).setValue(params.status).onChange((value) => {
             params.status = value;
             this.display(params);
           });
         });
         if (params.status === "future" /* Future */) {
-          new import_obsidian9.Setting(card).setName(this.t("publishModal_postDateTimeName")).setDesc(this.t("publishModal_postDateTimeDescFormat")).addText((text4) => {
+          const dateWrapper = gridContainer.createDiv("wp-grid-full");
+          new import_obsidian9.Setting(dateWrapper).setName(this.t("publishModal_postDateTimeName")).setDesc(this.t("publishModal_postDateTimeDescFormat")).addText((text4) => {
             text4.setValue(format(/* @__PURE__ */ new Date(), "yyyy-MM-dd HH:mm:ss"));
             this.setupDateMask(text4.inputEl, params);
           });
         } else {
           delete params.datetime;
         }
-        new import_obsidian9.Setting(card).setName(this.t("publishModal_commentName")).setDesc(this.t("publishModal_commentDesc")).addDropdown((dropdown) => {
+        const commentWrapper = gridContainer.createDiv();
+        new import_obsidian9.Setting(commentWrapper).setName(this.t("publishModal_commentName")).setDesc(this.t("publishModal_commentDesc")).addDropdown((dropdown) => {
           dropdown.addOption("open" /* Open */, this.plugin.t("publishModal_commentOpen")).addOption("closed" /* Closed */, this.plugin.t("publishModal_commentClosed")).setValue(params.commentStatus).onChange((value) => {
             params.commentStatus = value;
           });
         });
-        new import_obsidian9.Setting(card).setName(this.t("publishModal_postTypeName")).setDesc(this.t("publishModal_postTypeDesc")).addDropdown((dropdown) => {
+        const formatWrapper = gridContainer.createDiv();
+        new import_obsidian9.Setting(formatWrapper).setName(this.t("publishModal_postTypeName")).setDesc(this.t("publishModal_postTypeDesc")).addDropdown((dropdown) => {
           dropdown.addOption("html", this.plugin.t("publishModal_formatHTML")).addOption("markdown", this.plugin.t("publishModal_formatMarkdown")).setValue("html").onChange((value) => {
             params.contentFormat = value;
           });
         });
         if (this.matterData.postId) {
-          new import_obsidian9.Setting(card).setName(this.t("publishModal_publishAsNewName")).setDesc(this.t("publishModal_publishAsNewDesc")).addToggle((toggle) => {
+          const publishAsNewWrapper = gridContainer.createDiv();
+          new import_obsidian9.Setting(publishAsNewWrapper).setName(this.t("publishModal_publishAsNewName")).setDesc(this.t("publishModal_publishAsNewDesc")).addToggle((toggle) => {
             toggle.setValue(params.publishAsNew || false).onChange((value) => {
               params.publishAsNew = value;
             });
           });
         }
+      }
+      // ==================== AI 辅助区域 ====================
+      renderAIAssistSection(container, params) {
+        const card = container.createDiv("wp-settings-card");
+        this.renderAITabBar(card, params);
+        const aiContentContainer = card.createDiv("wp-ai-tab-content");
+        if (this.currentAITab === "featured-image") {
+          this.renderAIFeaturedImageTab(aiContentContainer, params);
+        } else if (this.currentAITab === "excerpt") {
+          this.renderAIExcerptTab(aiContentContainer, params);
+        } else if (this.currentAITab === "tags") {
+          this.renderAITagsTab(aiContentContainer, params);
+        }
+      }
+      /**
+       * 渲染 AI 标签页导航栏
+       */
+      renderAITabBar(container, params) {
+        const tabContainer = container.createDiv("wp-ai-tabs");
+        const tabs = [
+          { id: "featured-image", label: this.plugin.t("publishModal_featuredImage") },
+          { id: "excerpt", label: this.plugin.t("publishModal_aiExcerpt") },
+          { id: "tags", label: this.plugin.t("publishModal_aiTags") }
+        ];
+        tabs.forEach((tab) => {
+          const tabEl = tabContainer.createDiv({
+            cls: `wp-ai-tab-item ${this.currentAITab === tab.id ? "active" : ""}`
+          });
+          tabEl.createSpan({ text: tab.label });
+          tabEl.onclick = () => {
+            this.currentAITab = tab.id;
+            this.display(params);
+          };
+        });
+      }
+      /**
+       * 渲染特色图片标签页（从基本设置迁移过来）
+       */
+      renderAIFeaturedImageTab(container, params) {
+        var _a5;
+        const previewContainer = container.createDiv("featured-image-preview-large");
+        if (this.isLoadingRemoteImage) {
+          const loadingDiv = previewContainer.createDiv("featured-image-loading");
+          loadingDiv.style.display = "flex";
+          loadingDiv.style.flexDirection = "column";
+          loadingDiv.style.alignItems = "center";
+          loadingDiv.style.justifyContent = "center";
+          loadingDiv.style.padding = "40px 20px";
+          loadingDiv.style.color = "var(--text-muted)";
+          const spinner = loadingDiv.createDiv("featured-image-spinner");
+          spinner.style.width = "32px";
+          spinner.style.height = "32px";
+          spinner.style.border = "3px solid var(--background-modifier-border)";
+          spinner.style.borderTop = "3px solid var(--interactive-accent)";
+          spinner.style.borderRadius = "50%";
+          spinner.style.animation = "spin 1s linear infinite";
+          spinner.style.marginBottom = "12px";
+          loadingDiv.createEl("p", {
+            text: this.t("publishModal_loadingRemoteImage") || "\u6B63\u5728\u52A0\u8F7D\u8FDC\u7A0B\u56FE\u7247...",
+            cls: "featured-image-loading-text"
+          });
+          if (!document.getElementById("featured-image-spinner-style")) {
+            const style = document.createElement("style");
+            style.id = "featured-image-spinner-style";
+            style.textContent = `
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        `;
+            document.head.appendChild(style);
+          }
+        } else if (this.remoteImageLoadFailed) {
+          const errorDiv = previewContainer.createDiv("featured-image-error");
+          errorDiv.style.display = "flex";
+          errorDiv.style.flexDirection = "column";
+          errorDiv.style.alignItems = "center";
+          errorDiv.style.justifyContent = "center";
+          errorDiv.style.padding = "40px 20px";
+          errorDiv.style.color = "var(--text-error)";
+          errorDiv.createEl("p", {
+            text: "\u274C " + (this.remoteImageError || this.t("publishModal_remoteImageLoadFailed")),
+            cls: "featured-image-error-text"
+          });
+          const btnRow2 = errorDiv.createDiv("featured-image-btn-row");
+          btnRow2.style.marginTop = "16px";
+          const retryBtn = btnRow2.createEl("button", {
+            text: this.t("publishModal_retryLoadImage") || "\u91CD\u8BD5",
+            cls: "feature-btn"
+          });
+          retryBtn.onclick = async () => {
+            if (this.remoteImagePostId) {
+              this.remoteImageLoadFailed = false;
+              this.remoteImageError = null;
+              await this.loadRemoteFeaturedImage(this.remoteImagePostId, params);
+            }
+          };
+          const skipBtn = btnRow2.createEl("button", {
+            text: this.t("publishModal_skipRemoteImage") || "\u8DF3\u8FC7",
+            cls: "feature-btn"
+          });
+          skipBtn.onclick = () => {
+            this.remoteImageLoadFailed = false;
+            this.remoteImageError = null;
+            this.remoteImagePostId = null;
+            this.display(params);
+          };
+        } else if (this.featuredImage) {
+          const img = previewContainer.createEl("img", {
+            cls: "featured-image-full"
+          });
+          img.src = `data:${this.featuredImage.mimeType};base64,${this.arrayBufferToBase64(this.featuredImage.content)}`;
+          const info = previewContainer.createDiv("featured-image-info");
+          info.textContent = `${this.featuredImage.fileName} (${this.formatFileSize(this.featuredImage.content.byteLength)})`;
+          const removeBtn = previewContainer.createEl("button", {
+            text: this.t("publishModal_removeImage"),
+            cls: "featured-image-remove-btn"
+          });
+          removeBtn.onclick = async () => {
+            this.featuredImage = null;
+            this.imageSource = "auto";
+            await this.clearImageCache();
+            this.display(params);
+          };
+        } else {
+          previewContainer.createEl("p", {
+            text: this.t("publishModal_noImageSelected"),
+            cls: "featured-image-placeholder-text"
+          });
+        }
+        const btnRow = container.createDiv("featured-image-btn-row");
+        const vaultBtn = btnRow.createEl("button", {
+          text: "\u{1F4C1} " + this.t("publishModal_selectFromVault"),
+          cls: "feature-btn"
+        });
+        vaultBtn.onclick = () => this.selectVaultImage(params);
+        if (this.unsplashService) {
+          const unsplashBtn = btnRow.createEl("button", {
+            text: "\u{1F5BC}\uFE0F Unsplash",
+            cls: "feature-btn"
+          });
+          unsplashBtn.onclick = () => this.selectUnsplashImage(params);
+        }
+        if ((_a5 = this.aiService) == null ? void 0 : _a5.hasImageAIKey()) {
+          const aiBtn = btnRow.createEl("button", {
+            text: "\u{1F916} " + this.t("publishModal_aiGenerate"),
+            cls: "feature-btn"
+          });
+          aiBtn.onclick = () => this.generateFeaturedImage(params);
+        } else {
+          const aiBtn = btnRow.createEl("button", {
+            text: "\u{1F916} " + this.t("publishModal_aiGenerate"),
+            cls: "feature-btn disabled"
+          });
+          aiBtn.onclick = () => {
+            new import_obsidian9.Notice(this.t("notice_imageAIApiKeyRequired"));
+          };
+        }
+      }
+      /**
+       * 渲染摘要标签页（支持编辑）
+       */
+      renderAIExcerptTab(container, params) {
+        const btnContainer = container.createDiv("wp-ai-buttons");
+        const generateBtn = btnContainer.createEl("button", { text: this.t("publishModal_generateSummary") });
+        if (!this.aiService) {
+          generateBtn.addClass("disabled");
+          generateBtn.onclick = () => {
+            new import_obsidian9.Notice(this.t("notice_aiConfigRequired"));
+          };
+        } else if (!this.aiService.hasTextAIKey()) {
+          generateBtn.addClass("disabled");
+          generateBtn.onclick = () => {
+            new import_obsidian9.Notice(this.t("notice_textAIApiKeyRequired"));
+          };
+        } else {
+          generateBtn.onclick = () => this.generateSummary(params);
+        }
+        const excerptEditor = container.createDiv("wp-ai-excerpt-editor");
+        excerptEditor.style.marginTop = "16px";
+        const label = excerptEditor.createEl("label", {
+          text: this.t("publishModal_excerptLabel") || "\u6458\u8981\u5185\u5BB9",
+          cls: "wp-ai-editor-label"
+        });
+        label.style.display = "block";
+        label.style.marginBottom = "8px";
+        label.style.fontWeight = "500";
+        label.style.color = "var(--text-normal)";
+        const textarea = excerptEditor.createEl("textarea", {
+          cls: "wp-preview-textarea"
+        });
+        textarea.value = params.excerpt || "";
+        textarea.placeholder = this.t("publishModal_excerptPlaceholder") || "\u5728\u6B64\u8F93\u5165\u6216\u751F\u6210\u6458\u8981...";
+        textarea.style.width = "100%";
+        textarea.style.minHeight = "120px";
+        textarea.style.padding = "12px";
+        textarea.style.borderRadius = "6px";
+        textarea.style.border = "1px solid var(--background-modifier-border)";
+        textarea.style.backgroundColor = "var(--background-primary)";
+        textarea.style.color = "var(--text-normal)";
+        textarea.style.fontFamily = "var(--font-text)";
+        textarea.style.fontSize = "14px";
+        textarea.style.lineHeight = "1.6";
+        textarea.style.resize = "vertical";
+        textarea.addEventListener("input", () => {
+          params.excerpt = textarea.value;
+        });
+      }
+      /**
+       * 渲染标签标签页（支持编辑）
+       */
+      renderAITagsTab(container, params) {
+        const btnContainer = container.createDiv("wp-ai-buttons");
+        const generateBtn = btnContainer.createEl("button", { text: this.t("publishModal_generateTags") });
+        if (!this.aiService) {
+          generateBtn.addClass("disabled");
+          generateBtn.onclick = () => {
+            new import_obsidian9.Notice(this.t("notice_aiConfigRequired"));
+          };
+        } else if (!this.aiService.hasTextAIKey()) {
+          generateBtn.addClass("disabled");
+          generateBtn.onclick = () => {
+            new import_obsidian9.Notice(this.t("notice_textAIApiKeyRequired"));
+          };
+        } else {
+          generateBtn.onclick = () => this.generateTags(params);
+        }
+        const tagsEditor = container.createDiv("wp-ai-tags-editor");
+        tagsEditor.style.marginTop = "16px";
+        const label = tagsEditor.createEl("label", {
+          text: this.t("publishModal_tagsLabel") || "\u6807\u7B7E",
+          cls: "wp-ai-editor-label"
+        });
+        label.style.display = "block";
+        label.style.marginBottom = "8px";
+        label.style.fontWeight = "500";
+        label.style.color = "var(--text-normal)";
+        const tagsContainer = tagsEditor.createDiv("wp-preview-tags-editable");
+        this.tagsContainer = tagsContainer;
+        this.editableTags = params.tags ? [...params.tags] : [];
+        this.refreshTagsPreview(params);
       }
       setupDateMask(inputEl, params) {
         const dateTimeFormat = "yyyy-MM-dd HH:mm:ss";
@@ -108448,7 +108858,7 @@ var init_wp_publish_modal_v2 = __esm({
         });
         tagEl.addEventListener("mouseenter", () => {
           tagEl.style.transform = "translateY(-1px)";
-          tagEl.style.boxShadow = "0 2px 4px rgba(0, 0, 0, 0.2)";
+          tagEl.style.boxShadow = "var(--wp-shadow-hover)";
         });
         tagEl.addEventListener("mouseleave", () => {
           tagEl.style.transform = "translateY(0)";
@@ -108598,66 +109008,6 @@ var init_wp_publish_modal_v2 = __esm({
         previewContent.appendChild(style);
       }
       // ==================== Advanced Settings Tab ====================
-      renderAdvancedTab(container, params) {
-        const card = container.createDiv("wp-advanced-card");
-        const header = card.createDiv("wp-advanced-header");
-        header.createEl("h3", { text: this.plugin.t("publishModal_advancedTitle"), cls: "wp-advanced-card-title" });
-        const notice = header.createDiv("wp-advanced-notice");
-        notice.style.padding = "12px";
-        notice.style.backgroundColor = "var(--background-secondary)";
-        notice.style.borderRadius = "6px";
-        notice.style.marginBottom = "20px";
-        notice.createEl("p", { text: this.plugin.t("publishModal_advancedNotice") });
-        const summarySection = card.createDiv("wp-advanced-section");
-        summarySection.createEl("h4", { text: this.plugin.t("publishModal_summaryPromptTitle"), cls: "wp-advanced-section-title" });
-        const summarySetting = new import_obsidian9.Setting(summarySection);
-        summarySetting.addTextArea((text4) => {
-          text4.setPlaceholder(this.plugin.t("defaultPrompt_summary")).setValue(this.plugin.settings.summaryPrompt || "").onChange((value) => {
-            this.plugin.settings.summaryPrompt = value;
-          });
-          text4.inputEl.rows = 6;
-          text4.inputEl.style.width = "100%";
-          text4.inputEl.style.minHeight = "120px";
-          text4.inputEl.style.fontFamily = "var(--font-mono)";
-          text4.inputEl.style.fontSize = "12px";
-          text4.inputEl.style.lineHeight = "1.5";
-        });
-        const tagsSection = card.createDiv("wp-advanced-section");
-        tagsSection.createEl("h4", { text: this.plugin.t("publishModal_tagsPromptTitle"), cls: "wp-advanced-section-title" });
-        const tagsSetting = new import_obsidian9.Setting(tagsSection);
-        tagsSetting.addTextArea((text4) => {
-          text4.setPlaceholder(this.plugin.t("defaultPrompt_tags")).setValue(this.plugin.settings.tagsPrompt || "").onChange((value) => {
-            this.plugin.settings.tagsPrompt = value;
-          });
-          text4.inputEl.rows = 6;
-          text4.inputEl.style.width = "100%";
-          text4.inputEl.style.minHeight = "120px";
-          text4.inputEl.style.fontFamily = "var(--font-mono)";
-          text4.inputEl.style.fontSize = "12px";
-          text4.inputEl.style.lineHeight = "1.5";
-        });
-        const imageSection = card.createDiv("wp-advanced-section");
-        imageSection.createEl("h4", { text: this.plugin.t("publishModal_imagePromptTitle"), cls: "wp-advanced-section-title" });
-        const imageSetting = new import_obsidian9.Setting(imageSection);
-        imageSetting.addTextArea((text4) => {
-          text4.setPlaceholder(this.plugin.t("defaultPrompt_image")).setValue(this.plugin.settings.imageGenerationPrompt || "").onChange((value) => {
-            this.plugin.settings.imageGenerationPrompt = value;
-          });
-          text4.inputEl.rows = 6;
-          text4.inputEl.style.width = "100%";
-          text4.inputEl.style.minHeight = "120px";
-          text4.inputEl.style.fontFamily = "var(--font-mono)";
-          text4.inputEl.style.fontSize = "12px";
-          text4.inputEl.style.lineHeight = "1.5";
-        });
-        const saveSection = card.createDiv("wp-advanced-save");
-        new import_obsidian9.Setting(saveSection).addButton((btn) => {
-          btn.setButtonText(this.t("publishModal_saveSettings")).setCta().onClick(async () => {
-            await this.plugin.saveSettings();
-            new import_obsidian9.Notice(this.t("publishModal_settingsSaved"));
-          });
-        });
-      }
       // ==================== API Warning Display ====================
       renderApiWarning(container, apiType) {
         const warningContainer = container.createDiv("wp-api-warning");
@@ -108713,7 +109063,7 @@ Consider migrating to REST API for better security and feature support.
         const modal = (_a5 = this.plugin.app.workspace.activeLeaf) == null ? void 0 : _a5.view.containerEl.createEl("div");
         if (modal) {
           modal.innerHTML = `
-        <div class="modal-bg" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;">
+        <div class="modal-bg" style="position:fixed;top:0;left:0;width:100%;height:100%;background:var(--wp-modal-overlay);z-index:9999;">
           <div class="modal" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--background-primary);padding:20px;border-radius:8px;max-width:600px;max-height:80vh;overflow:auto;">
             <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
               <h3 style="margin:0;">API Information</h3>
@@ -108752,34 +109102,6 @@ Consider migrating to REST API for better security and feature support.
             }
             this.display(params);
           };
-          const summaryBtn = bottomContainer.createEl("button", { text: this.t("publishModal_generateSummary") });
-          if (!this.aiService) {
-            summaryBtn.addClass("disabled");
-            summaryBtn.onclick = () => {
-              new import_obsidian9.Notice(this.t("notice_aiConfigRequired"));
-            };
-          } else if (!this.aiService.hasTextAIKey()) {
-            summaryBtn.addClass("disabled");
-            summaryBtn.onclick = () => {
-              new import_obsidian9.Notice(this.t("notice_textAIApiKeyRequired"));
-            };
-          } else {
-            summaryBtn.onclick = () => this.generateSummary(params);
-          }
-          const tagsBtn = bottomContainer.createEl("button", { text: this.t("publishModal_generateTags") });
-          if (!this.aiService) {
-            tagsBtn.addClass("disabled");
-            tagsBtn.onclick = () => {
-              new import_obsidian9.Notice(this.t("notice_aiConfigRequired"));
-            };
-          } else if (!this.aiService.hasTextAIKey()) {
-            tagsBtn.addClass("disabled");
-            tagsBtn.onclick = () => {
-              new import_obsidian9.Notice(this.t("notice_textAIApiKeyRequired"));
-            };
-          } else {
-            tagsBtn.onclick = () => this.generateTags(params);
-          }
           const publishBtn = bottomContainer.createEl("button", {
             text: this.t("publishModal_publishButton"),
             cls: "mod-cta publish-btn"
@@ -109015,6 +109337,63 @@ Consider migrating to REST API for better security and feature support.
             this.close();
           }
         }, 8e3);
+      }
+      /**
+       * 添加涟漪效果到按钮
+       */
+      addRippleEffect(button) {
+        button.addEventListener("click", (e) => {
+          const ripple = button.createDiv("wp-ripple-effect");
+          const rect = button.getBoundingClientRect();
+          const size = Math.max(rect.width, rect.height);
+          const x = e.clientX - rect.left - size / 2;
+          const y = e.clientY - rect.top - size / 2;
+          ripple.style.width = ripple.style.height = `${size}px`;
+          ripple.style.left = `${x}px`;
+          ripple.style.top = `${y}px`;
+          setTimeout(() => ripple.remove(), 600);
+        });
+      }
+      /**
+       * 显示工具提示
+       */
+      showTooltip(element, text4, duration = 2e3) {
+        const tooltip = document.body.createDiv("wp-tooltip");
+        tooltip.setText(text4);
+        const rect = element.getBoundingClientRect();
+        tooltip.style.left = `${rect.left + rect.width / 2}px`;
+        tooltip.style.top = `${rect.top - 40}px`;
+        tooltip.style.transform = "translateX(-50%)";
+        setTimeout(() => tooltip.addClass("show"), 10);
+        setTimeout(() => {
+          tooltip.removeClass("show");
+          setTimeout(() => tooltip.remove(), 200);
+        }, duration);
+      }
+      /**
+       * 添加输入框焦点动画
+       */
+      enhanceInputFocus(input) {
+        input.addEventListener("focus", () => {
+          var _a5;
+          (_a5 = input.parentElement) == null ? void 0 : _a5.addClass("wp-input-focused");
+        });
+        input.addEventListener("blur", () => {
+          var _a5;
+          (_a5 = input.parentElement) == null ? void 0 : _a5.removeClass("wp-input-focused");
+        });
+      }
+      /**
+       * 添加平滑滚动到元素
+       */
+      scrollToElement(element, offset = 20) {
+        const rect = element.getBoundingClientRect();
+        const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+        const targetY = rect.top + scrollTop - offset;
+        window.scrollTo({
+          top: targetY,
+          behavior: "smooth"
+        });
       }
       generateDefaultSlug(title, params) {
         if (!title || !this.slugInput) return;

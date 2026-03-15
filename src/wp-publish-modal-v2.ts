@@ -736,28 +736,25 @@ export class WpPublishModalV2 extends AbstractModal {
     // 自适应窗口宽度
     this.updateModalWidth();
 
-    // 创建标签切换
-    this.renderTabBar(contentEl, params);
-
     // 显示API能力警告（仅限XML-RPC）
     const profile = this.plugin.settings.profiles.find(p => p.name === params.profileName);
     if (profile && profile.apiType === 'xml-rpc') {
       this.renderApiWarning(contentEl, profile.apiType);
     }
 
-    const mainContainer = contentEl.createDiv('wp-publish-container');
+    // 新布局：两列布局（预览区 + 面板区）
+    const layoutContainer = contentEl.createDiv('wp-layout-container');
 
-    if (this.currentTab === 'settings') {
-      this.renderSettingsTab(mainContainer, params);
-    } else if (this.currentTab === 'preview') {
-      this.renderPreviewTab(mainContainer, params);
-    }
+    // 左侧：预览区（主内容）
+    const previewArea = layoutContainer.createDiv('wp-layout-preview');
+    this.renderPreviewArea(previewArea, params);
+
+    // 右侧：面板区（设置 + 历史）
+    const panelsArea = layoutContainer.createDiv('wp-layout-panels');
+    this.renderPanelsArea(panelsArea, params);
 
     // 底部操作栏
     this.renderBottomBar(contentEl, params);
-
-    // 设置滚动监听，为 sticky 元素添加阴影效果
-    this.setupStickyScrollListener(contentEl);
   }
 
   private updateModalWidth(): void {
@@ -828,6 +825,302 @@ export class WpPublishModalV2 extends AbstractModal {
         this.display(params);
       };
     });
+  }
+
+  // ==================== 新布局：预览区 ====================
+  private renderPreviewArea(container: HTMLElement, params: WordPressPostParams): void {
+    // 四段式预览：特色图片、摘要、标签、文章内容
+    const previewContainer = container.createDiv('wp-preview-container');
+
+    // 1. 特色图片段落
+    this.renderFeaturedImageSection(previewContainer, params);
+
+    // 2. 摘要段落
+    this.renderExcerptSection(previewContainer, params);
+
+    // 3. 标签段落
+    this.renderTagsSection(previewContainer, params);
+
+    // 4. 文章内容段落
+    this.renderContentSection(previewContainer, params);
+  }
+
+  // ==================== 新布局：面板区 ====================
+  private renderPanelsArea(container: HTMLElement, params: WordPressPostParams): void {
+    // 设置面板（可折叠）
+    const settingsPanel = container.createDiv('wp-panel wp-panel-settings');
+    this.renderSettingsPanel(settingsPanel, params);
+
+    // 历史面板（可折叠）
+    const historyPanel = container.createDiv('wp-panel wp-panel-history');
+    this.renderHistoryPanel(historyPanel, params);
+  }
+
+  private renderSettingsPanel(container: HTMLElement, params: WordPressPostParams): void {
+    // AI 辅助区域
+    const aiSection = container.createDiv('wp-settings-ai');
+    this.renderAIAssistSection(aiSection, params);
+
+    // 基本设置区域
+    const basicSection = container.createDiv('wp-settings-bottom');
+    this.renderBasicSettings(basicSection, params);
+  }
+
+  private renderHistoryPanel(container: HTMLElement, params: WordPressPostParams): void {
+    const header = container.createDiv('wp-panel-header');
+    header.createSpan({ text: 'History' });
+
+    const content = container.createDiv('wp-panel-content');
+    content.createSpan({ text: 'No history yet' });
+  }
+
+  // ==================== 四段式预览区 ====================
+
+  /**
+   * 1. 特色图片段落
+   */
+  private renderFeaturedImageSection(container: HTMLElement, params: WordPressPostParams): void {
+    const section = container.createDiv('wp-preview-section wp-preview-featured-image-section');
+
+    // 段落标题
+    const header = section.createDiv('wp-preview-section-header');
+    header.createEl('h4', { text: this.t('publishModal_previewFeaturedImage'), cls: 'wp-preview-section-title' });
+
+    // 编辑按钮
+    const editBtn = header.createEl('button', {
+      text: '✏️',
+      cls: 'wp-preview-edit-btn',
+      attr: { 'aria-label': 'Edit featured image' }
+    });
+    editBtn.onclick = () => {
+      // 触发图片选择（跳转到设置面板的特色图片区域）
+      const imageSection = this.contentEl.querySelector('.wp-ai-featured-image');
+      if (imageSection) {
+        imageSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        imageSection.classList.add('wp-highlight-section');
+        setTimeout(() => imageSection.classList.remove('wp-highlight-section'), 2000);
+      }
+    };
+
+    // 内容区域
+    const content = section.createDiv('wp-preview-section-content');
+
+    const imageToDisplay = this.featuredImage || this.autoFeaturedImage;
+    if (imageToDisplay) {
+      const imgContainer = content.createDiv('wp-preview-image-container');
+      const blob = new Blob([imageToDisplay.content], { type: imageToDisplay.mimeType });
+      const url = URL.createObjectURL(blob);
+
+      const img = imgContainer.createEl('img', { cls: 'wp-preview-image' });
+      img.src = url;
+      img.alt = 'Featured Image';
+
+      // 图片信息
+      const info = content.createDiv('wp-preview-image-info');
+      info.createSpan({ text: `${imageToDisplay.fileName} (${this.formatFileSize(imageToDisplay.content.byteLength)})` });
+    } else if (this.matterData.featurePicture) {
+      const imgContainer = content.createDiv('wp-preview-image-container');
+      const img = imgContainer.createEl('img', { cls: 'wp-preview-image' });
+      img.src = this.matterData.featurePicture as string;
+      img.alt = 'Featured Image';
+
+      const info = content.createDiv('wp-preview-image-info');
+      info.createSpan({ text: this.t('publishModal_previewFeaturedImageUploaded') });
+    } else {
+      content.createDiv('wp-preview-empty').createSpan({
+        text: this.t('publishModal_noFeaturedImage') || 'No featured image',
+        cls: 'wp-preview-empty-text'
+      });
+    }
+  }
+
+  /**
+   * 2. 摘要段落
+   */
+  private renderExcerptSection(container: HTMLElement, params: WordPressPostParams): void {
+    const section = container.createDiv('wp-preview-section wp-preview-excerpt-section');
+
+    // 段落标题
+    const header = section.createDiv('wp-preview-section-header');
+    header.createEl('h4', { text: this.t('publishModal_excerptLabel') || 'Excerpt', cls: 'wp-preview-section-title' });
+
+    // 编辑按钮
+    const editBtn = header.createEl('button', {
+      text: '✏️',
+      cls: 'wp-preview-edit-btn',
+      attr: { 'aria-label': 'Edit excerpt' }
+    });
+
+    // 内容区域
+    const content = section.createDiv('wp-preview-section-content');
+
+    if (params.excerpt) {
+      const excerptText = content.createDiv('wp-preview-excerpt-text');
+      excerptText.textContent = params.excerpt;
+    } else {
+      content.createDiv('wp-preview-empty').createSpan({
+        text: this.t('publishModal_noExcerpt') || 'No excerpt',
+        cls: 'wp-preview-empty-text'
+      });
+    }
+
+    // 编辑模式
+    let isEditing = false;
+    editBtn.onclick = () => {
+      isEditing = !isEditing;
+      content.empty();
+
+      if (isEditing) {
+        editBtn.textContent = '✓';
+        const textarea = content.createEl('textarea', {
+          cls: 'wp-preview-textarea',
+          attr: { placeholder: this.t('publishModal_excerptPlaceholder') || 'Enter excerpt...' }
+        });
+        textarea.value = params.excerpt || '';
+        textarea.style.width = '100%';
+        textarea.style.minHeight = '100px';
+        textarea.focus();
+
+        textarea.addEventListener('input', () => {
+          params.excerpt = textarea.value;
+        });
+      } else {
+        editBtn.textContent = '✏️';
+        if (params.excerpt) {
+          const excerptText = content.createDiv('wp-preview-excerpt-text');
+          excerptText.textContent = params.excerpt;
+        } else {
+          content.createDiv('wp-preview-empty').createSpan({
+            text: this.t('publishModal_noExcerpt') || 'No excerpt',
+            cls: 'wp-preview-empty-text'
+          });
+        }
+      }
+    };
+  }
+
+  /**
+   * 3. 标签段落
+   */
+  private renderTagsSection(container: HTMLElement, params: WordPressPostParams): void {
+    const section = container.createDiv('wp-preview-section wp-preview-tags-section');
+
+    // 段落标题
+    const header = section.createDiv('wp-preview-section-header');
+    header.createEl('h4', { text: this.t('publishModal_tagsLabel') || 'Tags', cls: 'wp-preview-section-title' });
+
+    // 编辑按钮
+    const editBtn = header.createEl('button', {
+      text: '✏️',
+      cls: 'wp-preview-edit-btn',
+      attr: { 'aria-label': 'Edit tags' }
+    });
+
+    // 内容区域
+    const content = section.createDiv('wp-preview-section-content');
+
+    const renderTagsDisplay = () => {
+      content.empty();
+
+      if (this.editableTags && this.editableTags.length > 0) {
+        const tagsContainer = content.createDiv('wp-preview-tags-container');
+        this.editableTags.forEach(tag => {
+          const tagEl = tagsContainer.createDiv('wp-preview-tag');
+          tagEl.textContent = tag;
+        });
+      } else {
+        content.createDiv('wp-preview-empty').createSpan({
+          text: this.t('publishModal_noTags') || 'No tags',
+          cls: 'wp-preview-empty-text'
+        });
+      }
+    };
+
+    renderTagsDisplay();
+
+    // 编辑模式
+    let isEditing = false;
+    editBtn.onclick = () => {
+      isEditing = !isEditing;
+      content.empty();
+
+      if (isEditing) {
+        editBtn.textContent = '✓';
+        const textarea = content.createEl('textarea', {
+          cls: 'wp-preview-textarea',
+          attr: { placeholder: this.t('publishModal_tagsPlaceholder') || 'Enter tags, separated by commas...' }
+        });
+        textarea.value = this.editableTags.join(', ');
+        textarea.style.width = '100%';
+        textarea.style.minHeight = '60px';
+        textarea.focus();
+
+        textarea.addEventListener('input', () => {
+          const tagsStr = textarea.value;
+          this.editableTags = tagsStr.split(',').map(t => t.trim()).filter(t => t.length > 0);
+          params.tags = [...this.editableTags];
+        });
+      } else {
+        editBtn.textContent = '✏️';
+        renderTagsDisplay();
+      }
+    };
+  }
+
+  /**
+   * 4. 文章内容段落
+   */
+  private renderContentSection(container: HTMLElement, params: WordPressPostParams): void {
+    const section = container.createDiv('wp-preview-section wp-preview-content-section');
+
+    // 段落标题
+    const header = section.createDiv('wp-preview-section-header');
+    header.createEl('h4', { text: this.t('publishModal_previewContent') || 'Content', cls: 'wp-preview-section-title' });
+
+    // 编辑按钮
+    const editBtn = header.createEl('button', {
+      text: '✏️',
+      cls: 'wp-preview-edit-btn',
+      attr: { 'aria-label': 'Edit content' }
+    });
+
+    // 内容区域
+    const content = section.createDiv('wp-preview-section-content');
+
+    const renderContentDisplay = () => {
+      content.empty();
+      const previewDiv = content.createDiv('wp-preview-html-content');
+      previewDiv.innerHTML = this.editableContent;
+    };
+
+    renderContentDisplay();
+
+    // 编辑模式
+    let isEditing = false;
+    editBtn.onclick = () => {
+      isEditing = !isEditing;
+      content.empty();
+
+      if (isEditing) {
+        editBtn.textContent = '✓';
+        const textarea = content.createEl('textarea', {
+          cls: 'wp-preview-textarea',
+          attr: { placeholder: this.t('publishModal_previewEditPlaceholder') || 'Edit HTML content...' }
+        });
+        textarea.value = this.editableContent;
+        textarea.style.width = '100%';
+        textarea.style.minHeight = '300px';
+        textarea.style.fontFamily = 'var(--font-mono)';
+        textarea.focus();
+
+        textarea.addEventListener('input', () => {
+          this.editableContent = textarea.value;
+        });
+      } else {
+        editBtn.textContent = '✏️';
+        renderContentDisplay();
+      }
+    };
   }
 
   // ==================== 设置标签 ====================
