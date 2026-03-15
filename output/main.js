@@ -107647,9 +107647,7 @@ var init_wp_publish_modal_v2 = __esm({
           title: this.noteTitle || "",
           content: "",
           slug: this.matterData.slug || "",
-          excerpt: this.matterData.excerpt || "",
-          // 有关联文章时，"发布为新文章"默认开启
-          publishAsNew: !!this.matterData.postId
+          excerpt: this.matterData.excerpt || ""
         };
         if (this.matterData.featuredImageId) {
           params.featuredMedia = Number(this.matterData.featuredImageId);

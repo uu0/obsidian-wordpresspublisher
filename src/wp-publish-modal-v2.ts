@@ -631,9 +631,7 @@ export class WpPublishModalV2 extends AbstractModal {
       title: this.noteTitle || '',
       content: '',
       slug: this.matterData.slug || '',
-      excerpt: this.matterData.excerpt || '',
-      // 有关联文章时，"发布为新文章"默认开启
-      publishAsNew: !!this.matterData.postId
+      excerpt: this.matterData.excerpt || ''
     };
 
     // 从 frontmatter 恢复特色图片 ID（如果存在）
