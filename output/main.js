@@ -107738,17 +107738,26 @@ var init_wp_publish_modal_v2 = __esm({
         this.renderV3Footer(contentEl, params);
       }
       updateModalWidth() {
+        const isMobile = window.innerWidth <= 680;
         const modalEl = this.modalEl;
         if (modalEl) {
-          modalEl.style.width = "92vw";
-          modalEl.style.maxWidth = "1000px";
-          modalEl.style.minWidth = "480px";
-          modalEl.style.height = "88vh";
-          modalEl.style.maxHeight = "88vh";
+          if (isMobile) {
+            modalEl.style.width = "";
+            modalEl.style.maxWidth = "";
+            modalEl.style.minWidth = "";
+            modalEl.style.height = "";
+            modalEl.style.maxHeight = "";
+          } else {
+            modalEl.style.width = "92vw";
+            modalEl.style.maxWidth = "1000px";
+            modalEl.style.minWidth = "";
+            modalEl.style.height = "88vh";
+            modalEl.style.maxHeight = "88vh";
+          }
           modalEl.style.boxSizing = "border-box";
           modalEl.style.display = "flex";
           modalEl.style.flexDirection = "column";
-          modalEl.style.overflow = "hidden";
+          modalEl.style.overflow = isMobile ? "visible" : "hidden";
         }
         const { contentEl } = this;
         if (contentEl) {

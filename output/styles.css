@@ -148,6 +148,11 @@
   padding: 0 !important;
 }
 
+/* 桌面端：modal 最小宽度由 CSS 管理（JS 不再写 minWidth） */
+.modal-container:has(.wp-publish-modal-v2) {
+  min-width: 480px;
+}
+
 /* 模态框整体容器 */
 .wp-publish-modal-v2 {
   display: flex;
@@ -1193,30 +1198,61 @@
 
 /* 移动端单列 */
 @media (max-width: 680px) {
-  /* 覆盖 JS 设置的 minWidth，确保移动端真正缩小 */
+  /* 1. 覆盖 JS / Obsidian 设置，允许窗口缩到屏幕宽度，高度自适应内容 */
   .modal-container:has(.wp-publish-modal-v2) {
     min-width: 0 !important;
-    width: 100% !important;
+    width: 96vw !important;
+    max-width: 96vw !important;
+    height: auto !important;
+    max-height: 92vh !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    margin: 4vh auto !important;
   }
 
+  /* 2. modal-content：高度跟随内容，允许整体滚动 */
+  .modal-container:has(.wp-publish-modal-v2) .modal-content {
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    height: auto !important;
+    max-height: none !important;
+    flex: none !important;
+  }
+
+  /* 3. 根容器高度自适应 */
+  .wp-publish-modal-v2 {
+    overflow: visible !important;
+    height: auto !important;
+    flex: none !important;
+  }
+
+  /* 4. 双栏 → 单列 */
   .wp-v3-layout {
-    flex-direction: column;
-    overflow-y: auto;
-    overflow-x: hidden;
+    flex-direction: column !important;
+    overflow: visible !important;
+    min-height: unset !important;
+    flex: none !important;
+    height: auto !important;
   }
 
-  .wp-v3-sidebar {
-    max-width: 100%;
-    min-width: unset;
-    width: 100%;
-    border-left: none;
-    border-top: 1px solid var(--background-modifier-border);
-    overflow-y: visible !important; /* 单列时侧栏不独立滚动 */
-  }
-
+  /* 5. 左侧预览区：高度自适应，不独立滚动 */
   .wp-v3-preview {
-    padding: 12px;
-    overflow-y: visible; /* 单列时主内容不独立滚动 */
+    padding: 12px !important;
+    overflow: visible !important;
+    flex: none !important;
+    height: auto !important;
+  }
+
+  /* 6. 右侧设置区：撑满宽度，不独立滚动 */
+  .wp-v3-sidebar {
+    max-width: 100% !important;
+    min-width: 0 !important;
+    width: 100% !important;
+    border-left: none !important;
+    border-top: 1px solid var(--background-modifier-border);
+    overflow: visible !important;
+    flex: none !important;
+    height: auto !important;
   }
 }
 

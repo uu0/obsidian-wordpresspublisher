@@ -767,17 +767,28 @@ export class WpPublishModalV2 extends AbstractModal {
   }
 
   private updateModalWidth(): void {
+    const isMobile = window.innerWidth <= 680;
     const modalEl = this.modalEl;
     if (modalEl) {
-      modalEl.style.width = '92vw';
-      modalEl.style.maxWidth = '1000px';
-      modalEl.style.minWidth = '480px';
-      modalEl.style.height = '88vh';
-      modalEl.style.maxHeight = '88vh';
+      if (isMobile) {
+        // 移动端：全部交给 CSS，清空 inline style 不干扰媒体查询
+        modalEl.style.width = '';
+        modalEl.style.maxWidth = '';
+        modalEl.style.minWidth = '';
+        modalEl.style.height = '';
+        modalEl.style.maxHeight = '';
+      } else {
+        // 桌面端：JS 设置具体尺寸
+        modalEl.style.width = '92vw';
+        modalEl.style.maxWidth = '1000px';
+        modalEl.style.minWidth = '';   // 由 CSS 的 min-width: 480px 负责
+        modalEl.style.height = '88vh';
+        modalEl.style.maxHeight = '88vh';
+      }
       modalEl.style.boxSizing = 'border-box';
       modalEl.style.display = 'flex';
       modalEl.style.flexDirection = 'column';
-      modalEl.style.overflow = 'hidden';
+      modalEl.style.overflow = isMobile ? 'visible' : 'hidden';
     }
 
     // 让 contentEl（.modal-content）参与 flex 伸缩，高度链才能传到内部
