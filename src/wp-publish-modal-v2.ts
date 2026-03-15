@@ -1336,16 +1336,10 @@ export class WpPublishModalV2 extends AbstractModal {
     let isContentEditing = false;
     let originalContent = '';
 
-    const editAction = {
-      emoji: '✏️',
-      label: this.t('publishModal_editButton') || 'Edit',
-      onClick: () => enterContentEdit()
-    };
-
     const section = this.createV3Section(
       container,
       this.t('publishModal_previewContent') || 'Content Preview',
-      [editAction]
+      []
     );
     const body = section.createDiv('wp-v3-section-body');
 
@@ -1935,7 +1929,7 @@ export class WpPublishModalV2 extends AbstractModal {
     };
 
     const cancelBtn = footer.createEl('button', {
-      text: this.t('publishModal_cancel') || '取消',
+      text: '❌ ' + (this.t('publishModal_cancel') || '取消'),
       cls: 'wp-v3-cancel-footer-btn'
     });
     cancelBtn.onclick = () => this.close();

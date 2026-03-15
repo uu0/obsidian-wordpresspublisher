@@ -108242,15 +108242,10 @@ var init_wp_publish_modal_v2 = __esm({
       renderV3ContentSection(container, params) {
         let isContentEditing = false;
         let originalContent = "";
-        const editAction = {
-          emoji: "\u270F\uFE0F",
-          label: this.t("publishModal_editButton") || "Edit",
-          onClick: () => enterContentEdit()
-        };
         const section = this.createV3Section(
           container,
           this.t("publishModal_previewContent") || "Content Preview",
-          [editAction]
+          []
         );
         const body = section.createDiv("wp-v3-section-body");
         const renderHtmlPreview = () => {
@@ -108769,7 +108764,7 @@ var init_wp_publish_modal_v2 = __esm({
           if (contentEditBtn) contentEditBtn.click();
         };
         const cancelBtn = footer.createEl("button", {
-          text: this.t("publishModal_cancel") || "\u53D6\u6D88",
+          text: "\u274C " + (this.t("publishModal_cancel") || "\u53D6\u6D88"),
           cls: "wp-v3-cancel-footer-btn"
         });
         cancelBtn.onclick = () => this.close();
