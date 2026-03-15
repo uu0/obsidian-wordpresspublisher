@@ -1194,13 +1194,13 @@ export class WpPublishModalV2 extends AbstractModal {
       textarea.rows = 4;
 
       const actions = body.createDiv('wp-v3-edit-actions');
-      const saveBtn = actions.createEl('button', {
-        text: this.t('publishModal_save') || 'Save',
-        cls: 'wp-v3-save-btn'
-      });
       const cancelBtn = actions.createEl('button', {
         text: this.t('publishModal_cancel') || 'Cancel',
         cls: 'wp-v3-cancel-btn'
+      });
+      const saveBtn = actions.createEl('button', {
+        text: this.t('publishModal_save') || 'Save',
+        cls: 'wp-v3-save-btn'
       });
 
       saveBtn.onclick = () => {
@@ -1350,8 +1350,8 @@ export class WpPublishModalV2 extends AbstractModal {
       textarea.rows = 3;
 
       const actions = body.createDiv('wp-v3-edit-actions');
-      const saveBtn = actions.createEl('button', { text: this.t('publishModal_save') || 'Save', cls: 'wp-v3-save-btn' });
       const cancelBtn = actions.createEl('button', { text: this.t('publishModal_cancel') || 'Cancel', cls: 'wp-v3-cancel-btn' });
+      const saveBtn = actions.createEl('button', { text: this.t('publishModal_save') || 'Save', cls: 'wp-v3-save-btn' });
 
       saveBtn.onclick = () => {
         this.editableTags = textarea.value.split(',').map(t => t.trim()).filter(t => t.length > 0);
@@ -1419,8 +1419,8 @@ export class WpPublishModalV2 extends AbstractModal {
       textarea.placeholder = this.t('publishModal_previewEditPlaceholder') || 'Edit Markdown content...';
 
       const actions = body.createDiv('wp-v3-edit-actions');
-      const saveBtn = actions.createEl('button', { text: this.t('publishModal_save') || 'Save', cls: 'wp-v3-save-btn' });
       const cancelBtn = actions.createEl('button', { text: this.t('publishModal_cancel') || 'Cancel', cls: 'wp-v3-cancel-btn' });
+      const saveBtn = actions.createEl('button', { text: this.t('publishModal_save') || 'Save', cls: 'wp-v3-save-btn' });
 
       saveBtn.onclick = () => {
         this.editableContent = textarea.value;
@@ -1490,8 +1490,8 @@ export class WpPublishModalV2 extends AbstractModal {
       textarea.rows = 4;
 
       const actions = overlay.createDiv('wp-v3-edit-actions');
-      const saveBtn = actions.createEl('button', { text: this.t('publishModal_save') || 'Save', cls: 'wp-v3-save-btn' });
       const cancelBtn = actions.createEl('button', { text: this.t('publishModal_cancel') || 'Cancel', cls: 'wp-v3-cancel-btn' });
+      const saveBtn = actions.createEl('button', { text: this.t('publishModal_save') || 'Save', cls: 'wp-v3-save-btn' });
 
       saveBtn.onclick = () => { p.excerpt = textarea.value; overlay.remove(); renderHtmlPreview(); };
       cancelBtn.onclick = () => { p.excerpt = originalVal; overlay.remove(); renderHtmlPreview(); };

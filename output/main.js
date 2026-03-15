@@ -108093,13 +108093,13 @@ var init_wp_publish_modal_v2 = __esm({
           textarea.value = originalValue;
           textarea.rows = 4;
           const actions = body.createDiv("wp-v3-edit-actions");
-          const saveBtn = actions.createEl("button", {
-            text: this.t("publishModal_save") || "Save",
-            cls: "wp-v3-save-btn"
-          });
           const cancelBtn = actions.createEl("button", {
             text: this.t("publishModal_cancel") || "Cancel",
             cls: "wp-v3-cancel-btn"
+          });
+          const saveBtn = actions.createEl("button", {
+            text: this.t("publishModal_save") || "Save",
+            cls: "wp-v3-save-btn"
           });
           saveBtn.onclick = () => {
             params.excerpt = textarea.value;
@@ -108243,8 +108243,8 @@ var init_wp_publish_modal_v2 = __esm({
           textarea.value = this.editableTags.join(", ");
           textarea.rows = 3;
           const actions = body.createDiv("wp-v3-edit-actions");
-          const saveBtn = actions.createEl("button", { text: this.t("publishModal_save") || "Save", cls: "wp-v3-save-btn" });
           const cancelBtn = actions.createEl("button", { text: this.t("publishModal_cancel") || "Cancel", cls: "wp-v3-cancel-btn" });
+          const saveBtn = actions.createEl("button", { text: this.t("publishModal_save") || "Save", cls: "wp-v3-save-btn" });
           saveBtn.onclick = () => {
             this.editableTags = textarea.value.split(",").map((t) => t.trim()).filter((t) => t.length > 0);
             params.tags = [...this.editableTags];
@@ -108303,8 +108303,8 @@ var init_wp_publish_modal_v2 = __esm({
           textarea.value = this.editableContent;
           textarea.placeholder = this.t("publishModal_previewEditPlaceholder") || "Edit Markdown content...";
           const actions = body.createDiv("wp-v3-edit-actions");
-          const saveBtn = actions.createEl("button", { text: this.t("publishModal_save") || "Save", cls: "wp-v3-save-btn" });
           const cancelBtn = actions.createEl("button", { text: this.t("publishModal_cancel") || "Cancel", cls: "wp-v3-cancel-btn" });
+          const saveBtn = actions.createEl("button", { text: this.t("publishModal_save") || "Save", cls: "wp-v3-save-btn" });
           saveBtn.onclick = () => {
             this.editableContent = textarea.value;
             isContentEditing = false;
@@ -108365,8 +108365,8 @@ var init_wp_publish_modal_v2 = __esm({
           textarea.value = originalVal;
           textarea.rows = 4;
           const actions = overlay.createDiv("wp-v3-edit-actions");
-          const saveBtn = actions.createEl("button", { text: this.t("publishModal_save") || "Save", cls: "wp-v3-save-btn" });
           const cancelBtn = actions.createEl("button", { text: this.t("publishModal_cancel") || "Cancel", cls: "wp-v3-cancel-btn" });
+          const saveBtn = actions.createEl("button", { text: this.t("publishModal_save") || "Save", cls: "wp-v3-save-btn" });
           saveBtn.onclick = () => {
             p.excerpt = textarea.value;
             overlay.remove();
