@@ -107832,18 +107832,22 @@ var init_wp_publish_modal_v2 = __esm({
           } else if (imageToDisplay) {
             const blob = new Blob([imageToDisplay.content], { type: imageToDisplay.mimeType });
             const url = URL.createObjectURL(blob);
-            const img = wrap2.createEl("img", { cls: "wp-v3-featured-img", attr: { src: url, alt: "Featured Image" } });
-            const info = wrap2.createDiv();
-            info.style.textAlign = "center";
-            info.style.marginTop = "6px";
+            const imgContainer = wrap2.createDiv("wp-v3-featured-img-container");
+            imgContainer.createEl("img", { cls: "wp-v3-featured-img", attr: { src: url, alt: "Featured Image" } });
+            const bottomRow = wrap2.createDiv();
+            bottomRow.style.display = "flex";
+            bottomRow.style.alignItems = "center";
+            bottomRow.style.justifyContent = "space-between";
+            bottomRow.style.marginTop = "6px";
+            const info = bottomRow.createDiv();
             info.style.fontSize = "12px";
             info.style.color = "var(--text-muted)";
             info.textContent = `${imageToDisplay.fileName} (${this.formatFileSize(imageToDisplay.content.byteLength)})`;
-            const removeBtn = wrap2.createEl("button", {
+            const removeBtn = bottomRow.createEl("button", {
               text: this.t("publishModal_removeImage") || "\u79FB\u9664\u56FE\u7247",
               cls: "wp-v3-feature-btn"
             });
-            removeBtn.style.marginTop = "8px";
+            removeBtn.style.flex = "0 0 auto";
             removeBtn.onclick = async () => {
               this.featuredImage = null;
               this.imageSource = "auto";
@@ -107851,7 +107855,8 @@ var init_wp_publish_modal_v2 = __esm({
               this.display(params);
             };
           } else if (this.matterData.featurePicture) {
-            const img = wrap2.createEl("img", {
+            const imgContainer = wrap2.createDiv("wp-v3-featured-img-container");
+            imgContainer.createEl("img", {
               cls: "wp-v3-featured-img",
               attr: { src: this.matterData.featurePicture, alt: "Featured Image" }
             });
@@ -107921,30 +107926,49 @@ var init_wp_publish_modal_v2 = __esm({
       renderV3ExcerptSection(container, params) {
         let isEditing = false;
         let originalValue = "";
-        const aiAction = {
-          emoji: "\u{1F916}",
-          label: this.t("publishModal_generateSummary") || "AI \u751F\u6210\u6458\u8981",
-          onClick: () => this.generateSummary(params)
-        };
-        const editAction = {
-          emoji: "\u270F\uFE0F",
-          label: this.t("publishModal_editButton") || "Edit",
-          onClick: () => enterEdit()
-        };
         const section = this.createV3Section(
           container,
           this.t("publishModal_excerptLabel") || "Excerpt",
-          [editAction, aiAction]
+          []
+          // 有内容时动态加入按钮
         );
         const body = section.createDiv("wp-v3-section-body");
         const renderDisplay = () => {
           body.empty();
           section.removeClass("is-editing");
+          const actionsEl = section.querySelector(".wp-v3-section-actions");
+          if (actionsEl) {
+            actionsEl.empty();
+            if (params.excerpt) {
+              const editBtn = actionsEl.createEl("button", {
+                text: "\u270F\uFE0F",
+                cls: "wp-v3-icon-btn",
+                attr: { title: this.t("publishModal_editButton") || "Edit" }
+              });
+              editBtn.onclick = () => enterEdit();
+              const aiBtn = actionsEl.createEl("button", {
+                text: "\u{1F916}",
+                cls: "wp-v3-icon-btn",
+                attr: { title: this.t("publishModal_generateSummary") || "AI \u751F\u6210\u6458\u8981" }
+              });
+              aiBtn.onclick = () => this.generateSummary(params);
+            }
+          }
           if (params.excerpt) {
             const text4 = body.createDiv("wp-v3-excerpt-text");
             text4.textContent = params.excerpt;
           } else {
-            body.createDiv({ cls: "wp-v3-excerpt-empty", text: this.t("publishModal_noExcerpt") || "No excerpt" });
+            const row = body.createDiv("wp-v3-empty-action-row");
+            const editBtn = row.createEl("button", {
+              text: "\u270F\uFE0F " + (this.t("publishModal_editButton") || "\u7F16\u8F91\u6458\u8981"),
+              cls: "wp-v3-empty-action-btn"
+            });
+            editBtn.onclick = () => enterEdit();
+            const aiBtn = row.createEl("button", {
+              text: "\u{1F916} " + (this.t("publishModal_generateSummary") || "AI \u751F\u6210\u6458\u8981"),
+              cls: "wp-v3-empty-action-btn"
+            });
+            aiBtn.onclick = () => this.generateSummary(params);
           }
         };
         const enterEdit = () => {
@@ -108004,25 +108028,34 @@ var init_wp_publish_modal_v2 = __esm({
         }
         let isEditing = false;
         let originalTags = [];
-        const aiAction = {
-          emoji: "\u{1F916}",
-          label: this.t("publishModal_generateTags") || "AI \u751F\u6210\u6807\u7B7E",
-          onClick: () => this.generateTags(params)
-        };
-        const editAction = {
-          emoji: "\u270F\uFE0F",
-          label: this.t("publishModal_editButton") || "Edit",
-          onClick: () => enterEdit()
-        };
         const section = this.createV3Section(
           container,
           this.t("publishModal_tagsLabel") || "Tags",
-          [editAction, aiAction]
+          []
+          // 动态更新
         );
         const body = section.createDiv("wp-v3-section-body");
         const renderTagsDisplay = () => {
           body.empty();
           section.removeClass("is-editing");
+          const actionsEl = section.querySelector(".wp-v3-section-actions");
+          if (actionsEl) {
+            actionsEl.empty();
+            if (this.editableTags.length > 0) {
+              const editBtn = actionsEl.createEl("button", {
+                text: "\u270F\uFE0F",
+                cls: "wp-v3-icon-btn",
+                attr: { title: this.t("publishModal_editButton") || "Edit" }
+              });
+              editBtn.onclick = () => enterEdit();
+              const aiBtn = actionsEl.createEl("button", {
+                text: "\u{1F916}",
+                cls: "wp-v3-icon-btn",
+                attr: { title: this.t("publishModal_generateTags") || "AI \u751F\u6210\u6807\u7B7E" }
+              });
+              aiBtn.onclick = () => this.generateTags(params);
+            }
+          }
           if (this.editableTags.length > 0) {
             const tagsWrap = body.createDiv("wp-v3-tags-container");
             this.editableTags.forEach((tag) => {
@@ -108040,10 +108073,22 @@ var init_wp_publish_modal_v2 = __esm({
             const addBtn = tagsWrap.createEl("button", { cls: "wp-v3-tag-add-btn", text: "+" });
             addBtn.addEventListener("click", () => showInlineTagInput(tagsWrap, addBtn));
           } else {
-            body.createDiv({ cls: "wp-v3-tags-empty", text: this.t("publishModal_noTags") || "No tags" });
-            const addBtn = body.createEl("button", { cls: "wp-v3-tag-add-btn", text: "+" });
-            addBtn.style.marginTop = "8px";
-            addBtn.addEventListener("click", () => showInlineTagInput(body, addBtn));
+            const row = body.createDiv("wp-v3-empty-action-row");
+            const addTagBtn = row.createEl("button", {
+              text: "+ \u6DFB\u52A0\u6807\u7B7E",
+              cls: "wp-v3-empty-action-btn"
+            });
+            addTagBtn.onclick = () => {
+              body.empty();
+              const tagsWrap = body.createDiv("wp-v3-tags-container");
+              const addBtn = tagsWrap.createEl("button", { cls: "wp-v3-tag-add-btn", text: "+" });
+              showInlineTagInput(tagsWrap, addBtn);
+            };
+            const aiBtn = row.createEl("button", {
+              text: "\u{1F916} " + (this.t("publishModal_generateTags") || "AI \u751F\u6210\u6807\u7B7E"),
+              cls: "wp-v3-empty-action-btn"
+            });
+            aiBtn.onclick = () => this.generateTags(params);
           }
         };
         const showInlineTagInput = (parent2, addBtn) => {
@@ -108119,7 +108164,7 @@ var init_wp_publish_modal_v2 = __esm({
         };
         renderTagsDisplay();
       }
-      // ==================== V3.1 文章内容段 ====================
+      // ==================== V3.1 文章内容段（含嵌入摘要/标签） ====================
       renderV3ContentSection(container, params) {
         let isEditing = false;
         let originalContent = "";
@@ -108137,6 +108182,18 @@ var init_wp_publish_modal_v2 = __esm({
         const renderHtmlPreview = () => {
           body.empty();
           section.removeClass("is-editing");
+          if (params.excerpt) {
+            const excerptEl = body.createDiv("wp-v3-inline-excerpt");
+            excerptEl.textContent = params.excerpt;
+          }
+          if (this.editableTags && this.editableTags.length > 0) {
+            const tagsEl = body.createDiv("wp-v3-inline-tags");
+            this.editableTags.forEach((tag) => {
+              const tagEl = tagsEl.createEl("span", { cls: "wp-v3-tag-item" });
+              tagEl.style.backgroundColor = getTagColor(tag);
+              tagEl.createSpan({ text: tag });
+            });
+          }
           const previewDiv = body.createDiv("wp-v3-content-preview");
           const html3 = AppState.markdownParser.render(this.editableContent);
           previewDiv.innerHTML = html3;

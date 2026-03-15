@@ -886,23 +886,28 @@ export class WpPublishModalV2 extends AbstractModal {
           this.display(params);
         };
       } else if (imageToDisplay) {
-        // 显示图片预览
+        // 显示图片预览（固定高度容器）
         const blob = new Blob([imageToDisplay.content], { type: imageToDisplay.mimeType });
         const url = URL.createObjectURL(blob);
-        const img = wrap.createEl('img', { cls: 'wp-v3-featured-img', attr: { src: url, alt: 'Featured Image' } });
+        const imgContainer = wrap.createDiv('wp-v3-featured-img-container');
+        imgContainer.createEl('img', { cls: 'wp-v3-featured-img', attr: { src: url, alt: 'Featured Image' } });
 
-        const info = wrap.createDiv();
-        info.style.textAlign = 'center';
-        info.style.marginTop = '6px';
+        const bottomRow = wrap.createDiv();
+        bottomRow.style.display = 'flex';
+        bottomRow.style.alignItems = 'center';
+        bottomRow.style.justifyContent = 'space-between';
+        bottomRow.style.marginTop = '6px';
+
+        const info = bottomRow.createDiv();
         info.style.fontSize = '12px';
         info.style.color = 'var(--text-muted)';
         info.textContent = `${imageToDisplay.fileName} (${this.formatFileSize(imageToDisplay.content.byteLength)})`;
 
-        const removeBtn = wrap.createEl('button', {
+        const removeBtn = bottomRow.createEl('button', {
           text: this.t('publishModal_removeImage') || '移除图片',
           cls: 'wp-v3-feature-btn'
         });
-        removeBtn.style.marginTop = '8px';
+        removeBtn.style.flex = '0 0 auto';
         removeBtn.onclick = async () => {
           this.featuredImage = null;
           this.imageSource = 'auto';
@@ -910,7 +915,8 @@ export class WpPublishModalV2 extends AbstractModal {
           this.display(params);
         };
       } else if (this.matterData.featurePicture) {
-        const img = wrap.createEl('img', {
+        const imgContainer = wrap.createDiv('wp-v3-featured-img-container');
+        imgContainer.createEl('img', {
           cls: 'wp-v3-featured-img',
           attr: { src: this.matterData.featurePicture as string, alt: 'Featured Image' }
         });
@@ -990,32 +996,52 @@ export class WpPublishModalV2 extends AbstractModal {
     let isEditing = false;
     let originalValue = '';
 
-    const aiAction = {
-      emoji: '🤖',
-      label: this.t('publishModal_generateSummary') || 'AI 生成摘要',
-      onClick: () => this.generateSummary(params)
-    };
-    const editAction = {
-      emoji: '✏️',
-      label: this.t('publishModal_editButton') || 'Edit',
-      onClick: () => enterEdit()
-    };
-
     const section = this.createV3Section(
       container,
       this.t('publishModal_excerptLabel') || 'Excerpt',
-      [editAction, aiAction]
+      [] // 有内容时动态加入按钮
     );
     const body = section.createDiv('wp-v3-section-body');
 
     const renderDisplay = () => {
       body.empty();
       section.removeClass('is-editing');
+
+      // 动态更新 header 按钮：有内容时显示图标按钮，无内容时隐藏（改用内嵌文字按钮）
+      const actionsEl = section.querySelector('.wp-v3-section-actions') as HTMLElement | null;
+      if (actionsEl) {
+        actionsEl.empty();
+        if (params.excerpt) {
+          // 有内容：显示 ✏️ 和 🤖 图标按钮
+          const editBtn = actionsEl.createEl('button', {
+            text: '✏️', cls: 'wp-v3-icon-btn',
+            attr: { title: this.t('publishModal_editButton') || 'Edit' }
+          });
+          editBtn.onclick = () => enterEdit();
+          const aiBtn = actionsEl.createEl('button', {
+            text: '🤖', cls: 'wp-v3-icon-btn',
+            attr: { title: this.t('publishModal_generateSummary') || 'AI 生成摘要' }
+          });
+          aiBtn.onclick = () => this.generateSummary(params);
+        }
+      }
+
       if (params.excerpt) {
         const text = body.createDiv('wp-v3-excerpt-text');
         text.textContent = params.excerpt;
       } else {
-        body.createDiv({ cls: 'wp-v3-excerpt-empty', text: this.t('publishModal_noExcerpt') || 'No excerpt' });
+        // 空状态：展示完整文字操作按钮行
+        const row = body.createDiv('wp-v3-empty-action-row');
+        const editBtn = row.createEl('button', {
+          text: '✏️ ' + (this.t('publishModal_editButton') || '编辑摘要'),
+          cls: 'wp-v3-empty-action-btn'
+        });
+        editBtn.onclick = () => enterEdit();
+        const aiBtn = row.createEl('button', {
+          text: '🤖 ' + (this.t('publishModal_generateSummary') || 'AI 生成摘要'),
+          cls: 'wp-v3-empty-action-btn'
+        });
+        aiBtn.onclick = () => this.generateSummary(params);
       }
     };
 
@@ -1078,28 +1104,37 @@ export class WpPublishModalV2 extends AbstractModal {
     let isEditing = false;
     let originalTags: string[] = [];
 
-    const aiAction = {
-      emoji: '🤖',
-      label: this.t('publishModal_generateTags') || 'AI 生成标签',
-      onClick: () => this.generateTags(params)
-    };
-    const editAction = {
-      emoji: '✏️',
-      label: this.t('publishModal_editButton') || 'Edit',
-      onClick: () => enterEdit()
-    };
-
     const section = this.createV3Section(
       container,
       this.t('publishModal_tagsLabel') || 'Tags',
-      [editAction, aiAction]
+      [] // 动态更新
     );
     const body = section.createDiv('wp-v3-section-body');
 
     const renderTagsDisplay = () => {
       body.empty();
       section.removeClass('is-editing');
+
+      // 动态更新 header 按钮
+      const actionsEl = section.querySelector('.wp-v3-section-actions') as HTMLElement | null;
+      if (actionsEl) {
+        actionsEl.empty();
+        if (this.editableTags.length > 0) {
+          const editBtn = actionsEl.createEl('button', {
+            text: '✏️', cls: 'wp-v3-icon-btn',
+            attr: { title: this.t('publishModal_editButton') || 'Edit' }
+          });
+          editBtn.onclick = () => enterEdit();
+          const aiBtn = actionsEl.createEl('button', {
+            text: '🤖', cls: 'wp-v3-icon-btn',
+            attr: { title: this.t('publishModal_generateTags') || 'AI 生成标签' }
+          });
+          aiBtn.onclick = () => this.generateTags(params);
+        }
+      }
+
       if (this.editableTags.length > 0) {
+        // 标签和 + 按钮同一行
         const tagsWrap = body.createDiv('wp-v3-tags-container');
         this.editableTags.forEach(tag => {
           const tagEl = tagsWrap.createEl('span', { cls: 'wp-v3-tag-item' });
@@ -1115,14 +1150,27 @@ export class WpPublishModalV2 extends AbstractModal {
           });
         });
 
-        // + 添加按钮（内联）
+        // + 按钮紧跟标签后面，同一行
         const addBtn = tagsWrap.createEl('button', { cls: 'wp-v3-tag-add-btn', text: '+' });
         addBtn.addEventListener('click', () => showInlineTagInput(tagsWrap, addBtn));
       } else {
-        body.createDiv({ cls: 'wp-v3-tags-empty', text: this.t('publishModal_noTags') || 'No tags' });
-        const addBtn = body.createEl('button', { cls: 'wp-v3-tag-add-btn', text: '+' });
-        addBtn.style.marginTop = '8px';
-        addBtn.addEventListener('click', () => showInlineTagInput(body, addBtn));
+        // 空状态：完整文字按钮行
+        const row = body.createDiv('wp-v3-empty-action-row');
+        const addTagBtn = row.createEl('button', {
+          text: '+ ' + '添加标签',
+          cls: 'wp-v3-empty-action-btn'
+        });
+        addTagBtn.onclick = () => {
+          body.empty();
+          const tagsWrap = body.createDiv('wp-v3-tags-container');
+          const addBtn = tagsWrap.createEl('button', { cls: 'wp-v3-tag-add-btn', text: '+' });
+          showInlineTagInput(tagsWrap, addBtn);
+        };
+        const aiBtn = row.createEl('button', {
+          text: '🤖 ' + (this.t('publishModal_generateTags') || 'AI 生成标签'),
+          cls: 'wp-v3-empty-action-btn'
+        });
+        aiBtn.onclick = () => this.generateTags(params);
       }
     };
 
@@ -1195,7 +1243,7 @@ export class WpPublishModalV2 extends AbstractModal {
     renderTagsDisplay();
   }
 
-  // ==================== V3.1 文章内容段 ====================
+  // ==================== V3.1 文章内容段（含嵌入摘要/标签） ====================
 
   private renderV3ContentSection(container: HTMLElement, params: WordPressPostParams): void {
     let isEditing = false;
@@ -1217,6 +1265,24 @@ export class WpPublishModalV2 extends AbstractModal {
     const renderHtmlPreview = () => {
       body.empty();
       section.removeClass('is-editing');
+
+      // 嵌入摘要（如有）
+      if (params.excerpt) {
+        const excerptEl = body.createDiv('wp-v3-inline-excerpt');
+        excerptEl.textContent = params.excerpt;
+      }
+
+      // 嵌入标签（如有）
+      if (this.editableTags && this.editableTags.length > 0) {
+        const tagsEl = body.createDiv('wp-v3-inline-tags');
+        this.editableTags.forEach(tag => {
+          const tagEl = tagsEl.createEl('span', { cls: 'wp-v3-tag-item' });
+          tagEl.style.backgroundColor = getTagColor(tag);
+          tagEl.createSpan({ text: tag });
+        });
+      }
+
+      // 文章内容
       const previewDiv = body.createDiv('wp-v3-content-preview');
       const html = AppState.markdownParser.render(this.editableContent);
       previewDiv.innerHTML = html;
