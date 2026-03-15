@@ -145,7 +145,7 @@ manifest.json                  # Plugin configuration
 
 ## License
 
-MIT License
+GPL-3.0 License
 
 ## Acknowledgments
 

@@ -32,7 +32,7 @@
 		"featured-image"
 	],
 	"author": "uu0",
-	"license": "MIT",
+	"license": "GPL-3.0",
 	"devDependencies": {
 		"@jest/globals": "^30.3.0",
 		"@types/jest": "^30.0.0",
