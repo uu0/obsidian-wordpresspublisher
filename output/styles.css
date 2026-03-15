@@ -1027,6 +1027,11 @@
   border-color: var(--interactive-accent);
 }
 
+.wp-v3-input:hover:not(:focus) {
+  border-color: var(--interactive-accent-hover, var(--interactive-accent));
+  opacity: 0.85;
+}
+
 /* 下拉选择 */
 .wp-v3-select {
   width: 100%;
@@ -1043,6 +1048,11 @@
 .wp-v3-select:focus {
   outline: none;
   border-color: var(--interactive-accent);
+}
+
+.wp-v3-select:hover:not(:focus) {
+  border-color: var(--interactive-accent-hover, var(--interactive-accent));
+  opacity: 0.85;
 }
 
 /* 行内 label + control（状态/评论/格式） */
@@ -1090,6 +1100,10 @@
   background: var(--background-modifier-border);
   border-radius: 20px;
   transition: 0.2s;
+}
+
+.wp-v3-toggle-slider:hover {
+  opacity: 0.8;
 }
 
 .wp-v3-toggle-slider::before {

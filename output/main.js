@@ -108275,19 +108275,6 @@ var init_wp_publish_modal_v2 = __esm({
         const renderHtmlPreview = () => {
           body.empty();
           section.removeClass("is-editing");
-          const actionsEl = section.querySelector(".wp-v3-section-actions");
-          if (actionsEl) {
-            actionsEl.empty();
-            const editBtn = actionsEl.createEl("button", {
-              text: "\u270F\uFE0F",
-              cls: "wp-v3-icon-btn",
-              attr: {
-                title: this.t("publishModal_editButton") || "Edit",
-                "data-content-edit-trigger": "true"
-              }
-            });
-            editBtn.onclick = () => enterContentEdit();
-          }
           renderExcerptRow(body, params);
           renderTagsRow(body, params);
           const previewDiv = body.createDiv("wp-v3-content-preview");
@@ -108329,6 +108316,7 @@ var init_wp_publish_modal_v2 = __esm({
           });
           textarea.focus();
         };
+        section.__enterContentEdit = enterContentEdit;
         const renderExcerptRow = (parent2, p) => {
           const excerptWrap = parent2.createDiv("wp-v3-excerpt-row");
           if (p.excerpt) {
@@ -108797,8 +108785,8 @@ var init_wp_publish_modal_v2 = __esm({
           cls: "wp-v3-edit-footer-btn"
         });
         editBtn.onclick = () => {
-          const contentEditBtn = container.querySelector('[data-content-edit-trigger="true"]');
-          if (contentEditBtn) contentEditBtn.click();
+          const contentSection = container.querySelector('[data-content-section="true"]');
+          if (contentSection == null ? void 0 : contentSection.__enterContentEdit) contentSection.__enterContentEdit();
         };
         const cancelBtn = footer.createEl("button", {
           text: "\u274C " + (this.t("publishModal_cancel") || "\u53D6\u6D88"),

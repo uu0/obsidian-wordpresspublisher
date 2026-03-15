@@ -1380,21 +1380,6 @@ export class WpPublishModalV2 extends AbstractModal {
       body.empty();
       section.removeClass('is-editing');
 
-      // 更新 Content section header：显示 ✏️ 编辑按钮（带 data-content-edit-trigger，供底部 footer 按钮触发）
-      const actionsEl = section.querySelector('.wp-v3-section-actions') as HTMLElement | null;
-      if (actionsEl) {
-        actionsEl.empty();
-        const editBtn = actionsEl.createEl('button', {
-          text: '✏️',
-          cls: 'wp-v3-icon-btn',
-          attr: {
-            title: this.t('publishModal_editButton') || 'Edit',
-            'data-content-edit-trigger': 'true'
-          }
-        });
-        editBtn.onclick = () => enterContentEdit();
-      }
-
       // 摘要行（上方）
       renderExcerptRow(body, params);
       // 标签行（摘要下方，内容上方）
@@ -1437,6 +1422,9 @@ export class WpPublishModalV2 extends AbstractModal {
       });
       textarea.focus();
     };
+
+    // 将 enterContentEdit 挂载到 section 元素，供 footer 按钮直接调用
+    (section as any).__enterContentEdit = enterContentEdit;
 
     // ── 摘要嵌入行 ──
     const renderExcerptRow = (parent: HTMLElement, p: WordPressPostParams) => {
@@ -1970,9 +1958,9 @@ export class WpPublishModalV2 extends AbstractModal {
       cls: 'wp-v3-edit-footer-btn'
     });
     editBtn.onclick = () => {
-      // 精确定位 Content section 的 ✏️ 触发按钮
-      const contentEditBtn = container.querySelector('[data-content-edit-trigger="true"]') as HTMLButtonElement | null;
-      if (contentEditBtn) contentEditBtn.click();
+      // 直接调用 Content section 挂载的 enterContentEdit 函数
+      const contentSection = container.querySelector('[data-content-section="true"]') as any;
+      if (contentSection?.__enterContentEdit) contentSection.__enterContentEdit();
     };
 
     const cancelBtn = footer.createEl('button', {
