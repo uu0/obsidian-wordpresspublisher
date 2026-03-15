@@ -379,6 +379,8 @@ export class WpPublishModalV2 extends AbstractModal {
         content: response.arrayBuffer,
         width: 1200
       };
+      // 标记为来自远程/WordPress（非用户本次本地选图）
+      this.imageSource = 'cached';
       log.info('Successfully loaded featured image:', fileName);
 
       // 图片加载完成后，刷新 UI 显示
@@ -960,18 +962,32 @@ export class WpPublishModalV2 extends AbstractModal {
         };
         updateHeaderActions();
       } else if (imageToDisplay) {
-        // ── 本地图片：大图 + 底部信息栏 ──
+        // imageSource 为 'cached' 时，图片是从远程 WordPress 或缓存加载的（已上传过）
+        // 其他值（local/unsplash/ai/vault/auto）表示本次尚未上传的本地图片
+        const isLocalNew = this.imageSource !== 'cached';
         const imgContainer = wrap.createDiv('wp-v3-featured-img-container');
         const blob = new Blob([imageToDisplay.content], { type: imageToDisplay.mimeType });
         const url = URL.createObjectURL(blob);
         imgContainer.createEl('img', { cls: 'wp-v3-featured-img', attr: { src: url, alt: 'Featured Image' } });
-        // header：来源标签 + 文件名 + ❌
-        updateHeaderActions({
-          sourceLabel: '💾 Local',
-          sourceCls: 'wp-v3-source-local',
-          fileName: `${imageToDisplay.fileName} (${this.formatFileSize(imageToDisplay.content.byteLength)})`,
-          showDelete: true
-        });
+
+        if (isLocalNew) {
+          // ── 本次新选的本地图片，尚未上传 ──
+          updateHeaderActions({
+            sourceLabel: '💾 Local',
+            sourceCls: 'wp-v3-source-local',
+            fileName: `${imageToDisplay.fileName} (${this.formatFileSize(imageToDisplay.content.byteLength)})`,
+            showDelete: true
+          });
+        } else {
+          // ── 从远程/缓存加载的图片，已上传到 WordPress ──
+          const urlStr = this.matterData.featurePicture ? String(this.matterData.featurePicture) : imageToDisplay.fileName;
+          updateHeaderActions({
+            sourceLabel: '☁️ WordPress',
+            sourceCls: 'wp-v3-source-uploaded',
+            fileName: urlStr,
+            showDelete: true
+          });
+        }
       } else if (this.matterData.featurePicture) {
         // ── 已上传到 WordPress（URL）：大图 + header 信息 ──
         const imgContainer = wrap.createDiv('wp-v3-featured-img-container');

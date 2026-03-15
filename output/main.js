@@ -107433,6 +107433,7 @@ var init_wp_publish_modal_v2 = __esm({
             content: response.arrayBuffer,
             width: 1200
           };
+          this.imageSource = "cached";
           log4.info("Successfully loaded featured image:", fileName);
           if (this.currentParams) {
             this.display(this.currentParams);
@@ -107895,16 +107896,27 @@ var init_wp_publish_modal_v2 = __esm({
             };
             updateHeaderActions();
           } else if (imageToDisplay) {
+            const isLocalNew = this.imageSource !== "cached";
             const imgContainer = wrap2.createDiv("wp-v3-featured-img-container");
             const blob = new Blob([imageToDisplay.content], { type: imageToDisplay.mimeType });
             const url = URL.createObjectURL(blob);
             imgContainer.createEl("img", { cls: "wp-v3-featured-img", attr: { src: url, alt: "Featured Image" } });
-            updateHeaderActions({
-              sourceLabel: "\u{1F4BE} Local",
-              sourceCls: "wp-v3-source-local",
-              fileName: `${imageToDisplay.fileName} (${this.formatFileSize(imageToDisplay.content.byteLength)})`,
-              showDelete: true
-            });
+            if (isLocalNew) {
+              updateHeaderActions({
+                sourceLabel: "\u{1F4BE} Local",
+                sourceCls: "wp-v3-source-local",
+                fileName: `${imageToDisplay.fileName} (${this.formatFileSize(imageToDisplay.content.byteLength)})`,
+                showDelete: true
+              });
+            } else {
+              const urlStr = this.matterData.featurePicture ? String(this.matterData.featurePicture) : imageToDisplay.fileName;
+              updateHeaderActions({
+                sourceLabel: "\u2601\uFE0F WordPress",
+                sourceCls: "wp-v3-source-uploaded",
+                fileName: urlStr,
+                showDelete: true
+              });
+            }
           } else if (this.matterData.featurePicture) {
             const imgContainer = wrap2.createDiv("wp-v3-featured-img-container");
             imgContainer.createEl("img", {
