@@ -742,29 +742,782 @@ export class WpPublishModalV2 extends AbstractModal {
       this.renderApiWarning(contentEl, profile.apiType);
     }
 
-    // 新布局：两列布局（预览区 + 面板区）
-    const layoutContainer = contentEl.createDiv('wp-layout-container');
+    // V3.1 双栏布局主容器
+    const layoutContainer = contentEl.createDiv('wp-v3-layout');
 
-    // 左侧：预览区（主内容）
-    const previewArea = layoutContainer.createDiv('wp-layout-preview');
-    this.renderPreviewArea(previewArea, params);
+    // 左侧：预览区（flex: 2）
+    const previewArea = layoutContainer.createDiv('wp-v3-preview');
+    this.renderV3PreviewArea(previewArea, params);
 
-    // 右侧：面板区（设置 + 历史）
-    const panelsArea = layoutContainer.createDiv('wp-layout-panels');
-    this.renderPanelsArea(panelsArea, params);
+    // 右侧：设置区（flex: 1）
+    const sidebarArea = layoutContainer.createDiv('wp-v3-sidebar');
+    this.renderV3SidebarArea(sidebarArea, params);
 
     // 底部操作栏
-    this.renderBottomBar(contentEl, params);
+    this.renderV3Footer(contentEl, params);
   }
 
   private updateModalWidth(): void {
     const modalEl = this.modalEl;
     if (modalEl) {
-      modalEl.style.width = '90vw';
-      modalEl.style.maxWidth = '800px';
-      modalEl.style.minWidth = '400px';
+      modalEl.style.width = '92vw';
+      modalEl.style.maxWidth = '1000px';
+      modalEl.style.minWidth = '480px';
+      modalEl.style.height = '88vh';
+      modalEl.style.maxHeight = '88vh';
       modalEl.style.boxSizing = 'border-box';
+      modalEl.style.display = 'flex';
+      modalEl.style.flexDirection = 'column';
     }
+  }
+
+  // ==================== V3.1 主布局 ====================
+
+  /**
+   * V3.1 左侧预览区：特色图片 / 摘要 / 标签 / 文章内容
+   */
+  private renderV3PreviewArea(container: HTMLElement, params: WordPressPostParams): void {
+    // 1. 特色图片段落
+    this.renderV3FeaturedImageSection(container, params);
+    // 2. 摘要段落
+    this.renderV3ExcerptSection(container, params);
+    // 3. 标签段落
+    this.renderV3TagsSection(container, params);
+    // 4. 文章内容段落
+    this.renderV3ContentSection(container, params);
+  }
+
+  /**
+   * V3.1 右侧设置区：基本设置 + 历史记录
+   */
+  private renderV3SidebarArea(container: HTMLElement, params: WordPressPostParams): void {
+    this.renderV3SettingsCard(container, params);
+    this.renderV3HistoryCard(container, params);
+  }
+
+  // ==================== V3.1 Section 辅助方法 ====================
+
+  /**
+   * 创建段落容器（带标题栏和操作按钮）
+   */
+  private createV3Section(
+    container: HTMLElement,
+    title: string,
+    actions?: Array<{ emoji: string; label: string; onClick: () => void }>
+  ): HTMLElement {
+    const section = container.createDiv('wp-v3-section');
+
+    const header = section.createDiv('wp-v3-section-header');
+    header.createSpan({ text: title, cls: 'wp-v3-section-title' });
+
+    if (actions && actions.length > 0) {
+      const actionsEl = header.createDiv('wp-v3-section-actions');
+      actions.forEach(action => {
+        const btn = actionsEl.createEl('button', {
+          text: action.emoji,
+          cls: 'wp-v3-icon-btn',
+          attr: { 'aria-label': action.label, title: action.label }
+        });
+        btn.addEventListener('click', action.onClick);
+      });
+    }
+
+    return section;
+  }
+
+  // ==================== V3.1 特色图片段 ====================
+
+  private renderV3FeaturedImageSection(container: HTMLElement, params: WordPressPostParams): void {
+    const imageToDisplay = this.featuredImage || this.autoFeaturedImage;
+    const hasImage = !!imageToDisplay || !!this.matterData.featurePicture;
+
+    // 编辑按钮只在有图片预览时才出现（切换到设置UI）
+    const actions = hasImage
+      ? [{ emoji: '✏️', label: this.t('publishModal_editButton') || 'Edit', onClick: () => toggleEdit() }]
+      : [];
+
+    const section = this.createV3Section(
+      container,
+      this.t('publishModal_previewFeaturedImage') || 'Featured Image',
+      actions
+    );
+    const body = section.createDiv('wp-v3-section-body');
+
+    let isSetupMode = !hasImage;
+
+    const renderPreview = () => {
+      body.empty();
+      const wrap = body.createDiv('wp-v3-featured-image-wrap');
+
+      if (this.isLoadingRemoteImage) {
+        // 加载中状态
+        const loading = wrap.createDiv();
+        loading.style.textAlign = 'center';
+        loading.style.padding = '20px';
+        loading.style.color = 'var(--text-muted)';
+        loading.createEl('p', { text: this.t('publishModal_loadingRemoteImage') || '正在加载远程图片...' });
+      } else if (this.remoteImageLoadFailed) {
+        // 加载失败
+        const errDiv = wrap.createDiv();
+        errDiv.style.textAlign = 'center';
+        errDiv.style.padding = '12px';
+        errDiv.style.color = 'var(--text-error, #e53e3e)';
+        errDiv.createEl('p', { text: '❌ ' + (this.remoteImageError || '') });
+        const btnRow = errDiv.createDiv('wp-v3-featured-btn-row');
+        const retryBtn = btnRow.createEl('button', {
+          text: this.t('publishModal_retryLoadImage') || '重试',
+          cls: 'wp-v3-feature-btn'
+        });
+        retryBtn.onclick = async () => {
+          if (this.remoteImagePostId) {
+            this.remoteImageLoadFailed = false;
+            this.remoteImageError = null;
+            await this.loadRemoteFeaturedImage(this.remoteImagePostId, params);
+          }
+        };
+        const skipBtn = btnRow.createEl('button', {
+          text: this.t('publishModal_skipRemoteImage') || '跳过',
+          cls: 'wp-v3-feature-btn'
+        });
+        skipBtn.onclick = () => {
+          this.remoteImageLoadFailed = false;
+          this.remoteImageError = null;
+          this.remoteImagePostId = null;
+          this.display(params);
+        };
+      } else if (imageToDisplay) {
+        // 显示图片预览
+        const blob = new Blob([imageToDisplay.content], { type: imageToDisplay.mimeType });
+        const url = URL.createObjectURL(blob);
+        const img = wrap.createEl('img', { cls: 'wp-v3-featured-img', attr: { src: url, alt: 'Featured Image' } });
+
+        const info = wrap.createDiv();
+        info.style.textAlign = 'center';
+        info.style.marginTop = '6px';
+        info.style.fontSize = '12px';
+        info.style.color = 'var(--text-muted)';
+        info.textContent = `${imageToDisplay.fileName} (${this.formatFileSize(imageToDisplay.content.byteLength)})`;
+
+        const removeBtn = wrap.createEl('button', {
+          text: this.t('publishModal_removeImage') || '移除图片',
+          cls: 'wp-v3-feature-btn'
+        });
+        removeBtn.style.marginTop = '8px';
+        removeBtn.onclick = async () => {
+          this.featuredImage = null;
+          this.imageSource = 'auto';
+          await this.clearImageCache();
+          this.display(params);
+        };
+      } else if (this.matterData.featurePicture) {
+        const img = wrap.createEl('img', {
+          cls: 'wp-v3-featured-img',
+          attr: { src: this.matterData.featurePicture as string, alt: 'Featured Image' }
+        });
+        const info = wrap.createDiv();
+        info.style.textAlign = 'center';
+        info.style.marginTop = '6px';
+        info.style.fontSize = '12px';
+        info.style.color = 'var(--text-muted)';
+        info.textContent = this.t('publishModal_previewFeaturedImageUploaded');
+      } else {
+        renderSetup();
+        return;
+      }
+    };
+
+    const renderSetup = () => {
+      body.empty();
+      const setup = body.createDiv('wp-v3-featured-setup');
+      setup.createDiv({ cls: 'wp-v3-featured-empty', text: this.t('publishModal_noImageSelected') || '暂无特色图片' });
+
+      const btnRow = setup.createDiv('wp-v3-featured-btn-row');
+
+      const localBtn = btnRow.createEl('button', {
+        text: '💾 ' + this.t('publishModal_selectFromLocal'),
+        cls: 'wp-v3-feature-btn'
+      });
+      localBtn.onclick = () => this.selectLocalFile(params);
+
+      const vaultBtn = btnRow.createEl('button', {
+        text: '📁 ' + this.t('publishModal_selectFromVault'),
+        cls: 'wp-v3-feature-btn'
+      });
+      vaultBtn.onclick = () => this.selectVaultImage(params);
+
+      if (this.unsplashService) {
+        const unsplashBtn = btnRow.createEl('button', {
+          text: '🖼️ Unsplash',
+          cls: 'wp-v3-feature-btn'
+        });
+        unsplashBtn.onclick = () => this.selectUnsplashImage(params);
+      }
+
+      if (this.aiService?.hasImageAIKey()) {
+        const aiBtn = btnRow.createEl('button', {
+          text: '🤖 ' + this.t('publishModal_aiGenerate'),
+          cls: 'wp-v3-feature-btn'
+        });
+        aiBtn.onclick = () => this.generateFeaturedImage(params);
+      } else {
+        const aiBtn = btnRow.createEl('button', {
+          text: '🤖 ' + this.t('publishModal_aiGenerate'),
+          cls: 'wp-v3-feature-btn disabled'
+        });
+        aiBtn.onclick = () => new Notice(this.t('notice_imageAIApiKeyRequired'));
+      }
+    };
+
+    const toggleEdit = () => {
+      isSetupMode = !isSetupMode;
+      if (isSetupMode) {
+        renderSetup();
+      } else {
+        renderPreview();
+      }
+    };
+
+    if (isSetupMode) {
+      renderSetup();
+    } else {
+      renderPreview();
+    }
+  }
+
+  // ==================== V3.1 摘要段 ====================
+
+  private renderV3ExcerptSection(container: HTMLElement, params: WordPressPostParams): void {
+    let isEditing = false;
+    let originalValue = '';
+
+    const aiAction = {
+      emoji: '🤖',
+      label: this.t('publishModal_generateSummary') || 'AI 生成摘要',
+      onClick: () => this.generateSummary(params)
+    };
+    const editAction = {
+      emoji: '✏️',
+      label: this.t('publishModal_editButton') || 'Edit',
+      onClick: () => enterEdit()
+    };
+
+    const section = this.createV3Section(
+      container,
+      this.t('publishModal_excerptLabel') || 'Excerpt',
+      [editAction, aiAction]
+    );
+    const body = section.createDiv('wp-v3-section-body');
+
+    const renderDisplay = () => {
+      body.empty();
+      section.removeClass('is-editing');
+      if (params.excerpt) {
+        const text = body.createDiv('wp-v3-excerpt-text');
+        text.textContent = params.excerpt;
+      } else {
+        body.createDiv({ cls: 'wp-v3-excerpt-empty', text: this.t('publishModal_noExcerpt') || 'No excerpt' });
+      }
+    };
+
+    const enterEdit = () => {
+      if (isEditing) return;
+      isEditing = true;
+      originalValue = params.excerpt || '';
+      section.addClass('is-editing');
+      body.empty();
+
+      const textarea = body.createEl('textarea', {
+        cls: 'wp-v3-textarea',
+        attr: { placeholder: this.t('publishModal_excerptPlaceholder') || 'Enter excerpt...' }
+      });
+      textarea.value = originalValue;
+      textarea.rows = 4;
+
+      const actions = body.createDiv('wp-v3-edit-actions');
+      const saveBtn = actions.createEl('button', {
+        text: this.t('publishModal_save') || 'Save',
+        cls: 'wp-v3-save-btn'
+      });
+      const cancelBtn = actions.createEl('button', {
+        text: this.t('publishModal_cancel') || 'Cancel',
+        cls: 'wp-v3-cancel-btn'
+      });
+
+      saveBtn.onclick = () => {
+        params.excerpt = textarea.value;
+        isEditing = false;
+        renderDisplay();
+      };
+      cancelBtn.onclick = () => {
+        params.excerpt = originalValue;
+        isEditing = false;
+        renderDisplay();
+      };
+
+      textarea.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') { e.preventDefault(); params.excerpt = originalValue; isEditing = false; renderDisplay(); }
+        else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); params.excerpt = textarea.value; isEditing = false; renderDisplay(); }
+      });
+
+      textarea.focus();
+    };
+
+    renderDisplay();
+  }
+
+  // ==================== V3.1 标签段 ====================
+
+  private renderV3TagsSection(container: HTMLElement, params: WordPressPostParams): void {
+    // 同步 editableTags 与 params.tags
+    const paramsTagsStr = JSON.stringify(params.tags || []);
+    const editableTagsStr = JSON.stringify(this.editableTags);
+    if (paramsTagsStr !== editableTagsStr && (params.tags || []).length > 0) {
+      this.editableTags = params.tags ? [...params.tags] : [];
+    }
+
+    let isEditing = false;
+    let originalTags: string[] = [];
+
+    const aiAction = {
+      emoji: '🤖',
+      label: this.t('publishModal_generateTags') || 'AI 生成标签',
+      onClick: () => this.generateTags(params)
+    };
+    const editAction = {
+      emoji: '✏️',
+      label: this.t('publishModal_editButton') || 'Edit',
+      onClick: () => enterEdit()
+    };
+
+    const section = this.createV3Section(
+      container,
+      this.t('publishModal_tagsLabel') || 'Tags',
+      [editAction, aiAction]
+    );
+    const body = section.createDiv('wp-v3-section-body');
+
+    const renderTagsDisplay = () => {
+      body.empty();
+      section.removeClass('is-editing');
+      if (this.editableTags.length > 0) {
+        const tagsWrap = body.createDiv('wp-v3-tags-container');
+        this.editableTags.forEach(tag => {
+          const tagEl = tagsWrap.createEl('span', { cls: 'wp-v3-tag-item' });
+          tagEl.style.backgroundColor = getTagColor(tag);
+          tagEl.createSpan({ text: tag });
+
+          const removeBtn = tagEl.createEl('button', { cls: 'wp-v3-tag-remove', text: '×' });
+          removeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.editableTags = this.editableTags.filter(t => t !== tag);
+            params.tags = [...this.editableTags];
+            renderTagsDisplay();
+          });
+        });
+
+        // + 添加按钮（内联）
+        const addBtn = tagsWrap.createEl('button', { cls: 'wp-v3-tag-add-btn', text: '+' });
+        addBtn.addEventListener('click', () => showInlineTagInput(tagsWrap, addBtn));
+      } else {
+        body.createDiv({ cls: 'wp-v3-tags-empty', text: this.t('publishModal_noTags') || 'No tags' });
+        const addBtn = body.createEl('button', { cls: 'wp-v3-tag-add-btn', text: '+' });
+        addBtn.style.marginTop = '8px';
+        addBtn.addEventListener('click', () => showInlineTagInput(body, addBtn));
+      }
+    };
+
+    const showInlineTagInput = (parent: HTMLElement, addBtn: HTMLElement) => {
+      addBtn.style.display = 'none';
+      const input = parent.createEl('input', { cls: 'wp-v3-tag-input', type: 'text' });
+      input.placeholder = this.plugin.t('publishModal_tagInputPlaceholder') || '输入标签...';
+      input.focus();
+
+      let committed = false;
+      const commit = () => {
+        if (committed) return;
+        committed = true;
+        const val = input.value.trim();
+        if (val && !this.editableTags.includes(val)) {
+          this.editableTags.push(val);
+          params.tags = [...this.editableTags];
+        }
+        input.remove();
+        addBtn.style.display = '';
+        renderTagsDisplay();
+      };
+
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); commit(); }
+        else if (e.key === 'Escape') { committed = true; input.remove(); addBtn.style.display = ''; }
+      });
+      input.addEventListener('blur', () => setTimeout(commit, 200));
+    };
+
+    const enterEdit = () => {
+      if (isEditing) return;
+      isEditing = true;
+      originalTags = [...this.editableTags];
+      section.addClass('is-editing');
+      body.empty();
+
+      const textarea = body.createEl('textarea', {
+        cls: 'wp-v3-textarea',
+        attr: { placeholder: this.t('publishModal_tagsPlaceholder') || 'tag1, tag2, tag3...' }
+      });
+      textarea.value = this.editableTags.join(', ');
+      textarea.rows = 3;
+
+      const actions = body.createDiv('wp-v3-edit-actions');
+      const saveBtn = actions.createEl('button', { text: this.t('publishModal_save') || 'Save', cls: 'wp-v3-save-btn' });
+      const cancelBtn = actions.createEl('button', { text: this.t('publishModal_cancel') || 'Cancel', cls: 'wp-v3-cancel-btn' });
+
+      saveBtn.onclick = () => {
+        this.editableTags = textarea.value.split(',').map(t => t.trim()).filter(t => t.length > 0);
+        params.tags = [...this.editableTags];
+        isEditing = false;
+        renderTagsDisplay();
+      };
+      cancelBtn.onclick = () => {
+        this.editableTags = [...originalTags];
+        params.tags = [...originalTags];
+        isEditing = false;
+        renderTagsDisplay();
+      };
+
+      textarea.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') { e.preventDefault(); this.editableTags = [...originalTags]; params.tags = [...originalTags]; isEditing = false; renderTagsDisplay(); }
+        else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveBtn.click(); }
+      });
+
+      textarea.focus();
+    };
+
+    renderTagsDisplay();
+  }
+
+  // ==================== V3.1 文章内容段 ====================
+
+  private renderV3ContentSection(container: HTMLElement, params: WordPressPostParams): void {
+    let isEditing = false;
+    let originalContent = '';
+
+    const editAction = {
+      emoji: '✏️',
+      label: this.t('publishModal_editButton') || 'Edit',
+      onClick: () => enterEdit()
+    };
+
+    const section = this.createV3Section(
+      container,
+      this.t('publishModal_previewContent') || 'Content Preview',
+      [editAction]
+    );
+    const body = section.createDiv('wp-v3-section-body');
+
+    const renderHtmlPreview = () => {
+      body.empty();
+      section.removeClass('is-editing');
+      const previewDiv = body.createDiv('wp-v3-content-preview');
+      const html = AppState.markdownParser.render(this.editableContent);
+      previewDiv.innerHTML = html;
+    };
+
+    const enterEdit = () => {
+      if (isEditing) return;
+      isEditing = true;
+      originalContent = this.editableContent;
+      section.addClass('is-editing');
+      body.empty();
+
+      const textarea = body.createEl('textarea', { cls: 'wp-v3-content-edit-area' });
+      textarea.value = this.editableContent;
+      textarea.placeholder = this.t('publishModal_previewEditPlaceholder') || 'Edit Markdown content...';
+
+      const actions = body.createDiv('wp-v3-edit-actions');
+      const saveBtn = actions.createEl('button', { text: this.t('publishModal_save') || 'Save', cls: 'wp-v3-save-btn' });
+      const cancelBtn = actions.createEl('button', { text: this.t('publishModal_cancel') || 'Cancel', cls: 'wp-v3-cancel-btn' });
+
+      saveBtn.onclick = () => {
+        this.editableContent = textarea.value;
+        isEditing = false;
+        renderHtmlPreview();
+      };
+      cancelBtn.onclick = () => {
+        this.editableContent = originalContent;
+        isEditing = false;
+        renderHtmlPreview();
+      };
+
+      textarea.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') { e.preventDefault(); this.editableContent = originalContent; isEditing = false; renderHtmlPreview(); }
+        else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveBtn.click(); }
+      });
+
+      textarea.focus();
+    };
+
+    renderHtmlPreview();
+  }
+
+  // ==================== V3.1 右侧：基本设置卡片 ====================
+
+  private renderV3SettingsCard(container: HTMLElement, params: WordPressPostParams): void {
+    const card = container.createDiv('wp-v3-settings-card');
+    card.createDiv({
+      cls: 'wp-v3-settings-card-title',
+      text: this.plugin.t('publishModal_basicSettings') || 'Settings'
+    });
+
+    const body = card.createDiv('wp-v3-settings-body');
+
+    // 标题
+    this.renderV3Field(body, this.t('publishModal_titleName'), 'publishModal_titleInfo', (fieldEl) => {
+      const input = fieldEl.createEl('input', { cls: 'wp-v3-input', type: 'text' });
+      input.value = params.title || '';
+      input.placeholder = this.t('publishModal_titlePlaceholder');
+      this.titleInput = input;
+      input.addEventListener('input', () => { params.title = input.value; });
+      input.addEventListener('blur', () => {
+        if (this.plugin.settings.autoGenerateSlug && this.slugInput) {
+          if (!this.lastAutoGeneratedSlug || params.slug === this.lastAutoGeneratedSlug) {
+            this.generateDefaultSlug(params.title, params);
+            this.lastAutoGeneratedSlug = params.slug || '';
+            if (this.slugInput) this.slugInput.value = params.slug || '';
+          }
+        }
+      });
+    });
+
+    // Slug
+    this.renderV3Field(body, this.t('publishModal_slugName'), 'publishModal_slugInfo', (fieldEl) => {
+      const slugRow = fieldEl.createDiv();
+      slugRow.style.display = 'flex';
+      slugRow.style.gap = '6px';
+      slugRow.style.alignItems = 'center';
+
+      const input = fieldEl.createEl('input', { cls: 'wp-v3-input', type: 'text' });
+      input.value = params.slug || '';
+      input.placeholder = this.t('publishModal_slugPlaceholder');
+      this.slugInput = input;
+      const initialSlugValue = params.slug;
+      input.addEventListener('input', () => {
+        const sanitized = SlugGenerator.sanitizeSlug(input.value);
+        params.slug = sanitized;
+        if (sanitized && initialSlugValue && sanitized !== initialSlugValue) {
+          this.lastAutoGeneratedSlug = '';
+        }
+      });
+
+      // AI 翻译按钮（仅 ai-translate 模式）
+      if (this.plugin.settings.slugGenerationMode === 'ai-translate' && this.aiService?.hasTextAIKey()) {
+        const aiBtn = fieldEl.createEl('button', {
+          text: this.t('publishModal_slugAIButton'),
+          cls: 'wp-v3-cancel-btn'
+        });
+        aiBtn.style.fontSize = '11px';
+        aiBtn.style.padding = '4px 8px';
+        aiBtn.style.marginTop = '4px';
+        aiBtn.onclick = async () => {
+          if (!params.title) { new Notice(this.t('publishModal_slugNeedTitle')); return; }
+          aiBtn.disabled = true;
+          aiBtn.textContent = this.t('publishModal_slugAIButtonTranslating');
+          try {
+            const slug = await this.aiService!.translateToSlug(params.title);
+            if (this.slugInput) { this.slugInput.value = slug; params.slug = slug; }
+            new Notice(this.t('publishModal_slugGenerated'));
+          } catch (e) {
+            new Notice(this.t('publishModal_slugTranslateFailed', { error: e instanceof Error ? e.message : 'Unknown' }));
+          } finally {
+            aiBtn.disabled = false;
+            aiBtn.textContent = this.t('publishModal_slugAIButton');
+          }
+        };
+      }
+    });
+
+    // 分隔线
+    body.createDiv('wp-v3-divider');
+
+    // 发布状态
+    this.renderV3Field(body, this.t('publishModal_statusName'), 'publishModal_statusDesc', (fieldEl) => {
+      const select = fieldEl.createEl('select', { cls: 'wp-v3-select' });
+      [
+        [PostStatus.Draft, this.plugin.t('publishModal_statusDraft')],
+        [PostStatus.Publish, this.plugin.t('publishModal_statusPublish')],
+        [PostStatus.Private, this.plugin.t('publishModal_statusPrivate')],
+        [PostStatus.Future, this.plugin.t('publishModal_statusFuture')]
+      ].forEach(([val, label]) => {
+        const opt = select.createEl('option', { value: val, text: label });
+        if (val === params.status) opt.selected = true;
+      });
+      select.addEventListener('change', () => {
+        params.status = select.value as PostStatus;
+        this.display(params);
+      });
+    });
+
+    // 定时发布（仅 Future）
+    if (params.status === PostStatus.Future) {
+      this.renderV3Field(body, this.t('publishModal_postDateTimeName'), 'publishModal_postDateTimeDescFormat' as any, (fieldEl) => {
+        const input = fieldEl.createEl('input', { cls: 'wp-v3-input', type: 'text' });
+        input.value = format(new Date(), 'yyyy-MM-dd HH:mm:ss');
+        this.setupDateMask(input, params);
+      });
+    } else {
+      delete params.datetime;
+    }
+
+    // 评论
+    this.renderV3Field(body, this.t('publishModal_commentName'), 'publishModal_commentDesc', (fieldEl) => {
+      const select = fieldEl.createEl('select', { cls: 'wp-v3-select' });
+      [
+        [CommentStatus.Open, this.plugin.t('publishModal_commentOpen')],
+        [CommentStatus.Closed, this.plugin.t('publishModal_commentClosed')]
+      ].forEach(([val, label]) => {
+        const opt = select.createEl('option', { value: val, text: label });
+        if (val === params.commentStatus) opt.selected = true;
+      });
+      select.addEventListener('change', () => { params.commentStatus = select.value as CommentStatus; });
+    });
+
+    // 发布格式
+    this.renderV3Field(body, this.t('publishModal_postTypeName'), 'publishModal_postTypeDesc', (fieldEl) => {
+      const select = fieldEl.createEl('select', { cls: 'wp-v3-select' });
+      [
+        ['html', this.plugin.t('publishModal_formatHTML')],
+        ['markdown', this.plugin.t('publishModal_formatMarkdown')]
+      ].forEach(([val, label]) => {
+        select.createEl('option', { value: val, text: label });
+      });
+      select.addEventListener('change', () => { (params as SafeAny).contentFormat = select.value; });
+    });
+
+    // 分类（仅 Post 类型）
+    const validCategories = this.categories.items.filter(it => it.name && it.name.trim());
+    if (params.postType === PostTypeConst.Post && validCategories.length > 0) {
+      body.createDiv('wp-v3-divider');
+      this.renderV3Field(body, this.t('publishModal_categoryName'), 'publishModal_categoryInfo', (fieldEl) => {
+        const tagsWrap = fieldEl.createDiv();
+        tagsWrap.style.display = 'flex';
+        tagsWrap.style.flexWrap = 'wrap';
+        tagsWrap.style.gap = '4px';
+
+        const renderCats = () => {
+          tagsWrap.empty();
+          params.categories.forEach(catId => {
+            const cat = validCategories.find(c => Number(c.id) === catId);
+            if (!cat) return;
+            const tag = tagsWrap.createEl('span', { cls: 'wp-v3-tag-item' });
+            tag.style.backgroundColor = 'var(--interactive-accent)';
+            tag.style.fontSize = '11px';
+            tag.createSpan({ text: cat.name });
+            const removeBtn = tag.createEl('button', { cls: 'wp-v3-tag-remove', text: '×' });
+            removeBtn.addEventListener('click', (e) => {
+              e.stopPropagation();
+              params.categories = params.categories.filter(id => id !== catId);
+              renderCats();
+            });
+          });
+
+          const available = validCategories.filter(cat => !params.categories.includes(Number(cat.id)));
+          if (available.length > 0) {
+            const select = tagsWrap.createEl('select', { cls: 'wp-v3-select' });
+            select.style.width = 'auto';
+            select.style.fontSize = '11px';
+            select.style.padding = '2px 6px';
+            select.createEl('option', { value: '', text: '+' });
+            available.forEach(cat => select.createEl('option', { value: String(cat.id), text: cat.name }));
+            select.addEventListener('change', () => {
+              if (select.value) { params.categories.push(Number(select.value)); renderCats(); }
+            });
+          }
+        };
+
+        if (params.categories.length === 0) {
+          const uncategorized = validCategories.find(it =>
+            ['Uncategorized', '未分类', this.plugin.t('publishModal_uncategorized')].includes(it.name)
+          );
+          if (uncategorized) params.categories = [Number(uncategorized.id)];
+        }
+
+        renderCats();
+      });
+    }
+
+    // 发布为新文章（仅当已有关联文章）
+    if (this.matterData.postId) {
+      body.createDiv('wp-v3-divider');
+      const toggleRow = body.createDiv('wp-v3-toggle-row');
+      const labelRow = toggleRow.createDiv('wp-v3-field-label-row');
+      labelRow.createSpan({ text: this.t('publishModal_publishAsNewName'), cls: 'wp-v3-field-label' });
+      this.addV3HintBtn(labelRow, this.t('publishModal_publishAsNewDesc'));
+
+      const label = toggleRow.createEl('label', { cls: 'wp-v3-toggle' });
+      const checkbox = label.createEl('input', { type: 'checkbox' });
+      checkbox.checked = params.publishAsNew || false;
+      checkbox.addEventListener('change', () => { params.publishAsNew = checkbox.checked; });
+      label.createDiv('wp-v3-toggle-slider');
+    }
+  }
+
+  /**
+   * 渲染右侧设置区的单个字段（label + hint + control）
+   */
+  private renderV3Field(
+    container: HTMLElement,
+    label: string,
+    hintKey: TranslateKey | string,
+    renderControl: (fieldEl: HTMLElement) => void
+  ): void {
+    const field = container.createDiv('wp-v3-field');
+    const labelRow = field.createDiv('wp-v3-field-label-row');
+    labelRow.createSpan({ text: label, cls: 'wp-v3-field-label' });
+    if (hintKey) {
+      this.addV3HintBtn(labelRow, this.t(hintKey as TranslateKey) || hintKey);
+    }
+    renderControl(field);
+  }
+
+  /**
+   * 添加 ❕ hover tooltip 按钮
+   */
+  private addV3HintBtn(container: HTMLElement, hintText: string): void {
+    const btn = container.createEl('button', { cls: 'wp-v3-hint-btn', text: '❕' });
+    const tooltip = btn.createDiv('wp-v3-tooltip');
+    tooltip.textContent = hintText;
+  }
+
+  // ==================== V3.1 右侧：历史记录卡片 ====================
+
+  private renderV3HistoryCard(container: HTMLElement, params: WordPressPostParams): void {
+    const card = container.createDiv('wp-v3-settings-card');
+    card.createDiv({
+      cls: 'wp-v3-settings-card-title',
+      text: this.plugin.t('publishModal_historyPanel') || 'History'
+    });
+    const body = card.createDiv('wp-v3-settings-body');
+
+    const historyList = body.createDiv('wp-v3-history-list');
+    historyList.createDiv({ cls: 'wp-v3-history-empty', text: this.plugin.t('publishModal_noHistory') || 'No history yet' });
+  }
+
+  // ==================== V3.1 底部操作栏 ====================
+
+  private renderV3Footer(container: HTMLElement, params: WordPressPostParams): void {
+    const footer = container.createDiv('wp-v3-footer');
+
+    const cancelBtn = footer.createEl('button', {
+      text: this.t('publishModal_cancel') || 'Cancel',
+      cls: 'wp-v3-cancel-footer-btn'
+    });
+    cancelBtn.onclick = () => this.close();
+
+    const publishBtn = footer.createEl('button', {
+      text: this.t('publishModal_publishButton') || 'Publish',
+      cls: 'wp-v3-publish-footer-btn'
+    }) as HTMLButtonElement;
+    this.publishBtn = publishBtn;
+    publishBtn.onclick = () => this.doPublish(params, publishBtn);
   }
 
   /**
