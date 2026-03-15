@@ -1046,48 +1046,77 @@ export class WpPublishModalV2 extends AbstractModal {
     // 内容区域
     const content = section.createDiv('wp-preview-section-content');
 
-    if (params.excerpt) {
-      const excerptText = content.createDiv('wp-preview-excerpt-text');
-      excerptText.textContent = params.excerpt;
-    } else {
-      content.createDiv('wp-preview-empty').createSpan({
-        text: this.t('publishModal_noExcerpt') || 'No excerpt',
-        cls: 'wp-preview-empty-text'
-      });
-    }
+    const renderDisplay = () => {
+      content.empty();
+      if (params.excerpt) {
+        const excerptText = content.createDiv('wp-preview-excerpt-text');
+        excerptText.textContent = params.excerpt;
+      } else {
+        content.createDiv('wp-preview-empty').createSpan({
+          text: this.t('publishModal_noExcerpt') || 'No excerpt',
+          cls: 'wp-preview-empty-text'
+        });
+      }
+    };
+
+    renderDisplay();
 
     // 编辑模式
     let isEditing = false;
+    let originalValue = '';
+
+    const exitEdit = () => {
+      isEditing = false;
+      section.removeClass('is-editing');
+      editBtn.textContent = '✏️';
+      renderDisplay();
+    };
+
+    const saveEdit = (newValue: string) => {
+      params.excerpt = newValue;
+      exitEdit();
+    };
+
     editBtn.onclick = () => {
-      isEditing = !isEditing;
+      if (isEditing) return;
+
+      isEditing = true;
+      originalValue = params.excerpt || '';
+      section.addClass('is-editing');
       content.empty();
 
-      if (isEditing) {
-        editBtn.textContent = '✓';
-        const textarea = content.createEl('textarea', {
-          cls: 'wp-preview-textarea',
-          attr: { placeholder: this.t('publishModal_excerptPlaceholder') || 'Enter excerpt...' }
-        });
-        textarea.value = params.excerpt || '';
-        textarea.style.width = '100%';
-        textarea.style.minHeight = '100px';
-        textarea.focus();
+      const textarea = content.createEl('textarea', {
+        cls: 'wp-preview-textarea',
+        attr: { placeholder: this.t('publishModal_excerptPlaceholder') || 'Enter excerpt...' }
+      });
+      textarea.value = originalValue;
+      textarea.style.width = '100%';
+      textarea.style.minHeight = '100px';
 
-        textarea.addEventListener('input', () => {
-          params.excerpt = textarea.value;
-        });
-      } else {
-        editBtn.textContent = '✏️';
-        if (params.excerpt) {
-          const excerptText = content.createDiv('wp-preview-excerpt-text');
-          excerptText.textContent = params.excerpt;
-        } else {
-          content.createDiv('wp-preview-empty').createSpan({
-            text: this.t('publishModal_noExcerpt') || 'No excerpt',
-            cls: 'wp-preview-empty-text'
-          });
+      // 按钮组
+      const btnGroup = content.createDiv('wp-preview-edit-actions');
+      const saveBtn = btnGroup.createEl('button', { text: this.t('publishModal_save') || 'Save', cls: 'wp-preview-save-btn' });
+      const cancelBtn = btnGroup.createEl('button', { text: this.t('publishModal_cancel') || 'Cancel', cls: 'wp-preview-cancel-btn' });
+
+      saveBtn.onclick = () => saveEdit(textarea.value);
+      cancelBtn.onclick = () => {
+        params.excerpt = originalValue;
+        exitEdit();
+      };
+
+      // 键盘快捷键
+      textarea.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          params.excerpt = originalValue;
+          exitEdit();
+        } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+          e.preventDefault();
+          saveEdit(textarea.value);
         }
-      }
+      });
+
+      textarea.focus();
     };
   }
 
@@ -1111,9 +1140,8 @@ export class WpPublishModalV2 extends AbstractModal {
     // 内容区域
     const content = section.createDiv('wp-preview-section-content');
 
-    const renderTagsDisplay = () => {
+    const renderDisplay = () => {
       content.empty();
-
       if (this.editableTags && this.editableTags.length > 0) {
         const tagsContainer = content.createDiv('wp-preview-tags-container');
         this.editableTags.forEach(tag => {
@@ -1128,34 +1156,67 @@ export class WpPublishModalV2 extends AbstractModal {
       }
     };
 
-    renderTagsDisplay();
+    renderDisplay();
 
     // 编辑模式
     let isEditing = false;
+    let originalTags: string[] = [];
+
+    const exitEdit = () => {
+      isEditing = false;
+      section.removeClass('is-editing');
+      editBtn.textContent = '✏️';
+      renderDisplay();
+    };
+
+    const saveEdit = (tagsStr: string) => {
+      this.editableTags = tagsStr.split(',').map(t => t.trim()).filter(t => t.length > 0);
+      params.tags = [...this.editableTags];
+      exitEdit();
+    };
+
     editBtn.onclick = () => {
-      isEditing = !isEditing;
+      if (isEditing) return;
+
+      isEditing = true;
+      originalTags = [...this.editableTags];
+      section.addClass('is-editing');
       content.empty();
 
-      if (isEditing) {
-        editBtn.textContent = '✓';
-        const textarea = content.createEl('textarea', {
-          cls: 'wp-preview-textarea',
-          attr: { placeholder: this.t('publishModal_tagsPlaceholder') || 'Enter tags, separated by commas...' }
-        });
-        textarea.value = this.editableTags.join(', ');
-        textarea.style.width = '100%';
-        textarea.style.minHeight = '60px';
-        textarea.focus();
+      const textarea = content.createEl('textarea', {
+        cls: 'wp-preview-textarea',
+        attr: { placeholder: this.t('publishModal_tagsPlaceholder') || 'Enter tags, separated by commas...' }
+      });
+      textarea.value = this.editableTags.join(', ');
+      textarea.style.width = '100%';
+      textarea.style.minHeight = '60px';
 
-        textarea.addEventListener('input', () => {
-          const tagsStr = textarea.value;
-          this.editableTags = tagsStr.split(',').map(t => t.trim()).filter(t => t.length > 0);
-          params.tags = [...this.editableTags];
-        });
-      } else {
-        editBtn.textContent = '✏️';
-        renderTagsDisplay();
-      }
+      // 按钮组
+      const btnGroup = content.createDiv('wp-preview-edit-actions');
+      const saveBtn = btnGroup.createEl('button', { text: this.t('publishModal_save') || 'Save', cls: 'wp-preview-save-btn' });
+      const cancelBtn = btnGroup.createEl('button', { text: this.t('publishModal_cancel') || 'Cancel', cls: 'wp-preview-cancel-btn' });
+
+      saveBtn.onclick = () => saveEdit(textarea.value);
+      cancelBtn.onclick = () => {
+        this.editableTags = [...originalTags];
+        params.tags = [...originalTags];
+        exitEdit();
+      };
+
+      // 键盘快捷键
+      textarea.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          this.editableTags = [...originalTags];
+          params.tags = [...originalTags];
+          exitEdit();
+        } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+          e.preventDefault();
+          saveEdit(textarea.value);
+        }
+      });
+
+      textarea.focus();
     };
   }
 
@@ -1179,39 +1240,71 @@ export class WpPublishModalV2 extends AbstractModal {
     // 内容区域
     const content = section.createDiv('wp-preview-section-content');
 
-    const renderContentDisplay = () => {
+    const renderDisplay = () => {
       content.empty();
       const previewDiv = content.createDiv('wp-preview-html-content');
       previewDiv.innerHTML = this.editableContent;
     };
 
-    renderContentDisplay();
+    renderDisplay();
 
     // 编辑模式
     let isEditing = false;
+    let originalContent = '';
+
+    const exitEdit = () => {
+      isEditing = false;
+      section.removeClass('is-editing');
+      editBtn.textContent = '✏️';
+      renderDisplay();
+    };
+
+    const saveEdit = (newContent: string) => {
+      this.editableContent = newContent;
+      exitEdit();
+    };
+
     editBtn.onclick = () => {
-      isEditing = !isEditing;
+      if (isEditing) return;
+
+      isEditing = true;
+      originalContent = this.editableContent;
+      section.addClass('is-editing');
       content.empty();
 
-      if (isEditing) {
-        editBtn.textContent = '✓';
-        const textarea = content.createEl('textarea', {
-          cls: 'wp-preview-textarea',
-          attr: { placeholder: this.t('publishModal_previewEditPlaceholder') || 'Edit HTML content...' }
-        });
-        textarea.value = this.editableContent;
-        textarea.style.width = '100%';
-        textarea.style.minHeight = '300px';
-        textarea.style.fontFamily = 'var(--font-mono)';
-        textarea.focus();
+      const textarea = content.createEl('textarea', {
+        cls: 'wp-preview-textarea',
+        attr: { placeholder: this.t('publishModal_previewEditPlaceholder') || 'Edit HTML content...' }
+      });
+      textarea.value = this.editableContent;
+      textarea.style.width = '100%';
+      textarea.style.minHeight = '300px';
+      textarea.style.fontFamily = 'var(--font-mono)';
 
-        textarea.addEventListener('input', () => {
-          this.editableContent = textarea.value;
-        });
-      } else {
-        editBtn.textContent = '✏️';
-        renderContentDisplay();
-      }
+      // 按钮组
+      const btnGroup = content.createDiv('wp-preview-edit-actions');
+      const saveBtn = btnGroup.createEl('button', { text: this.t('publishModal_save') || 'Save', cls: 'wp-preview-save-btn' });
+      const cancelBtn = btnGroup.createEl('button', { text: this.t('publishModal_cancel') || 'Cancel', cls: 'wp-preview-cancel-btn' });
+
+      saveBtn.onclick = () => saveEdit(textarea.value);
+      cancelBtn.onclick = () => {
+        this.editableContent = originalContent;
+        exitEdit();
+      };
+
+      // 键盘快捷键
+      textarea.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          this.editableContent = originalContent;
+          exitEdit();
+        } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+          e.preventDefault();
+          saveEdit(textarea.value);
+        }
+      });
+
+      textarea.focus();
     };
   }
 

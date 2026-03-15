@@ -2148,6 +2148,50 @@ body.wp-resizing * {
   border-color: var(--interactive-accent);
 }
 
+/* 编辑状态 */
+.wp-preview-section.is-editing {
+  border-color: var(--interactive-accent);
+  box-shadow: 0 0 0 2px var(--interactive-accent-hover);
+}
+
+/* 编辑按钮组 */
+.wp-preview-edit-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  justify-content: flex-end;
+}
+
+.wp-preview-save-btn,
+.wp-preview-cancel-btn {
+  padding: 6px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  border: 1px solid var(--background-modifier-border);
+}
+
+.wp-preview-save-btn {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border-color: var(--interactive-accent);
+}
+
+.wp-preview-save-btn:hover {
+  opacity: 0.9;
+}
+
+.wp-preview-cancel-btn {
+  background: var(--background-secondary);
+  color: var(--text-normal);
+}
+
+.wp-preview-cancel-btn:hover {
+  background: var(--background-modifier-hover);
+}
+
 /* 高亮动画（用于滚动定位） */
 .wp-highlight-section {
   animation: highlight-pulse 2s ease;

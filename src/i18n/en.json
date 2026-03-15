@@ -327,6 +327,8 @@
   "publishModal_advancedTab": "🔧 Advanced",
   "publishModal_previewTitle": "Post Preview",
   "publishModal_previewEditPlaceholder": "Edit Markdown content here...",
+  "publishModal_save": "Save",
+  "publishModal_cancel": "Cancel",
   "publishModal_previewFeaturedImage": "Featured Image",
   "publishModal_previewFeaturedImageUploaded": "Featured Image (Uploaded to WordPress)",
   "publishModal_previewInconsistencyWarning": "Featured Image Inconsistency Detected",
