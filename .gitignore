@@ -151,4 +151,5 @@ output/*.js
 !output/main.js
 
 # Documentation
+docs/
 AI内容生成器使用手册.md
