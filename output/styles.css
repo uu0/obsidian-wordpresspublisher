@@ -219,6 +219,17 @@ body.wp-resizing * {
   padding: 20px;
 }
 
+/* 响应式：平板端优化 (768px-1024px) */
+@media (min-width: 769px) and (max-width: 1024px) {
+  .wp-layout-panels {
+    width: 280px;
+  }
+
+  .wp-panel-content {
+    padding: 12px;
+  }
+}
+
 /* 响应式：移动端单列布局 */
 @media (max-width: 768px) {
   .wp-layout-container {
@@ -227,6 +238,29 @@ body.wp-resizing * {
 
   .wp-layout-panels {
     width: 100%;
+  }
+
+  .wp-panel {
+    margin-bottom: 12px;
+  }
+
+  .wp-panel-header {
+    padding: 10px 12px;
+  }
+
+  .wp-panel-content {
+    padding: 12px;
+  }
+}
+
+/* 横屏低高度设备优化 */
+@media (max-height: 600px) and (orientation: landscape) {
+  .wp-layout-preview {
+    max-height: 400px;
+  }
+
+  .wp-panel-content {
+    max-height: 200px;
   }
 }
 
