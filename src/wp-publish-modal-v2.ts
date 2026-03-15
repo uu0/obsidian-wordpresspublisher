@@ -1006,8 +1006,8 @@ export class WpPublishModalV2 extends AbstractModal {
         aiBtn.onclick = () => new Notice(this.t('notice_imageAIApiKeyRequired'));
       }
 
-      // setup 模式下 header 不显示文件名，但如果之前有图片仍显示切换按钮
-      updateHeaderActions();
+      // setup 模式（无图）header 不显示编辑按钮
+      updateHeaderActions(undefined, false);
     };
 
     const toggleEdit = () => {

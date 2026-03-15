@@ -107937,7 +107937,7 @@ var init_wp_publish_modal_v2 = __esm({
             });
             aiBtn.onclick = () => new import_obsidian9.Notice(this.t("notice_imageAIApiKeyRequired"));
           }
-          updateHeaderActions();
+          updateHeaderActions(void 0, false);
         };
         const toggleEdit = () => {
           isSetupMode = !isSetupMode;
