@@ -58,7 +58,9 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin: 4px 0 8px 0;
+  margin: 0;
+  padding: 12px 20px 8px 20px;
+  flex-shrink: 0;
 }
 .modal-header h1 {
   margin: 0;
@@ -98,16 +100,38 @@
 
 /* ==================== V3.1 双栏布局 ==================== */
 
+/*
+ * Obsidian modal 结构：
+ *   .modal               → 全屏遮罩（position: fixed）
+ *     .modal-container   → 居中容器（JS 设置 width/height/display:flex）
+ *       .modal-content   → contentEl，需要参与 flex 伸缩
+ *         .wp-publish-modal-v2 → 我们的根容器
+ *
+ * 关键：必须让 .modal-content 也是一个 flex 列容器，
+ *       否则 .wp-publish-modal-v2 的 flex:1 / height:100% 无法生效。
+ */
+
+/* 让 contentEl 参与 flex 布局，撑满 modalEl */
+.modal-container:has(.wp-publish-modal-v2) .modal-content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0 !important;
+}
+
 /* 模态框整体容器 */
 .wp-publish-modal-v2 {
   display: flex;
   flex-direction: column;
-  height: 100%;
-  max-height: 90vh;
+  flex: 1;
+  min-height: 0;
   padding: 0 !important;
   max-width: 960px;
   width: 100%;
   box-sizing: border-box;
+  overflow: hidden;
 }
 
 /* 主内容区（双栏） */
@@ -119,24 +143,27 @@
   overflow: hidden;
 }
 
-/* 左侧预览区：占 2/3 */
+/* 左侧预览区：占 2/3，可垂直滚动 */
 .wp-v3-preview {
   flex: 2;
   min-width: 0;
+  min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 16px 16px 16px 20px;
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
-/* 右侧设置区：占 1/3，固定不滚动 */
+/* 右侧设置区：占 1/3，可垂直滚动 */
 .wp-v3-sidebar {
   flex: 1;
   min-width: 240px;
   max-width: 320px;
   border-left: 1px solid var(--background-modifier-border);
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: 16px;
   display: flex;
   flex-direction: column;
@@ -150,8 +177,11 @@
   background: var(--background-primary);
   border-radius: 8px;
   border: 1px solid var(--background-modifier-border);
-  overflow: hidden;
+  /* 不用 overflow:hidden，防止内容被截断 */
+  overflow: visible;
   transition: box-shadow 0.2s ease;
+  /* 保持圆角裁剪正常显示 */
+  isolation: isolate;
 }
 
 .wp-v3-section:hover {
@@ -282,20 +312,24 @@
   text-align: center;
 }
 
-/* 特色图片固定高度区域 */
+/* 特色图片自适应容器（最大高度约束，但不裁剪） */
 .wp-v3-featured-img-container {
   width: 100%;
-  height: 180px;
+  max-height: 220px;
   overflow: hidden;
   border-radius: 6px;
   background: var(--background-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .wp-v3-featured-img {
   width: 100%;
-  height: 100%;
+  height: auto;
+  max-height: 220px;
   border-radius: 6px;
-  object-fit: cover;
+  object-fit: contain;
   display: block;
 }
 
@@ -1018,6 +1052,55 @@
   padding: 6px 8px;
   background: var(--background-secondary);
   border-radius: 4px;
+}
+
+/* ==================== API Warning（XML-RPC 限制提示） ==================== */
+
+.wp-api-warning {
+  flex-shrink: 0;
+  margin: 0 20px 0 20px;
+  padding: 10px 14px;
+  border-radius: 6px;
+  background: rgba(var(--color-yellow-rgb, 255, 200, 0), 0.12);
+  border: 1px solid var(--color-yellow, #f5a623);
+  color: var(--text-normal);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.wp-api-warning.mod-warning {
+  background: rgba(var(--color-orange-rgb, 255, 140, 0), 0.1);
+  border-color: var(--text-warning, #f5a623);
+}
+
+.wp-api-warning-title {
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+
+.wp-api-limitations {
+  margin: 4px 0 6px 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.wp-api-limitations li {
+  margin-bottom: 2px;
+}
+
+.wp-api-recommendation {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.wp-api-recommendation p {
+  margin: 0 0 4px 0;
+}
+
+.wp-api-learn-more {
+  font-size: 12px;
+  margin-top: 4px;
 }
 
 .wp-conflict-value strong {

@@ -768,6 +768,18 @@ export class WpPublishModalV2 extends AbstractModal {
       modalEl.style.boxSizing = 'border-box';
       modalEl.style.display = 'flex';
       modalEl.style.flexDirection = 'column';
+      modalEl.style.overflow = 'hidden';
+    }
+
+    // 让 contentEl（.modal-content）参与 flex 伸缩，高度链才能传到内部
+    const { contentEl } = this;
+    if (contentEl) {
+      contentEl.style.flex = '1';
+      contentEl.style.minHeight = '0';
+      contentEl.style.display = 'flex';
+      contentEl.style.flexDirection = 'column';
+      contentEl.style.overflow = 'hidden';
+      contentEl.style.padding = '0';
     }
   }
 

@@ -107740,6 +107740,16 @@ var init_wp_publish_modal_v2 = __esm({
           modalEl.style.boxSizing = "border-box";
           modalEl.style.display = "flex";
           modalEl.style.flexDirection = "column";
+          modalEl.style.overflow = "hidden";
+        }
+        const { contentEl } = this;
+        if (contentEl) {
+          contentEl.style.flex = "1";
+          contentEl.style.minHeight = "0";
+          contentEl.style.display = "flex";
+          contentEl.style.flexDirection = "column";
+          contentEl.style.overflow = "hidden";
+          contentEl.style.padding = "0";
         }
       }
       // ==================== V3.1 主布局 ====================
