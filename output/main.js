@@ -107631,6 +107631,15 @@ var init_wp_publish_modal_v2 = __esm({
         return (bytes / (1024 * 1024)).toFixed(1) + " MB";
       }
       /**
+       * 中间截断文件名：保留前 prefixLen 个字符 + "..." + 后 suffixLen 个字符
+       * 当字符串长度 <= prefixLen + suffixLen + 3 时原样返回
+       * 默认 prefix=10, suffix=8 → 最长 21 字符（适合 header 有限宽度）
+       */
+      truncateMiddle(str, prefixLen = 10, suffixLen = 8) {
+        if (str.length <= prefixLen + suffixLen + 3) return str;
+        return str.slice(0, prefixLen) + "..." + str.slice(str.length - suffixLen);
+      }
+      /**
        * 加载远程特色图片（别名方法）
        */
       async loadRemoteFeaturedImage(postId, params) {
@@ -107831,14 +107840,14 @@ var init_wp_publish_modal_v2 = __esm({
           actionsEl.empty();
           if (fileName) {
             const nameEl = actionsEl.createSpan({ cls: "wp-v3-img-filename" });
-            nameEl.textContent = fileName;
+            nameEl.textContent = this.truncateMiddle(fileName);
             nameEl.title = fileName;
           }
           if (showEdit) {
             const editBtn = actionsEl.createEl("button", {
               text: "\u270F\uFE0F",
               cls: "wp-v3-icon-btn",
-              attr: { title: isSetupMode ? this.t("publishModal_editButton") || "Edit" : this.t("publishModal_editButton") || "Edit" }
+              attr: { title: this.t("publishModal_editButton") || "Edit" }
             });
             editBtn.onclick = () => toggleEdit();
           }
@@ -107905,7 +107914,53 @@ var init_wp_publish_modal_v2 = __esm({
           body.empty();
           isSetupMode = true;
           const setup = body.createDiv("wp-v3-featured-setup");
-          setup.createDiv({ cls: "wp-v3-featured-empty", text: this.t("publishModal_noImageSelected") || "\u6682\u65E0\u7279\u8272\u56FE\u7247" });
+          const currentImage = this.featuredImage || this.autoFeaturedImage;
+          const hasCurrentImage = !!currentImage || !!this.matterData.featurePicture;
+          if (hasCurrentImage) {
+            const currentWrap = setup.createDiv("wp-v3-featured-current-wrap");
+            const thumbContainer = currentWrap.createDiv("wp-v3-featured-thumb-container");
+            if (currentImage) {
+              const blob = new Blob([currentImage.content], { type: currentImage.mimeType });
+              const url = URL.createObjectURL(blob);
+              thumbContainer.createEl("img", { cls: "wp-v3-featured-thumb", attr: { src: url, alt: "Current Image" } });
+            } else if (this.matterData.featurePicture) {
+              thumbContainer.createEl("img", {
+                cls: "wp-v3-featured-thumb",
+                attr: { src: this.matterData.featurePicture, alt: "Current Image" }
+              });
+            }
+            const infoRow = currentWrap.createDiv("wp-v3-featured-current-info");
+            if (currentImage) {
+              const sourceTag = infoRow.createSpan({ cls: "wp-v3-featured-source-tag wp-v3-source-local" });
+              sourceTag.textContent = "\u{1F4BE} Local";
+              const nameSpan = infoRow.createSpan({ cls: "wp-v3-featured-current-name" });
+              nameSpan.textContent = this.truncateMiddle(currentImage.fileName);
+              nameSpan.title = currentImage.fileName;
+              const sizeSpan = infoRow.createSpan({ cls: "wp-v3-featured-current-size" });
+              sizeSpan.textContent = this.formatFileSize(currentImage.content.byteLength);
+            } else if (this.matterData.featurePicture) {
+              const sourceTag = infoRow.createSpan({ cls: "wp-v3-featured-source-tag wp-v3-source-uploaded" });
+              sourceTag.textContent = "\u2601\uFE0F WordPress";
+              const urlSpan = infoRow.createSpan({ cls: "wp-v3-featured-current-name" });
+              const urlStr = String(this.matterData.featurePicture);
+              urlSpan.textContent = this.truncateMiddle(urlStr, 12, 10);
+              urlSpan.title = urlStr;
+            }
+            const removeBtn = currentWrap.createEl("button", {
+              text: "\u{1F5D1}\uFE0F " + (this.t("publishModal_removeImage") || "Remove"),
+              cls: "wp-v3-feature-btn wp-v3-feature-btn-danger"
+            });
+            removeBtn.onclick = () => {
+              this.featuredImage = null;
+              this.autoFeaturedImage = null;
+              this.matterData.featurePicture = "";
+              renderSetup();
+              updateHeaderActions(void 0, false);
+            };
+            setup.createDiv({ cls: "wp-v3-featured-divider" });
+          } else {
+            setup.createDiv({ cls: "wp-v3-featured-empty", text: this.t("publishModal_noImageSelected") || "\u6682\u65E0\u7279\u8272\u56FE\u7247" });
+          }
           const btnRow = setup.createDiv("wp-v3-featured-btn-row");
           const localBtn = btnRow.createEl("button", {
             text: "\u{1F4BE} " + this.t("publishModal_selectFromLocal"),
@@ -107937,7 +107992,12 @@ var init_wp_publish_modal_v2 = __esm({
             });
             aiBtn.onclick = () => new import_obsidian9.Notice(this.t("notice_imageAIApiKeyRequired"));
           }
-          updateHeaderActions(void 0, false);
+          if (hasCurrentImage) {
+            const label = currentImage ? `${this.truncateMiddle(currentImage.fileName)} (${this.formatFileSize(currentImage.content.byteLength)})` : this.t("publishModal_previewFeaturedImageUploaded") || "Uploaded";
+            updateHeaderActions(label, true);
+          } else {
+            updateHeaderActions(void 0, false);
+          }
         };
         const toggleEdit = () => {
           isSetupMode = !isSetupMode;

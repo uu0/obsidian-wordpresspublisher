@@ -614,6 +614,16 @@ export class WpPublishModalV2 extends AbstractModal {
   }
 
   /**
+   * 中间截断文件名：保留前 prefixLen 个字符 + "..." + 后 suffixLen 个字符
+   * 当字符串长度 <= prefixLen + suffixLen + 3 时原样返回
+   * 默认 prefix=10, suffix=8 → 最长 21 字符（适合 header 有限宽度）
+   */
+  private truncateMiddle(str: string, prefixLen = 10, suffixLen = 8): string {
+    if (str.length <= prefixLen + suffixLen + 3) return str;
+    return str.slice(0, prefixLen) + '...' + str.slice(str.length - suffixLen);
+  }
+
+  /**
    * 加载远程特色图片（别名方法）
    */
   private async loadRemoteFeaturedImage(postId: string | number, params: WordPressPostParams): Promise<void> {
@@ -880,16 +890,16 @@ export class WpPublishModalV2 extends AbstractModal {
 
     let isSetupMode = !hasImage;
 
-    /** 更新 header 右侧区域：文件名（截断）+ ✏️ 按钮 */
+    /** 更新 header 右侧区域：文件名（中间截断）+ ✏️ 按钮 */
     const updateHeaderActions = (fileName?: string, showEdit = true) => {
       const actionsEl = section.querySelector('.wp-v3-section-actions') as HTMLElement | null;
       if (!actionsEl) return;
       actionsEl.empty();
 
       if (fileName) {
-        // 文件名：固定宽度，前截断
+        // 文件名：中间截断（前10字符 + ... + 后8字符），完整名称放 title
         const nameEl = actionsEl.createSpan({ cls: 'wp-v3-img-filename' });
-        nameEl.textContent = fileName;
+        nameEl.textContent = this.truncateMiddle(fileName);
         nameEl.title = fileName;
       }
 
@@ -897,9 +907,7 @@ export class WpPublishModalV2 extends AbstractModal {
         const editBtn = actionsEl.createEl('button', {
           text: '✏️',
           cls: 'wp-v3-icon-btn',
-          attr: { title: isSetupMode
-            ? (this.t('publishModal_editButton') || 'Edit')
-            : (this.t('publishModal_editButton') || 'Edit') }
+          attr: { title: this.t('publishModal_editButton') || 'Edit' }
         });
         editBtn.onclick = () => toggleEdit();
       }
@@ -968,9 +976,72 @@ export class WpPublishModalV2 extends AbstractModal {
     const renderSetup = () => {
       body.empty();
       isSetupMode = true;
-      const setup = body.createDiv('wp-v3-featured-setup');
-      setup.createDiv({ cls: 'wp-v3-featured-empty', text: this.t('publishModal_noImageSelected') || '暂无特色图片' });
 
+      const setup = body.createDiv('wp-v3-featured-setup');
+
+      // ── 当前已有图片：显示缩略图 + 来源标签 + 移除按钮 ──
+      const currentImage = this.featuredImage || this.autoFeaturedImage;
+      const hasCurrentImage = !!currentImage || !!this.matterData.featurePicture;
+
+      if (hasCurrentImage) {
+        const currentWrap = setup.createDiv('wp-v3-featured-current-wrap');
+
+        // 缩略图
+        const thumbContainer = currentWrap.createDiv('wp-v3-featured-thumb-container');
+        if (currentImage) {
+          const blob = new Blob([currentImage.content], { type: currentImage.mimeType });
+          const url = URL.createObjectURL(blob);
+          thumbContainer.createEl('img', { cls: 'wp-v3-featured-thumb', attr: { src: url, alt: 'Current Image' } });
+        } else if (this.matterData.featurePicture) {
+          thumbContainer.createEl('img', {
+            cls: 'wp-v3-featured-thumb',
+            attr: { src: this.matterData.featurePicture as string, alt: 'Current Image' }
+          });
+        }
+
+        // 来源 + 文件名信息行
+        const infoRow = currentWrap.createDiv('wp-v3-featured-current-info');
+
+        if (currentImage) {
+          // 本地图片（vault 选取 / 本地文件 / AI 生成 / 拖拽）
+          const sourceTag = infoRow.createSpan({ cls: 'wp-v3-featured-source-tag wp-v3-source-local' });
+          sourceTag.textContent = '💾 Local';
+          const nameSpan = infoRow.createSpan({ cls: 'wp-v3-featured-current-name' });
+          nameSpan.textContent = this.truncateMiddle(currentImage.fileName);
+          nameSpan.title = currentImage.fileName;
+          const sizeSpan = infoRow.createSpan({ cls: 'wp-v3-featured-current-size' });
+          sizeSpan.textContent = this.formatFileSize(currentImage.content.byteLength);
+        } else if (this.matterData.featurePicture) {
+          // 已上传到 WordPress（来自 frontmatter 的 URL）
+          const sourceTag = infoRow.createSpan({ cls: 'wp-v3-featured-source-tag wp-v3-source-uploaded' });
+          sourceTag.textContent = '☁️ WordPress';
+          const urlSpan = infoRow.createSpan({ cls: 'wp-v3-featured-current-name' });
+          const urlStr = String(this.matterData.featurePicture);
+          urlSpan.textContent = this.truncateMiddle(urlStr, 12, 10);
+          urlSpan.title = urlStr;
+        }
+
+        // 移除按钮
+        const removeBtn = currentWrap.createEl('button', {
+          text: '🗑️ ' + (this.t('publishModal_removeImage') || 'Remove'),
+          cls: 'wp-v3-feature-btn wp-v3-feature-btn-danger'
+        });
+        removeBtn.onclick = () => {
+          this.featuredImage = null;
+          this.autoFeaturedImage = null;
+          this.matterData.featurePicture = '';
+          renderSetup();
+          updateHeaderActions(undefined, false);
+        };
+
+        // 分隔线
+        setup.createDiv({ cls: 'wp-v3-featured-divider' });
+      } else {
+        // 无图时的占位提示
+        setup.createDiv({ cls: 'wp-v3-featured-empty', text: this.t('publishModal_noImageSelected') || '暂无特色图片' });
+      }
+
+      // ── 选图按钮区 ──
       const btnRow = setup.createDiv('wp-v3-featured-btn-row');
 
       const localBtn = btnRow.createEl('button', {
@@ -1007,8 +1078,15 @@ export class WpPublishModalV2 extends AbstractModal {
         aiBtn.onclick = () => new Notice(this.t('notice_imageAIApiKeyRequired'));
       }
 
-      // setup 模式（无图）header 不显示编辑按钮
-      updateHeaderActions(undefined, false);
+      // setup 模式 header：有图显示文件名 + ✏️（切换回预览），无图隐藏
+      if (hasCurrentImage) {
+        const label = currentImage
+          ? `${this.truncateMiddle(currentImage.fileName)} (${this.formatFileSize(currentImage.content.byteLength)})`
+          : (this.t('publishModal_previewFeaturedImageUploaded') || 'Uploaded');
+        updateHeaderActions(label, true);
+      } else {
+        updateHeaderActions(undefined, false);
+      }
     };
 
     const toggleEdit = () => {
