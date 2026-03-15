@@ -107647,7 +107647,9 @@ var init_wp_publish_modal_v2 = __esm({
           title: this.noteTitle || "",
           content: "",
           slug: this.matterData.slug || "",
-          excerpt: this.matterData.excerpt || ""
+          excerpt: this.matterData.excerpt || "",
+          // 有关联文章时，"发布为新文章"默认开启
+          publishAsNew: !!this.matterData.postId
         };
         if (this.matterData.featuredImageId) {
           params.featuredMedia = Number(this.matterData.featuredImageId);
@@ -107718,9 +107720,6 @@ var init_wp_publish_modal_v2 = __esm({
         contentEl.addClass("wp-publish-modal-v2");
         const titleBar = contentEl.createDiv("wp-v3-title-bar");
         titleBar.createSpan({ cls: "wp-v3-title-bar-name", text: "WordPress Publisher" });
-        const closeBtn = titleBar.createEl("button", { cls: "wp-v3-title-bar-close", attr: { "aria-label": "Close" } });
-        closeBtn.innerHTML = "\u2715";
-        closeBtn.onclick = () => this.close();
         this.updateModalWidth();
         const profile = this.plugin.settings.profiles.find((p) => p.name === params.profileName);
         if (profile && profile.apiType === "xml-rpc") {
@@ -108755,7 +108754,7 @@ var init_wp_publish_modal_v2 = __esm({
       renderV3Footer(container, params) {
         const footer = container.createDiv("wp-v3-footer");
         const editBtn = footer.createEl("button", {
-          text: "\u270F\uFE0F " + (this.t("publishModal_editButton") || "\u7F16\u8F91"),
+          text: this.t("publishModal_editButton") || "\u270F\uFE0F \u7F16\u8F91",
           cls: "wp-v3-edit-footer-btn"
         });
         editBtn.onclick = () => {
@@ -108763,12 +108762,12 @@ var init_wp_publish_modal_v2 = __esm({
           if (contentEditBtn) contentEditBtn.click();
         };
         const cancelBtn = footer.createEl("button", {
-          text: "\u{1F519} " + (this.t("publishModal_cancel") || "\u53D6\u6D88"),
+          text: this.t("publishModal_cancel") || "\u53D6\u6D88",
           cls: "wp-v3-cancel-footer-btn"
         });
         cancelBtn.onclick = () => this.close();
         const publishBtn = footer.createEl("button", {
-          text: "\u{1F680} " + (this.t("publishModal_publishButton") || "\u53D1\u5E03"),
+          text: this.t("publishModal_publishButton") || "\u{1F680} \u53D1\u5E03",
           cls: "wp-v3-publish-footer-btn"
         });
         this.publishBtn = publishBtn;

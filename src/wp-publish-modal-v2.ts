@@ -631,7 +631,9 @@ export class WpPublishModalV2 extends AbstractModal {
       title: this.noteTitle || '',
       content: '',
       slug: this.matterData.slug || '',
-      excerpt: this.matterData.excerpt || ''
+      excerpt: this.matterData.excerpt || '',
+      // 有关联文章时，"发布为新文章"默认开启
+      publishAsNew: !!this.matterData.postId
     };
 
     // 从 frontmatter 恢复特色图片 ID（如果存在）
@@ -731,12 +733,9 @@ export class WpPublishModalV2 extends AbstractModal {
     contentEl.empty();
     contentEl.addClass('wp-publish-modal-v2');
 
-    // 自定义紧凑标题栏：插件名 + 关闭按钮同行（替代原 createHeader 的 h1）
+    // 插件名标题栏（仅显示名称，无关闭按钮）
     const titleBar = contentEl.createDiv('wp-v3-title-bar');
     titleBar.createSpan({ cls: 'wp-v3-title-bar-name', text: 'WordPress Publisher' });
-    const closeBtn = titleBar.createEl('button', { cls: 'wp-v3-title-bar-close', attr: { 'aria-label': 'Close' } });
-    closeBtn.innerHTML = '✕';
-    closeBtn.onclick = () => this.close();
 
     // 自适应窗口宽度
     this.updateModalWidth();
@@ -1917,7 +1916,7 @@ export class WpPublishModalV2 extends AbstractModal {
 
     // ✏️ 编辑按钮（靠左，进入文章内容编辑模式）
     const editBtn = footer.createEl('button', {
-      text: '✏️ ' + (this.t('publishModal_editButton') || '编辑'),
+      text: this.t('publishModal_editButton') || '✏️ 编辑',
       cls: 'wp-v3-edit-footer-btn'
     });
     editBtn.onclick = () => {
@@ -1927,13 +1926,13 @@ export class WpPublishModalV2 extends AbstractModal {
     };
 
     const cancelBtn = footer.createEl('button', {
-      text: '🔙 ' + (this.t('publishModal_cancel') || '取消'),
+      text: this.t('publishModal_cancel') || '取消',
       cls: 'wp-v3-cancel-footer-btn'
     });
     cancelBtn.onclick = () => this.close();
 
     const publishBtn = footer.createEl('button', {
-      text: '🚀 ' + (this.t('publishModal_publishButton') || '发布'),
+      text: this.t('publishModal_publishButton') || '🚀 发布',
       cls: 'wp-v3-publish-footer-btn'
     }) as HTMLButtonElement;
     this.publishBtn = publishBtn;

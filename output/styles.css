@@ -66,18 +66,20 @@
   margin: 0;
 }
 
-/* V3 自定义紧凑标题栏（替代 h1 大标题） */
+/* V3 自定义紧凑标题栏（只显示插件名，无关闭按钮） */
 
-/* 隐藏 Obsidian 自带的 modal 关闭按钮，使用我们自定义的 */
+/* 隐藏 Obsidian 原生 modal-header（含 h1 + 关闭按钮），让插件名紧贴顶部 */
 .modal-container:has(.wp-publish-modal-v2) .modal-close-button {
+  display: none !important;
+}
+.modal-container:has(.wp-publish-modal-v2) .modal-header {
   display: none !important;
 }
 
 .wp-v3-title-bar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 8px 16px 8px 20px;
+  padding: 8px 20px;
   flex-shrink: 0;
   border-bottom: 1px solid var(--background-modifier-border);
   background: var(--background-primary);
@@ -89,23 +91,6 @@
   font-weight: 600;
   color: var(--text-muted);
   letter-spacing: 0.02em;
-}
-
-.wp-v3-title-bar-close {
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  color: var(--text-muted);
-  font-size: 14px;
-  padding: 3px 6px;
-  border-radius: 4px;
-  line-height: 1;
-  transition: all 0.15s ease;
-}
-
-.wp-v3-title-bar-close:hover {
-  color: var(--text-normal);
-  background: var(--background-modifier-hover);
 }
 
 /* WordPress Publish Modal V2 Styles */
