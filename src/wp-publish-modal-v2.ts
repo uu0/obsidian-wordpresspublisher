@@ -1523,6 +1523,86 @@ export class WpPublishModalV2 extends AbstractModal {
   }
 
   /**
+   * 从本地文件系统选择图片
+   */
+  private selectLocalFile(params: WordPressPostParams): void {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/jpeg,image/png,image/gif,image/webp';
+    input.style.display = 'none';
+
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+
+      // 验证文件类型
+      if (!file.type.match(/^image\/(jpeg|png|gif|webp)$/)) {
+        new Notice(this.t('notice_invalidImageFormat'));
+        return;
+      }
+
+      // 验证文件大小（最大 10MB）
+      const maxSize = 10 * 1024 * 1024;
+      if (file.size > maxSize) {
+        new Notice(this.t('notice_imageTooLarge'));
+        return;
+      }
+
+      try {
+        let arrayBuffer = await file.arrayBuffer();
+
+        // 应用裁剪和缩放
+        const ratio = this.plugin.settings.imageCropRatio || '16:9';
+        const processed = await resizeFeaturedImage(
+          arrayBuffer,
+          file.type,
+          this.plugin.settings.imageCropWidth || 1200,
+          ratio
+        );
+
+        // 如果裁剪成功，使用裁剪后的图片；否则使用原图
+        if (processed) {
+          arrayBuffer = processed;
+          new Notice(this.t('featuredImageModal_imageCropped', {
+            width: (this.plugin.settings.imageCropWidth || 1200).toString(),
+            height: Math.round((this.plugin.settings.imageCropWidth || 1200) * this.getAspectRatio()).toString(),
+            ratio: ratio
+          }));
+        }
+
+        this.featuredImage = {
+          fileName: file.name,
+          mimeType: file.type,
+          content: arrayBuffer,
+          width: this.plugin.settings.imageCropWidth || 1200
+        };
+        this.imageSource = 'local';
+
+        // 保存到缓存
+        await this.saveImageToCache(arrayBuffer, file.name, file.type, 'local');
+        this.display(params);
+        new Notice(this.t('publishModal_imageFromLocal', { fileName: file.name }));
+      } catch (error) {
+        new Notice(this.t('notice_imageLoadFailed'));
+        console.error('Failed to load local image:', error);
+      }
+    };
+
+    document.body.appendChild(input);
+    input.click();
+    setTimeout(() => document.body.removeChild(input), 1000);
+  }
+
+  /**
+   * 获取宽高比数值
+   */
+  private getAspectRatio(): number {
+    const ratio = this.plugin.settings.imageCropRatio || '16:9';
+    const parts = ratio.split(':').map(Number);
+    return parts[1] / parts[0]; // height/width ratio
+  }
+
+  /**
    * 为 Setting 添加信息按钮
    */
   private addInfoButton(setting: Setting, infoKey: TranslateKey): void {
@@ -2021,6 +2101,13 @@ export class WpPublishModalV2 extends AbstractModal {
 
     // 操作按钮行
     const btnRow = container.createDiv('featured-image-btn-row');
+
+    // 本地文件
+    const localBtn = btnRow.createEl('button', {
+      text: '💾 ' + this.t('publishModal_selectFromLocal'),
+      cls: 'feature-btn'
+    });
+    localBtn.onclick = () => this.selectLocalFile(params);
 
     // 从库中选择
     const vaultBtn = btnRow.createEl('button', {

@@ -108316,6 +108316,71 @@ var init_wp_publish_modal_v2 = __esm({
         modal.open();
       }
       /**
+       * 从本地文件系统选择图片
+       */
+      selectLocalFile(params) {
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = "image/jpeg,image/png,image/gif,image/webp";
+        input.style.display = "none";
+        input.onchange = async () => {
+          var _a5;
+          const file = (_a5 = input.files) == null ? void 0 : _a5[0];
+          if (!file) return;
+          if (!file.type.match(/^image\/(jpeg|png|gif|webp)$/)) {
+            new import_obsidian9.Notice(this.t("notice_invalidImageFormat"));
+            return;
+          }
+          const maxSize = 10 * 1024 * 1024;
+          if (file.size > maxSize) {
+            new import_obsidian9.Notice(this.t("notice_imageTooLarge"));
+            return;
+          }
+          try {
+            let arrayBuffer = await file.arrayBuffer();
+            const ratio = this.plugin.settings.imageCropRatio || "16:9";
+            const processed = await resizeFeaturedImage(
+              arrayBuffer,
+              file.type,
+              this.plugin.settings.imageCropWidth || 1200,
+              ratio
+            );
+            if (processed) {
+              arrayBuffer = processed;
+              new import_obsidian9.Notice(this.t("featuredImageModal_imageCropped", {
+                width: (this.plugin.settings.imageCropWidth || 1200).toString(),
+                height: Math.round((this.plugin.settings.imageCropWidth || 1200) * this.getAspectRatio()).toString(),
+                ratio
+              }));
+            }
+            this.featuredImage = {
+              fileName: file.name,
+              mimeType: file.type,
+              content: arrayBuffer,
+              width: this.plugin.settings.imageCropWidth || 1200
+            };
+            this.imageSource = "local";
+            await this.saveImageToCache(arrayBuffer, file.name, file.type, "local");
+            this.display(params);
+            new import_obsidian9.Notice(this.t("publishModal_imageFromLocal", { fileName: file.name }));
+          } catch (error2) {
+            new import_obsidian9.Notice(this.t("notice_imageLoadFailed"));
+            console.error("Failed to load local image:", error2);
+          }
+        };
+        document.body.appendChild(input);
+        input.click();
+        setTimeout(() => document.body.removeChild(input), 1e3);
+      }
+      /**
+       * 获取宽高比数值
+       */
+      getAspectRatio() {
+        const ratio = this.plugin.settings.imageCropRatio || "16:9";
+        const parts = ratio.split(":").map(Number);
+        return parts[1] / parts[0];
+      }
+      /**
        * 为 Setting 添加信息按钮
        */
       addInfoButton(setting, infoKey) {
@@ -108668,6 +108733,11 @@ var init_wp_publish_modal_v2 = __esm({
           });
         }
         const btnRow = container.createDiv("featured-image-btn-row");
+        const localBtn = btnRow.createEl("button", {
+          text: "\u{1F4BE} " + this.t("publishModal_selectFromLocal"),
+          cls: "feature-btn"
+        });
+        localBtn.onclick = () => this.selectLocalFile(params);
         const vaultBtn = btnRow.createEl("button", {
           text: "\u{1F4C1} " + this.t("publishModal_selectFromVault"),
           cls: "feature-btn"
@@ -114764,6 +114834,9 @@ __export(en_exports, {
   notice_imageAIConfigInvalid: () => notice_imageAIConfigInvalid,
   notice_imageAIConfigRequired: () => notice_imageAIConfigRequired,
   notice_imageAIConfigValid: () => notice_imageAIConfigValid,
+  notice_imageLoadFailed: () => notice_imageLoadFailed,
+  notice_imageTooLarge: () => notice_imageTooLarge,
+  notice_invalidImageFormat: () => notice_invalidImageFormat,
   notice_publishCancelled: () => notice_publishCancelled,
   notice_slugModeRequiresAI: () => notice_slugModeRequiresAI,
   notice_textAIApiKeyRequired: () => notice_textAIApiKeyRequired,
@@ -114847,6 +114920,7 @@ __export(en_exports, {
   publishModal_historyPanel: () => publishModal_historyPanel,
   publishModal_imageAIRequired: () => publishModal_imageAIRequired,
   publishModal_imageFromGallery: () => publishModal_imageFromGallery,
+  publishModal_imageFromLocal: () => publishModal_imageFromLocal,
   publishModal_imagePromptTitle: () => publishModal_imagePromptTitle,
   publishModal_imageSelectFailed: () => publishModal_imageSelectFailed,
   publishModal_imageSelected: () => publishModal_imageSelected,
@@ -114903,6 +114977,7 @@ __export(en_exports, {
   publishModal_saveSettings: () => publishModal_saveSettings,
   publishModal_selectCategory: () => publishModal_selectCategory,
   publishModal_selectFeaturedImage: () => publishModal_selectFeaturedImage,
+  publishModal_selectFromLocal: () => publishModal_selectFromLocal,
   publishModal_selectFromVault: () => publishModal_selectFromVault,
   publishModal_settingsPanel: () => publishModal_settingsPanel,
   publishModal_settingsSaved: () => publishModal_settingsSaved,
@@ -115261,6 +115336,9 @@ var notice_aiConfigRequired = "Please configure AI service first";
 var notice_aiApiKeyRequired = "Please enter an AI API Key in plugin settings first";
 var notice_textAIApiKeyRequired = "Please enter a Text AI API Key in plugin settings first";
 var notice_imageAIApiKeyRequired = "Please enter an Image Generation AI API Key in plugin settings first";
+var notice_invalidImageFormat = "Invalid image format. Please select a JPEG, PNG, GIF, or WebP image.";
+var notice_imageTooLarge = "Image file is too large. Maximum size is 10MB.";
+var notice_imageLoadFailed = "Failed to load image file.";
 var notice_aiConfigValid = "\u2713 AI configuration validated successfully";
 var notice_aiConfigInvalid = "\u2717 AI configuration validation failed: <%= error %>";
 var notice_imageAIConfigRequired = "Please configure Image Generation AI first";
@@ -115292,6 +115370,7 @@ var publishModal_unsplashKeyRequired = "Please configure Unsplash API Key in plu
 var publishModal_imageAIRequired = "Please configure AI service (Image Generation AI) in plugin settings first";
 var publishModal_imageSelected = "Image selected: <%= fileName %>";
 var publishModal_imageFromGallery = "Selected from gallery: <%= fileName %>";
+var publishModal_imageFromLocal = "Selected from local: <%= fileName %>";
 var publishModal_uploadedToWordPress = "\u2705 Uploaded to WordPress";
 var publishModal_emptyContentForTags = "Article content is empty";
 var publishModal_summaryGenerated = "Summary generated: <%= summary %>...";
@@ -115472,6 +115551,7 @@ var publishModal_skipRemoteImage = "Skip";
 var publishModal_removeImage = "Remove";
 var publishModal_noImageSelected = "No image selected";
 var publishModal_selectFromVault = "Select from Vault";
+var publishModal_selectFromLocal = "Select Local File";
 var publishModal_aiGenerate = "AI Generate";
 var publishModal_settingsPanel = "Settings";
 var publishModal_historyPanel = "History";
@@ -115664,6 +115744,9 @@ var en_default = {
   notice_aiApiKeyRequired,
   notice_textAIApiKeyRequired,
   notice_imageAIApiKeyRequired,
+  notice_invalidImageFormat,
+  notice_imageTooLarge,
+  notice_imageLoadFailed,
   notice_aiConfigValid,
   notice_aiConfigInvalid,
   notice_imageAIConfigRequired,
@@ -115695,6 +115778,7 @@ var en_default = {
   publishModal_imageAIRequired,
   publishModal_imageSelected,
   publishModal_imageFromGallery,
+  publishModal_imageFromLocal,
   publishModal_uploadedToWordPress,
   publishModal_emptyContentForTags,
   publishModal_summaryGenerated,
@@ -115875,6 +115959,7 @@ var en_default = {
   publishModal_removeImage,
   publishModal_noImageSelected,
   publishModal_selectFromVault,
+  publishModal_selectFromLocal,
   publishModal_aiGenerate,
   publishModal_settingsPanel,
   publishModal_historyPanel,
@@ -115978,6 +116063,9 @@ __export(zh_cn_exports, {
   notice_imageAIConfigInvalid: () => notice_imageAIConfigInvalid2,
   notice_imageAIConfigRequired: () => notice_imageAIConfigRequired2,
   notice_imageAIConfigValid: () => notice_imageAIConfigValid2,
+  notice_imageLoadFailed: () => notice_imageLoadFailed2,
+  notice_imageTooLarge: () => notice_imageTooLarge2,
+  notice_invalidImageFormat: () => notice_invalidImageFormat2,
   notice_publishCancelled: () => notice_publishCancelled2,
   notice_slugModeRequiresAI: () => notice_slugModeRequiresAI2,
   notice_textAIApiKeyRequired: () => notice_textAIApiKeyRequired2,
@@ -116061,6 +116149,7 @@ __export(zh_cn_exports, {
   publishModal_historyPanel: () => publishModal_historyPanel2,
   publishModal_imageAIRequired: () => publishModal_imageAIRequired2,
   publishModal_imageFromGallery: () => publishModal_imageFromGallery2,
+  publishModal_imageFromLocal: () => publishModal_imageFromLocal2,
   publishModal_imagePromptTitle: () => publishModal_imagePromptTitle2,
   publishModal_imageSelectFailed: () => publishModal_imageSelectFailed2,
   publishModal_imageSelected: () => publishModal_imageSelected2,
@@ -116117,6 +116206,7 @@ __export(zh_cn_exports, {
   publishModal_saveSettings: () => publishModal_saveSettings2,
   publishModal_selectCategory: () => publishModal_selectCategory2,
   publishModal_selectFeaturedImage: () => publishModal_selectFeaturedImage2,
+  publishModal_selectFromLocal: () => publishModal_selectFromLocal2,
   publishModal_selectFromVault: () => publishModal_selectFromVault2,
   publishModal_settingsPanel: () => publishModal_settingsPanel2,
   publishModal_settingsSaved: () => publishModal_settingsSaved2,
@@ -116475,6 +116565,9 @@ var notice_aiConfigRequired2 = "\u8BF7\u5148\u914D\u7F6E AI \u670D\u52A1";
 var notice_aiApiKeyRequired2 = "\u8BF7\u5148\u5728\u63D2\u4EF6\u8BBE\u7F6E\u4E2D\u586B\u5199 AI API Key";
 var notice_textAIApiKeyRequired2 = "\u8BF7\u5148\u5728\u63D2\u4EF6\u8BBE\u7F6E\u4E2D\u586B\u5199\u6587\u672C AI \u7684 API Key";
 var notice_imageAIApiKeyRequired2 = "\u8BF7\u5148\u5728\u63D2\u4EF6\u8BBE\u7F6E\u4E2D\u586B\u5199\u56FE\u7247\u751F\u6210 AI \u7684 API Key";
+var notice_invalidImageFormat2 = "\u65E0\u6548\u7684\u56FE\u7247\u683C\u5F0F\u3002\u8BF7\u9009\u62E9 JPEG\u3001PNG\u3001GIF \u6216 WebP \u56FE\u7247\u3002";
+var notice_imageTooLarge2 = "\u56FE\u7247\u6587\u4EF6\u8FC7\u5927\u3002\u6700\u5927\u652F\u6301 10MB\u3002";
+var notice_imageLoadFailed2 = "\u52A0\u8F7D\u56FE\u7247\u6587\u4EF6\u5931\u8D25\u3002";
 var notice_aiConfigValid2 = "\u2713 AI \u914D\u7F6E\u9A8C\u8BC1\u6210\u529F";
 var notice_aiConfigInvalid2 = "\u2717 AI \u914D\u7F6E\u9A8C\u8BC1\u5931\u8D25: <%= error %>";
 var notice_imageAIConfigRequired2 = "\u8BF7\u5148\u914D\u7F6E\u56FE\u7247\u751F\u6210 AI";
@@ -116506,6 +116599,7 @@ var publishModal_unsplashKeyRequired2 = "\u8BF7\u5148\u5728\u63D2\u4EF6\u8BBE\u7
 var publishModal_imageAIRequired2 = "\u8BF7\u5148\u5728\u63D2\u4EF6\u8BBE\u7F6E\u4E2D\u914D\u7F6E AI \u670D\u52A1\uFF08\u56FE\u7247\u751F\u6210 AI\uFF09";
 var publishModal_imageSelected2 = "\u5DF2\u9009\u62E9\u56FE\u7247: <%= fileName %>";
 var publishModal_imageFromGallery2 = "\u5DF2\u4ECE\u56FE\u5E93\u9009\u62E9: <%= fileName %>";
+var publishModal_imageFromLocal2 = "\u5DF2\u4ECE\u672C\u5730\u9009\u62E9: <%= fileName %>";
 var publishModal_uploadedToWordPress2 = "\u2705 \u5DF2\u4E0A\u4F20\u5230 WordPress";
 var publishModal_emptyContentForTags2 = "\u6587\u7AE0\u5185\u5BB9\u4E3A\u7A7A";
 var publishModal_summaryGenerated2 = "\u6458\u8981\u5DF2\u751F\u6210: <%= summary %>...";
@@ -116686,6 +116780,7 @@ var publishModal_skipRemoteImage2 = "\u8DF3\u8FC7";
 var publishModal_removeImage2 = "\u79FB\u9664";
 var publishModal_noImageSelected2 = "\u672A\u9009\u62E9\u56FE\u7247";
 var publishModal_selectFromVault2 = "\u4ECE\u4ED3\u5E93\u9009\u62E9";
+var publishModal_selectFromLocal2 = "\u9009\u62E9\u672C\u5730\u6587\u4EF6";
 var publishModal_aiGenerate2 = "AI \u751F\u6210";
 var publishModal_settingsPanel2 = "\u8BBE\u7F6E";
 var publishModal_historyPanel2 = "\u5386\u53F2\u8BB0\u5F55";
@@ -116878,6 +116973,9 @@ var zh_cn_default = {
   notice_aiApiKeyRequired: notice_aiApiKeyRequired2,
   notice_textAIApiKeyRequired: notice_textAIApiKeyRequired2,
   notice_imageAIApiKeyRequired: notice_imageAIApiKeyRequired2,
+  notice_invalidImageFormat: notice_invalidImageFormat2,
+  notice_imageTooLarge: notice_imageTooLarge2,
+  notice_imageLoadFailed: notice_imageLoadFailed2,
   notice_aiConfigValid: notice_aiConfigValid2,
   notice_aiConfigInvalid: notice_aiConfigInvalid2,
   notice_imageAIConfigRequired: notice_imageAIConfigRequired2,
@@ -116909,6 +117007,7 @@ var zh_cn_default = {
   publishModal_imageAIRequired: publishModal_imageAIRequired2,
   publishModal_imageSelected: publishModal_imageSelected2,
   publishModal_imageFromGallery: publishModal_imageFromGallery2,
+  publishModal_imageFromLocal: publishModal_imageFromLocal2,
   publishModal_uploadedToWordPress: publishModal_uploadedToWordPress2,
   publishModal_emptyContentForTags: publishModal_emptyContentForTags2,
   publishModal_summaryGenerated: publishModal_summaryGenerated2,
@@ -117089,6 +117188,7 @@ var zh_cn_default = {
   publishModal_removeImage: publishModal_removeImage2,
   publishModal_noImageSelected: publishModal_noImageSelected2,
   publishModal_selectFromVault: publishModal_selectFromVault2,
+  publishModal_selectFromLocal: publishModal_selectFromLocal2,
   publishModal_aiGenerate: publishModal_aiGenerate2,
   publishModal_settingsPanel: publishModal_settingsPanel2,
   publishModal_historyPanel: publishModal_historyPanel2,
