@@ -1,11 +1,96 @@
+/* ==================== WordPress Publisher Theme Variables ==================== */
+:root {
+  /* Tag colors for light theme */
+  --wp-tag-color-1: #5B8FF9;
+  --wp-tag-color-2: #5AD8A6;
+  --wp-tag-color-3: #F6BD16;
+  --wp-tag-color-4: #E86452;
+  --wp-tag-color-5: #6DC8EC;
+  --wp-tag-color-6: #945FB9;
+  --wp-tag-color-7: #FF9845;
+  --wp-tag-color-8: #1E9493;
+  --wp-tag-color-9: #FF99C3;
+
+  /* Shadow and overlay effects */
+  --wp-shadow-hover: 0 2px 8px rgba(0, 0, 0, 0.15);
+  --wp-modal-overlay: rgba(0, 0, 0, 0.5);
+  --wp-sticky-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+
+  /* Panel layout */
+  --wp-panel-width: 320px;
+  --wp-panel-collapsed-height: 48px;
+
+  /* Button colors */
+  --wp-btn-ai-bg: transparent;
+  --wp-btn-ai-border: var(--text-accent, #7c3aed);
+  --wp-btn-ai-text: var(--text-accent, #7c3aed);
+
+  --wp-btn-cancel-bg: var(--background-modifier-border, #e0e0e0);
+  --wp-btn-cancel-text: var(--text-normal, #333);
+
+  --wp-btn-save-bg: var(--interactive-accent, #0073aa);
+  --wp-btn-save-text: var(--text-on-accent, #fff);
+
+  /* Edit icon */
+  --wp-edit-icon-color: var(--text-muted);
+  --wp-edit-icon-hover: var(--interactive-accent);
+}
+
+.theme-dark {
+  /* Tag colors for dark theme - brighter variants */
+  --wp-tag-color-1: #7BA3FF;
+  --wp-tag-color-2: #6FE8B8;
+  --wp-tag-color-3: #FFD13D;
+  --wp-tag-color-4: #FF7A6B;
+  --wp-tag-color-5: #85D9F7;
+  --wp-tag-color-6: #A87FD1;
+  --wp-tag-color-7: #FFB066;
+  --wp-tag-color-8: #3EAFAE;
+  --wp-tag-color-9: #FFB3D9;
+
+  /* Shadow and overlay effects for dark theme */
+  --wp-shadow-hover: 0 2px 8px rgba(255, 255, 255, 0.1);
+  --wp-modal-overlay: rgba(0, 0, 0, 0.7);
+  --wp-sticky-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
 .modal-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin: 4px 0 8px 0;
+  margin: 0;
+  padding: 12px 20px 8px 20px;
+  flex-shrink: 0;
 }
 .modal-header h1 {
   margin: 0;
+}
+
+/* V3 自定义紧凑标题栏（只显示插件名，无关闭按钮） */
+
+/* 隐藏 Obsidian 原生 modal-header（含 h1 + 关闭按钮），让插件名紧贴顶部 */
+.modal-container:has(.wp-publish-modal-v2) .modal-close-button {
+  display: none !important;
+}
+.modal-container:has(.wp-publish-modal-v2) .modal-header {
+  display: none !important;
+}
+
+.wp-v3-title-bar {
+  display: flex;
+  align-items: center;
+  padding: 8px 20px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  min-height: 0;
+}
+
+.wp-v3-title-bar-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
 }
 
 /* WordPress Publish Modal V2 Styles */
@@ -38,6 +123,1235 @@
     flex-direction: column;
     gap: 12px;
   }
+}
+
+/* ==================== V3.1 双栏布局 ==================== */
+
+/*
+ * Obsidian modal 结构：
+ *   .modal               → 全屏遮罩（position: fixed）
+ *     .modal-container   → 居中容器（JS 设置 width/height/display:flex）
+ *       .modal-content   → contentEl，需要参与 flex 伸缩
+ *         .wp-publish-modal-v2 → 我们的根容器
+ *
+ * 关键：必须让 .modal-content 也是一个 flex 列容器，
+ *       否则 .wp-publish-modal-v2 的 flex:1 / height:100% 无法生效。
+ */
+
+/* 让 contentEl 参与 flex 布局，撑满 modalEl */
+.modal-container:has(.wp-publish-modal-v2) .modal-content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0 !important;
+}
+
+/* 桌面端：modal 最小宽度由 CSS 管理（JS 不再写 minWidth） */
+.modal-container:has(.wp-publish-modal-v2) {
+  min-width: 480px;
+}
+
+/* 模态框整体容器 */
+.wp-publish-modal-v2 {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  padding: 0 !important;
+  max-width: 960px;
+  width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+/* 主内容区（双栏） */
+.wp-v3-layout {
+  display: flex;
+  flex: 1;
+  gap: 0;
+  min-height: 0;
+  overflow: hidden;
+  align-items: flex-start; /* 左右两栏顶部对齐 */
+}
+
+/* 左侧预览区：占 2/3，可垂直滚动 */
+.wp-v3-preview {
+  flex: 2;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 12px 16px 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-self: stretch; /* 撑满高度以支持滚动 */
+}
+
+/* 右侧设置区：占 1/3，默认不滚动，JS 点击后变 auto */
+.wp-v3-sidebar {
+  flex: 1;
+  min-width: 240px;
+  max-width: 320px;
+  border-left: 1px solid var(--background-modifier-border);
+  overflow-y: hidden; /* JS 控制 */
+  overflow-x: hidden;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: var(--background-secondary);
+  align-self: stretch; /* 撑满高度 */
+}
+
+/* ==================== V3.1 预览区段落 ==================== */
+
+.wp-v3-section {
+  background: var(--background-primary);
+  border-radius: 8px;
+  border: 1px solid var(--background-modifier-border);
+  /* 不用 overflow:hidden，防止内容被截断 */
+  overflow: visible;
+  transition: box-shadow 0.2s ease;
+  /* 保持圆角裁剪正常显示 */
+  isolation: isolate;
+}
+
+.wp-v3-section:hover {
+  box-shadow: var(--wp-shadow-hover);
+}
+
+/* 段落标题栏 */
+.wp-v3-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--background-secondary);
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.wp-v3-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* 段落头部右侧按钮组 */
+.wp-v3-section-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* ✏️ 编辑 / 🤖 AI 通用按钮 */
+.wp-v3-icon-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 4px;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--text-muted);
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.wp-v3-icon-btn:hover {
+  color: var(--interactive-accent);
+  background: var(--background-modifier-hover);
+}
+
+.wp-v3-icon-btn.is-active {
+  color: var(--interactive-accent);
+}
+
+/* 段落内容区 */
+.wp-v3-section-body {
+  padding: 12px;
+}
+
+/* 编辑中状态 */
+.wp-v3-section.is-editing {
+  border-color: var(--interactive-accent);
+  box-shadow: 0 0 0 2px rgba(var(--interactive-accent-rgb, 0, 115, 170), 0.15);
+}
+
+/* 通用 textarea */
+.wp-v3-textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-family: var(--font-text);
+  font-size: 14px;
+  line-height: 1.6;
+  resize: vertical;
+  box-sizing: border-box;
+  transition: border-color 0.2s ease;
+}
+
+.wp-v3-textarea:focus {
+  outline: none;
+  border-color: var(--interactive-accent);
+}
+
+/* 编辑按钮组（保存/取消） */
+.wp-v3-edit-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.wp-v3-save-btn,
+.wp-v3-cancel-btn {
+  padding: 5px 14px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.15s ease;
+  border: 1px solid var(--background-modifier-border);
+}
+
+.wp-v3-save-btn {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border-color: var(--interactive-accent);
+}
+
+.wp-v3-save-btn:hover { opacity: 0.88; }
+
+.wp-v3-cancel-btn {
+  background: var(--background-secondary);
+  color: var(--text-normal);
+}
+
+.wp-v3-cancel-btn:hover {
+  background: var(--background-modifier-hover);
+}
+
+/* ==================== V3.1 特色图片段 ==================== */
+
+.wp-v3-featured-image-wrap {
+  text-align: center;
+}
+
+/* 特色图片自适应容器（最大高度约束，但不裁剪） */
+.wp-v3-featured-img-container {
+  width: 100%;
+  max-height: 220px;
+  overflow: hidden;
+  border-radius: 6px;
+  background: var(--background-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.wp-v3-featured-img {
+  width: 100%;
+  height: auto;
+  max-height: 220px;
+  border-radius: 6px;
+  object-fit: contain;
+  display: block;
+}
+
+.wp-v3-featured-empty {
+  height: 180px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: 13px;
+  background: var(--background-secondary);
+  border-radius: 6px;
+  border: 2px dashed var(--background-modifier-border);
+}
+
+/* 特色图片设置 UI（嵌入段落内） */
+.wp-v3-featured-setup {
+  padding: 4px 0;
+}
+
+.wp-v3-featured-btn-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.wp-v3-feature-btn {
+  flex: 1 1 auto;
+  min-width: 80px;
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  border: 1px solid var(--background-modifier-border);
+  padding: 7px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+
+.wp-v3-feature-btn:hover {
+  border-color: var(--interactive-accent);
+  background: var(--background-modifier-hover);
+}
+
+.wp-v3-feature-btn.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ==================== V3.1 特色图片：header 文件名显示 ==================== */
+
+/* 文件名：中间截断由 JS 完成，CSS 只负责视觉样式 */
+.wp-v3-img-filename {
+  display: inline-block;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--text-muted);
+  vertical-align: middle;
+  cursor: default;
+}
+
+
+/* ==================== V3.1 特色图片：header 来源标签 ==================== */
+
+/* 来源标签（用于 header actions 区，Local / WordPress）*/
+.wp-v3-featured-source-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+  line-height: 18px;
+}
+
+.wp-v3-source-local {
+  background: rgba(72, 187, 120, 0.15);
+  color: var(--color-green, #48bb78);
+  border: 1px solid rgba(72, 187, 120, 0.3);
+}
+
+.wp-v3-source-uploaded {
+  background: rgba(99, 179, 237, 0.15);
+  color: var(--color-blue, #63b3ed);
+  border: 1px solid rgba(99, 179, 237, 0.3);
+}
+
+/* ❌ 删除按钮（header 右侧）*/
+.wp-v3-icon-btn-delete {
+  color: var(--text-error, #e53e3e) !important;
+  opacity: 0.75;
+  font-size: 12px;
+}
+.wp-v3-icon-btn-delete:hover {
+  opacity: 1;
+  background: rgba(229, 62, 62, 0.12) !important;
+  border-radius: 4px;
+}
+
+/* 加载 / 错误状态包裹层 */
+.wp-v3-featured-status-wrap {
+  text-align: center;
+  padding: 20px;
+  color: var(--text-muted);
+}
+.wp-v3-featured-status-error {
+  color: var(--text-error, #e53e3e);
+  padding: 12px;
+}
+
+/* ==================== V3.1 内嵌摘要行 ==================== */
+
+/* 摘要行容器：紧贴文章内容下方 */
+.wp-v3-excerpt-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 8px 10px;
+  background: var(--background-secondary);
+  border-left: 3px solid var(--interactive-accent);
+  border-radius: 0 6px 6px 0;
+  position: relative;
+}
+
+/* 摘要文字：撑满左侧空间 */
+.wp-v3-excerpt-inline-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-muted);
+  font-style: italic;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* 摘要占位框（无摘要时） */
+.wp-v3-excerpt-placeholder {
+  width: 100%;
+  padding: 10px 0 4px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 占位框按钮行 */
+.wp-v3-placeholder-btn-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* 占位框按钮（AI生成 / 手动输入） */
+.wp-v3-placeholder-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 14px;
+  border-radius: 6px;
+  border: 1px dashed var(--background-modifier-border);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.wp-v3-placeholder-btn:hover {
+  border-color: var(--interactive-accent);
+  color: var(--interactive-accent);
+  background: var(--background-modifier-hover);
+}
+
+/* 内联编辑按钮（✏️）：背景完全透明，hover时淡显 */
+.wp-v3-inline-edit-btn {
+  flex-shrink: 0;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--text-faint);
+  transition: color 0.15s ease, background 0.15s ease;
+  align-self: flex-end;
+  opacity: 0.6;
+}
+
+.wp-v3-inline-edit-btn:hover {
+  color: var(--interactive-accent);
+  background: var(--background-modifier-hover) !important;
+  opacity: 1;
+}
+
+/* 摘要弹出编辑覆盖层 */
+.wp-v3-excerpt-edit-overlay {
+  margin-top: 8px;
+  padding: 10px;
+  background: var(--background-secondary);
+  border: 1px solid var(--interactive-accent);
+  border-radius: 6px;
+}
+
+/* ==================== V3.1 内嵌标签行 ==================== */
+
+/* 标签行容器 */
+.wp-v3-tags-row {
+  margin-top: 8px;
+}
+
+/* 标签容器：flex-wrap，铅笔跟随最后一个标签 */
+.wp-v3-tags-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  max-width: 100%;
+}
+
+/* 彩色圆角标签 */
+.wp-v3-tag-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #fff;
+  cursor: default;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.wp-v3-tag-item:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+/* 标签抖动动画 */
+@keyframes wp-tag-shake {
+  0%, 100% { transform: rotate(0deg); }
+  20% { transform: rotate(-4deg); }
+  40% { transform: rotate(4deg); }
+  60% { transform: rotate(-3deg); }
+  80% { transform: rotate(3deg); }
+}
+
+.wp-v3-tag-item.is-shaking {
+  animation: wp-tag-shake 0.5s ease infinite;
+  cursor: pointer;
+}
+
+/* 编辑模式下标签右上角 × 删除按钮 */
+.wp-v3-tag-delete-btn {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: bold;
+  line-height: 14px;
+  text-align: center;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease;
+  z-index: 1;
+}
+
+.wp-v3-tag-delete-btn:hover {
+  background: rgba(220, 38, 38, 0.9);
+}
+
+/* 标签行按钮区：直接嵌入 tags-container 内，铅笔跟随最后一个标签 */
+.wp-v3-tags-btn-area {
+  display: contents; /* 让内部按钮直接参与 flex 布局 */
+}
+
+/* 编辑模式下，按钮区恢复正常行布局（+ Done 两个按钮需要并排） */
+.wp-v3-tags-editing-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 6px;
+  width: 100%;
+}
+
+/* 标签操作按钮（+ / Done） */
+.wp-v3-tag-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 12px;
+  background: var(--background-secondary);
+  color: var(--text-muted);
+  border: 1px solid var(--background-modifier-border);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: bold;
+  transition: all 0.15s ease;
+}
+
+.wp-v3-tag-action-btn:hover {
+  border-color: var(--interactive-accent);
+  color: var(--interactive-accent);
+  background: var(--background-modifier-hover);
+}
+
+.wp-v3-tag-done-btn {
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border-color: var(--interactive-accent);
+}
+
+.wp-v3-tag-done-btn:hover {
+  opacity: 0.88;
+  color: var(--text-on-accent);
+}
+
+/* 无标签占位行：左 + 按钮，右 AI 按钮 */
+.wp-v3-tags-empty-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+/* 标签输入框 */
+.wp-v3-tag-input {
+  padding: 3px 10px;
+  font-size: 12px;
+  border: 1px solid var(--interactive-accent);
+  border-radius: 12px;
+  outline: none;
+  min-width: 100px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+}
+
+.wp-v3-tag-input:focus {
+  box-shadow: 0 0 0 2px rgba(var(--interactive-accent-rgb, 0, 115, 170), 0.2);
+}
+
+/* ==================== 标签拖拽排序 ==================== */
+
+/* 拖拽中的标签 */
+.wp-v3-tag-item.is-dragging {
+  opacity: 0.4;
+  cursor: grabbing !important;
+  transform: scale(0.95);
+}
+
+/* 可拖拽状态（编辑模式）*/
+.wp-v3-tag-item.is-draggable {
+  cursor: grab;
+  touch-action: none; /* 确保移动端 Pointer Events 生效 */
+}
+
+.wp-v3-tag-item.is-draggable:active {
+  cursor: grabbing;
+}
+
+/* 拖拽占位符 */
+.wp-v3-drag-placeholder {
+  display: inline-flex;
+  align-items: center;
+  min-width: 40px;
+  height: 24px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  border: 2px dashed var(--interactive-accent);
+  background: var(--background-modifier-hover);
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+/* 拖拽悬浮卡片（跟随手指/鼠标的视觉副本） */
+.wp-v3-drag-ghost {
+  position: fixed;
+  pointer-events: none;
+  z-index: 10000;
+  opacity: 0.85;
+  transform: rotate(3deg) scale(1.05);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  transition: transform 0.1s ease;
+}
+
+/* ==================== 特色图片拖入区 ==================== */
+
+.wp-v3-featured-empty.drag-over,
+.wp-v3-featured-img-container.drag-over {
+  border: 2px dashed var(--interactive-accent) !important;
+  background: rgba(var(--interactive-accent-rgb, 0, 115, 170), 0.08) !important;
+  box-shadow: 0 0 0 3px rgba(var(--interactive-accent-rgb, 0, 115, 170), 0.2);
+}
+
+.wp-v3-featured-empty {
+  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+
+/* 拖入错误提示 */
+.wp-v3-drop-error {
+  position: absolute;
+  bottom: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--background-modifier-error, rgba(220, 38, 38, 0.9));
+  color: #fff;
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: fadeInOut 2.5s ease forwards;
+  z-index: 100;
+}
+
+@keyframes fadeInOut {
+  0% { opacity: 0; transform: translateX(-50%) translateY(4px); }
+  15% { opacity: 1; transform: translateX(-50%) translateY(0); }
+  75% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+
+
+/* ==================== V3.1 文章预览段 ==================== */
+
+.wp-v3-content-preview {
+  padding: 12px;
+  background: var(--background-primary);
+  border-radius: 6px;
+  font-size: 14px;
+  line-height: 1.8;
+  color: var(--text-normal);
+}
+
+.wp-v3-content-preview h1 { font-size: 1.6em; margin-top: 0; }
+.wp-v3-content-preview h2 { font-size: 1.3em; }
+.wp-v3-content-preview h3 { font-size: 1.1em; }
+.wp-v3-content-preview p  { margin-bottom: 0.8em; }
+
+.wp-v3-content-preview img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+}
+
+.wp-v3-content-preview a { color: var(--text-accent); }
+
+.wp-v3-content-preview blockquote {
+  border-left: 3px solid var(--text-accent);
+  padding-left: 12px;
+  margin-left: 0;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.wp-v3-content-preview pre {
+  background: var(--background-secondary);
+  padding: 12px;
+  border-radius: 6px;
+  overflow-x: auto;
+}
+
+.wp-v3-content-preview code {
+  font-family: var(--font-mono);
+  background: var(--background-secondary);
+  padding: 2px 5px;
+  border-radius: 3px;
+  font-size: 0.88em;
+}
+
+/* Markdown 编辑 textarea */
+.wp-v3-content-edit-area {
+  width: 100%;
+  min-height: 300px;
+  padding: 12px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.6;
+  resize: vertical;
+  box-sizing: border-box;
+  transition: border-color 0.2s ease;
+}
+
+.wp-v3-content-edit-area:focus {
+  outline: none;
+  border-color: var(--interactive-accent);
+}
+
+/* ==================== V3.1 右侧设置区 ==================== */
+
+/* 设置块卡片 */
+.wp-v3-settings-card {
+  background: var(--background-primary);
+  border-radius: 8px;
+  border: 1px solid var(--background-modifier-border);
+  overflow: visible; /* tooltip 需要溢出 */
+}
+
+.wp-v3-settings-card-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 8px 12px;
+  background: var(--background-modifier-border);
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+/* 可点击折叠标题行 */
+.wp-v3-card-title-clickable {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  user-select: none;
+}
+
+.wp-v3-card-title-clickable:hover {
+  background: var(--background-modifier-hover);
+}
+
+.wp-v3-collapse-chevron {
+  font-size: 10px;
+  color: var(--text-faint);
+  transition: transform 0.2s ease;
+}
+
+.wp-v3-settings-body {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* 单个设置项行 */
+.wp-v3-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wp-v3-field-label-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.wp-v3-field-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+/* ⓘ tooltip 图标（span，非按钮） */
+.wp-v3-hint-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-faint);
+  font-size: 12px;
+  padding: 0 2px;
+  line-height: 1;
+  position: relative;
+  cursor: default;
+  transition: color 0.15s ease;
+  user-select: none;
+  /* 让 tooltip 能够溢出任何父级 overflow */
+  z-index: 10;
+}
+
+.wp-v3-hint-icon:hover {
+  color: var(--interactive-accent);
+}
+
+/* tooltip 本体 */
+.wp-v3-tooltip {
+  position: absolute;
+  z-index: 9999;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--background-modifier-border);
+  color: var(--text-normal);
+  font-size: 11px;
+  line-height: 1.5;
+  padding: 6px 10px;
+  border-radius: 6px;
+  white-space: normal;
+  max-width: 200px;
+  min-width: 120px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  /* 确保不被父容器裁剪 */
+  clip: auto;
+  overflow: visible;
+}
+
+.wp-v3-hint-icon:hover .wp-v3-tooltip {
+  opacity: 1;
+}
+
+/* 输入框 */
+.wp-v3-input {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 5px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-size: 13px;
+  box-sizing: border-box;
+  transition: border-color 0.2s ease;
+}
+
+.wp-v3-input:focus {
+  outline: none;
+  border-color: var(--interactive-accent);
+}
+
+.wp-v3-input:hover:not(:focus) {
+  border-color: var(--interactive-accent-hover, var(--interactive-accent));
+  opacity: 0.85;
+}
+
+/* 下拉选择 */
+.wp-v3-select {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 5px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-size: 13px;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+.wp-v3-select:focus {
+  outline: none;
+  border-color: var(--interactive-accent);
+}
+
+.wp-v3-select:hover:not(:focus) {
+  border-color: var(--interactive-accent-hover, var(--interactive-accent));
+  opacity: 0.85;
+}
+
+/* 行内 label + control（状态/评论/格式） */
+.wp-v3-field-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wp-v3-field-inline .wp-v3-field-label-row {
+  flex: 1;
+}
+
+.wp-v3-field-inline .wp-v3-select {
+  flex: 1.2;
+  width: auto;
+}
+
+/* Toggle 开关（发布为新文章） */
+.wp-v3-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.wp-v3-toggle {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.wp-v3-toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.wp-v3-toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  inset: 0;
+  background: var(--background-modifier-border);
+  border-radius: 20px;
+  transition: 0.2s;
+}
+
+.wp-v3-toggle-slider:hover {
+  opacity: 0.8;
+}
+
+.wp-v3-toggle-slider::before {
+  content: '';
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  left: 3px;
+  bottom: 3px;
+  background: #fff;
+  border-radius: 50%;
+  transition: 0.2s;
+}
+
+.wp-v3-toggle input:checked + .wp-v3-toggle-slider {
+  background: var(--interactive-accent);
+}
+
+.wp-v3-toggle input:checked + .wp-v3-toggle-slider::before {
+  transform: translateX(16px);
+}
+
+/* 分隔线 */
+.wp-v3-divider {
+  height: 1px;
+  background: var(--background-modifier-border);
+  margin: 4px 0;
+}
+
+/* ==================== V3.1 历史记录区 ==================== */
+
+.wp-v3-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.wp-v3-history-item {
+  padding: 8px 10px;
+  background: var(--background-secondary);
+  border-radius: 6px;
+  border-left: 3px solid var(--interactive-accent);
+}
+
+.wp-v3-history-item.is-published {
+  border-left-color: var(--text-success, #27ae60);
+}
+
+.wp-v3-history-item.is-draft {
+  border-left-color: var(--text-muted);
+}
+
+.wp-v3-history-date {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 2px;
+}
+
+.wp-v3-history-status {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-normal);
+}
+
+.wp-v3-history-empty {
+  font-size: 12px;
+  color: var(--text-faint);
+  font-style: italic;
+  text-align: center;
+  padding: 12px 0;
+}
+
+/* ==================== V3.1 底部操作栏 ==================== */
+
+.wp-v3-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 10px 20px;
+  border-top: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  flex-shrink: 0;
+}
+
+/* 编辑按钮（✏️编辑内容） */
+.wp-v3-edit-footer-btn {
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  margin-right: auto; /* 靠左 */
+}
+
+.wp-v3-edit-footer-btn:hover {
+  border-color: var(--interactive-accent);
+  color: var(--interactive-accent);
+  background: var(--background-modifier-hover);
+}
+
+.wp-v3-cancel-footer-btn {
+  padding: 8px 20px;
+  border-radius: 6px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.wp-v3-cancel-footer-btn:hover {
+  background: var(--background-modifier-hover);
+}
+
+.wp-v3-publish-footer-btn {
+  padding: 8px 24px;
+  border-radius: 6px;
+  border: none;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.wp-v3-publish-footer-btn:hover {
+  opacity: 0.88;
+  transform: translateY(-1px);
+}
+
+.wp-v3-publish-footer-btn:disabled,
+.wp-v3-publish-footer-btn.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* ==================== V3.1 响应式 ==================== */
+
+/* 中等窗口：右侧收窄 */
+@media (max-width: 860px) {
+  .wp-v3-sidebar {
+    max-width: 260px;
+    min-width: 200px;
+  }
+}
+
+/* 移动端单列 */
+@media (max-width: 680px) {
+  /* 1. modal-container：固定视口高度，不自己滚动 */
+  .modal-container:has(.wp-publish-modal-v2) {
+    min-width: 0 !important;
+    width: 96vw !important;
+    max-width: 96vw !important;
+    height: 92vh !important;
+    max-height: 92vh !important;
+    overflow: hidden !important;
+    margin: 4vh auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  /* 2. modal-content：撑满容器，作为唯一滚动层 */
+  .modal-container:has(.wp-publish-modal-v2) .modal-content {
+    flex: 1 !important;
+    min-height: 0 !important;
+    height: 0 !important;           /* 配合 flex:1 撑满 */
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  /* 3. 根容器：撑满 modal-content，flex 列布局 */
+  .wp-publish-modal-v2 {
+    flex: 1 !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    height: auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  /* 4. 双栏 → 单列，内容自然撑高 */
+  .wp-v3-layout {
+    flex-direction: column !important;
+    overflow: visible !important;
+    min-height: unset !important;
+    flex: 1 !important;
+    height: auto !important;
+  }
+
+  /* 5. 左侧预览区：高度自适应，不独立滚动 */
+  .wp-v3-preview {
+    padding: 12px !important;
+    overflow: visible !important;
+    flex: none !important;
+    height: auto !important;
+  }
+
+  /* 6. 右侧设置区：撑满宽度，不独立滚动 */
+  .wp-v3-sidebar {
+    max-width: 100% !important;
+    min-width: 0 !important;
+    width: 100% !important;
+    border-left: none !important;
+    border-top: 1px solid var(--background-modifier-border);
+    overflow: visible !important;
+    flex: none !important;
+    height: auto !important;
+  }
+
+  /* 7. footer：sticky 粘在 modal-content 滚动容器底部 */
+  .wp-v3-footer {
+    position: sticky !important;
+    bottom: 0 !important;
+    z-index: 10 !important;
+    background: var(--background-primary) !important;
+    box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.12) !important;
+  }
+}
+
+/* 横屏低高度 */
+@media (max-height: 600px) and (orientation: landscape) {
+  .wp-v3-preview {
+    max-height: 400px;
+  }
+
+  .wp-v3-content-preview {
+    max-height: 200px;
+  }
+}
+
+/* ==================== 保留旧面板变量（兼容性） ==================== */
+.wp-panel-empty {
+  display: block;
+  text-align: center;
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 20px;
 }
 
 .wp-publish-card {
@@ -142,6 +1456,55 @@
   padding: 6px 8px;
   background: var(--background-secondary);
   border-radius: 4px;
+}
+
+/* ==================== API Warning（XML-RPC 限制提示） ==================== */
+
+.wp-api-warning {
+  flex-shrink: 0;
+  margin: 0 20px 0 20px;
+  padding: 10px 14px;
+  border-radius: 6px;
+  background: rgba(var(--color-yellow-rgb, 255, 200, 0), 0.12);
+  border: 1px solid var(--color-yellow, #f5a623);
+  color: var(--text-normal);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.wp-api-warning.mod-warning {
+  background: rgba(var(--color-orange-rgb, 255, 140, 0), 0.1);
+  border-color: var(--text-warning, #f5a623);
+}
+
+.wp-api-warning-title {
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+
+.wp-api-limitations {
+  margin: 4px 0 6px 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.wp-api-limitations li {
+  margin-bottom: 2px;
+}
+
+.wp-api-recommendation {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.wp-api-recommendation p {
+  margin: 0 0 4px 0;
+}
+
+.wp-api-learn-more {
+  font-size: 12px;
+  margin-top: 4px;
 }
 
 .wp-conflict-value strong {
@@ -531,11 +1894,13 @@
 
 /* Tab Bar (Settings/Preview/Advanced) */
 .wp-publish-tabs {
-  display: flex;
+  display: flex !important;
   gap: 4px;
   margin-bottom: 12px;
   border-bottom: 2px solid var(--background-modifier-border);
   padding-bottom: 0;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .wp-publish-tab-item {
@@ -551,6 +1916,9 @@
   background: transparent;
   border: none;
   font-size: 14px;
+  flex: 1;
+  justify-content: center;
+  min-width: 0;
 }
 
 .wp-publish-tab-item:hover {
@@ -1171,6 +2539,23 @@
 
 /* ==================== 分类标签选择器样式 ==================== */
 
+/* 分类标题容器 */
+.wp-category-header {
+  margin-bottom: 12px;
+}
+
+.wp-category-header .setting-item-name {
+  font-weight: 500;
+  color: var(--text-normal);
+  margin-bottom: 4px;
+}
+
+.wp-category-header .setting-item-description {
+  font-size: 0.85em;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
 .wp-category-tags-container {
   display: flex;
   flex-wrap: wrap;
@@ -1178,6 +2563,16 @@
   align-items: center;
   padding: 8px 0;
   min-height: 36px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* 分类选择器在 Setting 内部时，确保占据整行 */
+.setting-item + .wp-category-tags-container,
+.wp-category-tags-container {
+  display: flex;
+  flex-wrap: wrap;
+  width: 100%;
 }
 
 .wp-category-tag {
@@ -1418,6 +2813,7 @@
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
+    display: flex !important;
   }
 
   .wp-publish-tabs::-webkit-scrollbar {
@@ -1425,10 +2821,11 @@
   }
 
   .wp-publish-tab-item {
-    padding: 8px 12px;
+    padding: 10px 8px;
     font-size: var(--font-ui-small, 12px);
     white-space: nowrap;
     flex-shrink: 0;
+    flex: 0 0 auto;
   }
 
   /* 特色图片按钮 - 单列 */
@@ -1670,4 +3067,314 @@
 @keyframes shimmer {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
+}
+
+/* ==================== 四段式预览区样式 ==================== */
+
+.wp-preview-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.wp-preview-section {
+  background: var(--background-secondary);
+  border-radius: 8px;
+  padding: 16px;
+  border: 1px solid var(--background-modifier-border);
+  transition: box-shadow 0.2s ease;
+}
+
+.wp-preview-section:hover {
+  box-shadow: var(--wp-shadow-hover);
+}
+
+.wp-preview-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.wp-preview-section-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-normal);
+}
+
+.wp-preview-edit-btn {
+  background: transparent;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--wp-edit-icon-color);
+  transition: all 0.2s ease;
+}
+
+.wp-preview-edit-btn:hover {
+  color: var(--wp-edit-icon-hover);
+  border-color: var(--wp-edit-icon-hover);
+  background: var(--background-modifier-hover);
+}
+
+.wp-preview-section-content {
+  color: var(--text-normal);
+}
+
+/* 特色图片预览 */
+.wp-preview-image-container {
+  text-align: center;
+  margin-bottom: 8px;
+}
+
+.wp-preview-image {
+  max-width: 100%;
+  max-height: 300px;
+  border-radius: 6px;
+  border: 1px solid var(--background-modifier-border);
+  object-fit: contain;
+}
+
+.wp-preview-image-info {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 8px;
+}
+
+/* 摘要预览 */
+.wp-preview-excerpt-text {
+  line-height: 1.6;
+  color: var(--text-normal);
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+/* 标签预览 */
+.wp-preview-tags-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.wp-preview-tag {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  color: var(--text-normal);
+}
+
+/* 标签编辑模式 */
+.wp-preview-tags-edit {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.wp-preview-tag-editable {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  color: var(--text-normal);
+}
+
+.wp-preview-tag-remove {
+  background: transparent;
+  border: none;
+  color: var(--text-error);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0;
+  line-height: 1;
+  transition: opacity 0.2s ease;
+}
+
+.wp-preview-tag-remove:hover {
+  opacity: 0.7;
+}
+
+.wp-preview-tag-input-container {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.wp-preview-tag-input {
+  flex: 1;
+  padding: 6px 12px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-size: 13px;
+}
+
+.wp-preview-tag-add-btn {
+  padding: 6px 16px;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: opacity 0.2s ease;
+}
+
+.wp-preview-tag-add-btn:hover {
+  opacity: 0.9;
+}
+
+/* 文章内容预览 */
+.wp-preview-content-text {
+  line-height: 1.8;
+  color: var(--text-normal);
+  max-height: 400px;
+  overflow-y: auto;
+  padding: 12px;
+  background: var(--background-primary);
+  border-radius: 6px;
+  border: 1px solid var(--background-modifier-border);
+  font-family: var(--font-text);
+  font-size: 14px;
+}
+
+.wp-preview-content-text h1,
+.wp-preview-content-text h2,
+.wp-preview-content-text h3,
+.wp-preview-content-text h4,
+.wp-preview-content-text h5,
+.wp-preview-content-text h6 {
+  margin-top: 1em;
+  margin-bottom: 0.5em;
+  font-weight: 600;
+}
+
+.wp-preview-content-text p {
+  margin-bottom: 1em;
+}
+
+.wp-preview-content-text code {
+  background: var(--background-modifier-border);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: var(--font-monospace);
+  font-size: 0.9em;
+}
+
+.wp-preview-content-text pre {
+  background: var(--background-modifier-border);
+  padding: 12px;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin-bottom: 1em;
+}
+
+.wp-preview-content-text pre code {
+  background: transparent;
+  padding: 0;
+}
+
+/* 空状态 */
+.wp-preview-empty {
+  text-align: center;
+  padding: 24px;
+  color: var(--text-muted);
+}
+
+.wp-preview-empty-text {
+  font-style: italic;
+}
+
+/* 文本域通用样式 */
+.wp-preview-textarea {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-family: var(--font-text);
+  font-size: 14px;
+  line-height: 1.6;
+  resize: vertical;
+  transition: border-color 0.2s ease;
+}
+
+.wp-preview-textarea:focus {
+  outline: none;
+  border-color: var(--interactive-accent);
+}
+
+/* 编辑状态 */
+.wp-preview-section.is-editing {
+  border-color: var(--interactive-accent);
+  box-shadow: 0 0 0 2px var(--interactive-accent-hover);
+}
+
+/* 编辑按钮组 */
+.wp-preview-edit-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  justify-content: flex-end;
+}
+
+.wp-preview-save-btn,
+.wp-preview-cancel-btn {
+  padding: 6px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  border: 1px solid var(--background-modifier-border);
+}
+
+.wp-preview-save-btn {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border-color: var(--interactive-accent);
+}
+
+.wp-preview-save-btn:hover {
+  opacity: 0.9;
+}
+
+.wp-preview-cancel-btn {
+  background: var(--background-secondary);
+  color: var(--text-normal);
+}
+
+.wp-preview-cancel-btn:hover {
+  background: var(--background-modifier-hover);
+}
+
+/* 高亮动画（用于滚动定位） */
+.wp-highlight-section {
+  animation: highlight-pulse 2s ease;
+}
+
+@keyframes highlight-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+  50% {
+    box-shadow: 0 0 0 4px var(--interactive-accent-hover);
+  }
 }

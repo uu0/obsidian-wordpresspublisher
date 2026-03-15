@@ -2,20 +2,21 @@
 
 [English](README.md) | [简体中文](README_zh.md)
 
-**Version**: 1.2.2
+**Version**: 2.0.0
 **Author**: uu0
-**Last Updated**: 2026-03-14
+**Last Updated**: 2026-03-15
 
 ## About This Project
 
 This project is a deep refactor and feature extension based on [obsidian-wordpress](https://github.com/devbean/obsidian-wordpress). While preserving the core WordPress publishing functionality, we've added a modern publishing interface, intelligent slug generation, featured image selection, AI service integration, and completely refactored the codebase architecture.
 
 **Key Extensions**:
+- V3 dual-pane publishing modal with mobile-responsive single-column layout
 - Brand new visual publishing interface with post/page type selection, category management, and status control
 - Intelligent slug generation system (Pinyin conversion / AI translation dual modes)
 - Three featured image options (local images / Unsplash search / AI generation)
 - OpenAI / Claude AI service integration with auto-summary and smart translation
-- Modern UI design with dark theme and glassmorphism effects
+- Modern UI design with dark theme support
 
 ## Overview
 
@@ -40,7 +41,7 @@ WordPress Publisher is a powerful Obsidian plugin that enables one-click publish
 
 Three ways to set featured images:
 
-1. **Local Images**: Select from file system or Obsidian vault
+1. **Local Images**: Select from file system or Obsidian vault, with drag-and-drop support and auto-crop to 16:9
 2. **Unsplash**: Search and download free high-quality images
 3. **AI Generation**: Auto-generate images based on article content
 
@@ -48,15 +49,16 @@ Three ways to set featured images:
 
 - **Dual Engine Configuration**: Text processing AI + Image generation AI
 - **Supported Providers**: OpenAI (GPT/DALL-E), Claude
-- **Features**: Auto-generate summaries, translate slugs, generate image prompts
+- **Features**: Auto-generate summaries, translate slugs, generate image prompts, generate tags
 - **API Compatibility**: Supports custom Base URLs for regional mirrors
 
 ### 💎 Modern Interface
 
-- Card-based layout with split-pane design
-- Glassmorphism background effects
-- Smooth animation transitions
-- Dark theme support
+- V3 dual-pane layout: content preview (left) + settings sidebar (right)
+- Fully responsive — collapses to single-column on mobile (≤ 680 px)
+- Sticky footer with action buttons always visible when scrolling
+- Colored tag pills with drag-and-drop sorting (9-color palette, light/dark variants)
+- Dark theme support with CSS variable-based design tokens
 
 ## Installation
 
@@ -120,7 +122,7 @@ Model Name: gpt-3.5-turbo / claude-3-sonnet
 1. **Write Content**: Create Markdown document in Obsidian
 2. **Open Publishing Interface**: Click plugin icon or use command palette
 3. **Fill Information**: Title, categories, status, etc.
-4. **Select Featured Image** (optional): Local/Unsplash/AI generation
+4. **Select Featured Image** (optional): Local / drag-and-drop / Unsplash / AI generation
 5. **Publish**: Click publish button and wait for completion
 
 ## Project Structure
@@ -131,7 +133,8 @@ src/
 ├── slug-generator.ts          # Slug generation utilities
 ├── unsplash-service.ts        # Unsplash integration
 ├── featured-image-modal.ts    # Featured image selector
-├── wp-publish-modal-v2.ts     # Publishing interface
+├── wp-publish-modal-v2.ts     # Publishing interface (V3)
+├── frontmatter-manager.ts     # Frontmatter conflict detection & merge
 ├── plugin-settings.ts         # Settings definitions
 └── i18n/                      # Internationalization
     ├── en.json                # English translations
@@ -168,6 +171,61 @@ This project uses the following open-source projects:
 Thanks to all open-source community contributors!
 
 ## Changelog
+
+### 2.0.0 (2026-03-15)
+
+**Complete UI Overhaul — V3 Dual-Pane Publishing Interface**
+
+This release is a complete visual and structural overhaul of the publishing modal. The interface has been rebuilt from the ground up with a dual-pane layout, a redesigned interaction model, and full mobile support.
+
+**New Features**
+
+- **Dual-Pane Publishing Interface (V3)**
+  - Left pane: content preview (featured image + article body)
+  - Right pane (sidebar): all publish settings — title, slug, category, tags, excerpt, status, type, and advanced options
+  - Clean title bar showing only "WordPress Publisher" — Obsidian's native header and close button hidden via CSS `:has()` selector
+  - Footer action bar: `✏️ Edit` · `❌ Cancel` · `🚀 Publish`
+
+- **Featured Image — Richer Controls**
+  - Inline image preview card with action buttons: Remove / Select from Vault / Select Local File / AI Generate
+  - Drag-and-drop an image onto the preview card to select a local file
+  - Local file picker with automatic format validation (JPEG / PNG / GIF / WebP, max 10 MB) and auto-crop to 16:9
+  - "Retry" / "Skip" controls when remote featured image fails to load
+
+- **Tags — Colored Pills with Drag-and-Drop Sorting**
+  - Each tag rendered as a colored pill using a palette of 9 CSS variables (`--wp-tag-color-1` through `--wp-tag-color-9`)
+  - Tags can be reordered via drag-and-drop
+  - Separate light and dark theme palettes
+
+- **Excerpt — Inline Editing**
+  - Excerpt displayed inline in the preview pane; tap to edit in-place
+  - AI-generated excerpt available via the sidebar AI tab
+
+- **AI Tab — Unified Panel**
+  - Single AI sidebar tab covering: Featured Image generation, Excerpt generation, Tags generation
+  - Tab state (`featured-image` / `excerpt` / `tags`) preserved within a session
+
+**Bug Fixes**
+
+- **Mobile layout completely fixed**
+  - Root cause: JS was writing inline styles (`width` / `minWidth` / `height`) directly onto `modalEl`, which have higher CSS specificity than `@media` rules — media queries had zero effect on mobile
+  - Fix: `updateModalWidth()` now detects `window.innerWidth <= 680` at runtime; on mobile it clears all inline dimension styles on both `modalEl` and `contentEl`, letting CSS take full control
+  - Mobile scroll architecture rebuilt: `modal-container` fixed at `92vh` / `overflow: hidden`; `modal-content` becomes the single scroll layer (`overflow-y: auto`); `wp-v3-footer` uses `position: sticky; bottom: 0` — always visible regardless of content length
+  - Dual-pane collapses to single-column on screens ≤ 680 px; sidebar stacks below content
+
+- **Frontmatter conflict detection false positives fixed**
+  - `detectConflicts` now uses a "both sides must be non-empty AND differ" rule, eliminating false conflicts when one side is empty
+  - New `mergeValue()` helper: if one side is empty, use the other; if both present (and equal after resolution), prefer local
+
+**UI / Style Changes**
+
+- `min-width: 480px` moved from JS inline style to CSS `.modal-container:has()` selector (desktop only)
+- Footer cancel button updated to `❌ Cancel`
+- Edit pencil icon (✏️) removed from content section header
+- Footer button emoji deduplication: i18n values already contain emoji; manual prefix strings removed from code
+- CSS design tokens: 9 tag color variables, sticky shadow variable, light/dark variants
+
+---
 
 ### 1.2.2 (2026-03-14)
 

@@ -135,7 +135,12 @@ export class FrontmatterManager {
   }
 
   /**
-   * Detect conflicts between local frontmatter and remote post data
+   * Detect conflicts between local frontmatter and remote post data.
+   *
+   * Rule: if one side is empty and the other is not, it is NOT a conflict —
+   * the caller should simply use the non-empty value.  A conflict only exists
+   * when BOTH sides have a value and those values differ.
+   *
    * @param localMatter - Local frontmatter data
    * @param remoteData - Remote post data
    * @returns Array of conflicts
@@ -143,8 +148,13 @@ export class FrontmatterManager {
   detectConflicts(localMatter: MatterData, remoteData: RemotePostData): FrontmatterConflict[] {
     const conflicts: FrontmatterConflict[] = [];
 
-    // Check postId
-    if (localMatter.postId && String(localMatter.postId) !== String(remoteData.postId)) {
+    // Helper: check whether a scalar value is considered "present"
+    const hasValue = (v: SafeAny): boolean =>
+      v !== null && v !== undefined && String(v).trim() !== '';
+
+    // Check postId — only conflict when both sides have a value and they differ
+    if (hasValue(localMatter.postId) && hasValue(remoteData.postId) &&
+        String(localMatter.postId) !== String(remoteData.postId)) {
       conflicts.push({
         field: 'postId',
         localValue: localMatter.postId,
@@ -153,7 +163,8 @@ export class FrontmatterManager {
     }
 
     // Check postType
-    if (localMatter.postType && localMatter.postType !== remoteData.postType) {
+    if (hasValue(localMatter.postType) && hasValue(remoteData.postType) &&
+        localMatter.postType !== remoteData.postType) {
       conflicts.push({
         field: 'postType',
         localValue: localMatter.postType,
@@ -164,7 +175,9 @@ export class FrontmatterManager {
     // Check categories (normalize to array for comparison)
     const localCats = this.normalizeToArray(localMatter.categories);
     const remoteCats = this.normalizeToArray(remoteData.categories);
-    if (localCats.length > 0 && !this.arraysEqual(localCats, remoteCats)) {
+    // Only a conflict when BOTH sides are non-empty and differ
+    if (localCats.length > 0 && remoteCats.length > 0 &&
+        !this.arraysEqual(localCats, remoteCats)) {
       conflicts.push({
         field: 'categories',
         localValue: localCats,
@@ -173,7 +186,8 @@ export class FrontmatterManager {
     }
 
     // Check slug
-    if (localMatter.slug && localMatter.slug !== remoteData.slug) {
+    if (hasValue(localMatter.slug) && hasValue(remoteData.slug) &&
+        localMatter.slug !== remoteData.slug) {
       conflicts.push({
         field: 'slug',
         localValue: localMatter.slug,
@@ -184,7 +198,8 @@ export class FrontmatterManager {
     // Check tags (normalize to array for comparison)
     const localTags = this.normalizeToArray(localMatter.tags);
     const remoteTags = this.normalizeToArray(remoteData.tags);
-    if (localTags.length > 0 && !this.arraysEqual(localTags, remoteTags)) {
+    if (localTags.length > 0 && remoteTags.length > 0 &&
+        !this.arraysEqual(localTags, remoteTags)) {
       conflicts.push({
         field: 'tags',
         localValue: localTags,
@@ -193,7 +208,7 @@ export class FrontmatterManager {
     }
 
     // Check featured image ID
-    if (localMatter.featuredImageId && remoteData.featuredImageId &&
+    if (hasValue(localMatter.featuredImageId) && hasValue(remoteData.featuredImageId) &&
         Number(localMatter.featuredImageId) !== Number(remoteData.featuredImageId)) {
       conflicts.push({
         field: 'featuredImageId',
@@ -203,6 +218,26 @@ export class FrontmatterManager {
     }
 
     return conflicts;
+  }
+
+  /**
+   * Merge local and remote values: if one side is empty, return the non-empty
+   * one.  If both are present (and presumably equal after conflict resolution),
+   * prefer local.  Returns null when both sides are empty.
+   */
+  mergeValue(localValue: SafeAny, remoteValue: SafeAny): SafeAny {
+    const localEmpty = localValue === null || localValue === undefined ||
+      (typeof localValue === 'string' && localValue.trim() === '') ||
+      (Array.isArray(localValue) && localValue.length === 0);
+
+    const remoteEmpty = remoteValue === null || remoteValue === undefined ||
+      (typeof remoteValue === 'string' && remoteValue.trim() === '') ||
+      (Array.isArray(remoteValue) && remoteValue.length === 0);
+
+    if (localEmpty && remoteEmpty) return null;
+    if (localEmpty) return remoteValue;
+    if (remoteEmpty) return localValue;
+    return localValue; // both present → prefer local (conflict already resolved)
   }
 
   /**

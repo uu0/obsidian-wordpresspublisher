@@ -107181,6 +107181,13 @@ function detectLanguage(text4) {
   return "other";
 }
 function getLocalizedPrompt(plugin4, language, type) {
+  if (type === "summary" && plugin4.settings.summaryPrompt) {
+    return plugin4.settings.summaryPrompt;
+  } else if (type === "tags" && plugin4.settings.tagsPrompt) {
+    return plugin4.settings.tagsPrompt;
+  } else if (type === "image" && plugin4.settings.imageGenerationPrompt) {
+    return plugin4.settings.imageGenerationPrompt;
+  }
   if (language === "en" || language === "other") {
     if (type === "summary") {
       return plugin4.t("defaultPrompt_summaryEn");
@@ -107219,24 +107226,15 @@ var init_wp_publish_modal_v2 = __esm({
     init_api_capability();
     log4 = createModuleLogger("WpPublishModalV2");
     TAG_COLORS = [
-      "#5B8FF9",
-      // 蓝色
-      "#5AD8A6",
-      // 绿色
-      "#F6BD16",
-      // 黄色
-      "#E86452",
-      // 红色
-      "#6DC8EC",
-      // 青色
-      "#945FB9",
-      // 紫色
-      "#FF9845",
-      // 橙色
-      "#1E9493",
-      // 深青
-      "#FF99C3"
-      // 粉色
+      "var(--wp-tag-color-1)",
+      "var(--wp-tag-color-2)",
+      "var(--wp-tag-color-3)",
+      "var(--wp-tag-color-4)",
+      "var(--wp-tag-color-5)",
+      "var(--wp-tag-color-6)",
+      "var(--wp-tag-color-7)",
+      "var(--wp-tag-color-8)",
+      "var(--wp-tag-color-9)"
     ];
     WpPublishModalV2 = class extends AbstractModal {
       constructor(plugin4, categories, postTypes, onSubmit, matterData, articleContent = "", noteTitle = "", notePath = "") {
@@ -107255,6 +107253,8 @@ var init_wp_publish_modal_v2 = __esm({
         this.slugInput = null;
         this.titleInput = null;
         this.currentTab = "settings";
+        this.currentAITab = "featured-image";
+        // AI 标签页状态
         this.editableContent = "";
         this.isEditingPreview = false;
         this.autoFeaturedImage = null;
@@ -107433,6 +107433,7 @@ var init_wp_publish_modal_v2 = __esm({
             content: response.arrayBuffer,
             width: 1200
           };
+          this.imageSource = "cached";
           log4.info("Successfully loaded featured image:", fileName);
           if (this.currentParams) {
             this.display(this.currentParams);
@@ -107611,6 +107612,40 @@ var init_wp_publish_modal_v2 = __esm({
         };
         return mimeTypes[extension.toLowerCase()] || "image/jpeg";
       }
+      /**
+       * 将 ArrayBuffer 转换为 Base64 字符串
+       */
+      arrayBufferToBase64(buffer) {
+        const bytes = new Uint8Array(buffer);
+        let binary = "";
+        for (let i = 0; i < bytes.byteLength; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        return btoa(binary);
+      }
+      /**
+       * 格式化文件大小
+       */
+      formatFileSize(bytes) {
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+        return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+      }
+      /**
+       * 中间截断文件名：保留前 prefixLen 个字符 + "..." + 后 suffixLen 个字符
+       * 当字符串长度 <= prefixLen + suffixLen + 3 时原样返回
+       * 默认 prefix=10, suffix=8 → 最长 21 字符（适合 header 有限宽度）
+       */
+      truncateMiddle(str, prefixLen = 10, suffixLen = 8) {
+        if (str.length <= prefixLen + suffixLen + 3) return str;
+        return str.slice(0, prefixLen) + "..." + str.slice(str.length - suffixLen);
+      }
+      /**
+       * 加载远程特色图片（别名方法）
+       */
+      async loadRemoteFeaturedImage(postId, params) {
+        await this.loadFeaturePictureFromRemote(postId);
+      }
       onOpen() {
         log4.info("onOpen called");
         const params = {
@@ -107691,40 +107726,1125 @@ var init_wp_publish_modal_v2 = __esm({
         this.currentParams = params;
         contentEl.empty();
         contentEl.addClass("wp-publish-modal-v2");
-        this.createHeader(this.t("publishModal_title"));
+        const titleBar = contentEl.createDiv("wp-v3-title-bar");
+        titleBar.createSpan({ cls: "wp-v3-title-bar-name", text: "WordPress Publisher" });
         this.updateModalWidth();
-        this.renderTabBar(contentEl, params);
         const profile = this.plugin.settings.profiles.find((p) => p.name === params.profileName);
         if (profile && profile.apiType === "xml-rpc") {
           this.renderApiWarning(contentEl, profile.apiType);
         }
-        const mainContainer = contentEl.createDiv("wp-publish-container");
-        if (this.currentTab === "settings") {
-          this.renderSettingsTab(mainContainer, params);
-        } else if (this.currentTab === "preview") {
-          this.renderPreviewTab(mainContainer, params);
-        } else if (this.currentTab === "advanced") {
-          this.renderAdvancedTab(mainContainer, params);
-        }
-        if (this.currentTab !== "advanced") {
-          this.renderBottomBar(contentEl, params);
-        }
+        const layoutContainer = contentEl.createDiv("wp-v3-layout");
+        const previewArea = layoutContainer.createDiv("wp-v3-preview");
+        this.renderV3PreviewArea(previewArea, params);
+        const sidebarArea = layoutContainer.createDiv("wp-v3-sidebar");
+        sidebarArea.style.overflowY = "hidden";
+        sidebarArea.addEventListener("click", () => {
+          sidebarArea.style.overflowY = "auto";
+        });
+        previewArea.addEventListener("click", () => {
+          sidebarArea.style.overflowY = "hidden";
+        });
+        this.renderV3SidebarArea(sidebarArea, params);
+        this.renderV3Footer(contentEl, params);
       }
       updateModalWidth() {
+        const isMobile = window.innerWidth <= 680;
         const modalEl = this.modalEl;
         if (modalEl) {
-          modalEl.style.width = "90vw";
-          modalEl.style.maxWidth = "800px";
-          modalEl.style.minWidth = "400px";
+          if (isMobile) {
+            modalEl.style.width = "";
+            modalEl.style.maxWidth = "";
+            modalEl.style.minWidth = "";
+            modalEl.style.height = "";
+            modalEl.style.maxHeight = "";
+          } else {
+            modalEl.style.width = "92vw";
+            modalEl.style.maxWidth = "1000px";
+            modalEl.style.minWidth = "";
+            modalEl.style.height = "88vh";
+            modalEl.style.maxHeight = "88vh";
+          }
           modalEl.style.boxSizing = "border-box";
+          modalEl.style.display = "flex";
+          modalEl.style.flexDirection = "column";
+          modalEl.style.overflow = isMobile ? "visible" : "hidden";
         }
+        const { contentEl } = this;
+        if (contentEl) {
+          if (isMobile) {
+            contentEl.style.flex = "";
+            contentEl.style.minHeight = "";
+            contentEl.style.display = "";
+            contentEl.style.flexDirection = "";
+            contentEl.style.overflow = "";
+            contentEl.style.padding = "0";
+          } else {
+            contentEl.style.flex = "1";
+            contentEl.style.minHeight = "0";
+            contentEl.style.display = "flex";
+            contentEl.style.flexDirection = "column";
+            contentEl.style.overflow = "hidden";
+            contentEl.style.padding = "0";
+          }
+        }
+      }
+      // ==================== V3.1 主布局 ====================
+      /**
+       * V3.1 左侧预览区：特色图片 / 摘要 / 标签 / 文章内容
+       */
+      renderV3PreviewArea(container, params) {
+        this.renderV3FeaturedImageSection(container, params);
+        this.renderV3ContentSection(container, params);
+      }
+      /**
+       * V3.1 右侧设置区：基本设置 + 历史记录
+       */
+      renderV3SidebarArea(container, params) {
+        this.renderV3SettingsCard(container, params);
+        this.renderV3HistoryCard(container, params);
+      }
+      // ==================== V3.1 Section 辅助方法 ====================
+      /**
+       * 创建段落容器（带标题栏和操作按钮）
+       */
+      createV3Section(container, title, actions) {
+        const section = container.createDiv("wp-v3-section");
+        const header = section.createDiv("wp-v3-section-header");
+        header.createSpan({ text: title, cls: "wp-v3-section-title" });
+        const actionsEl = header.createDiv("wp-v3-section-actions");
+        if (actions && actions.length > 0) {
+          actions.forEach((action) => {
+            const btn = actionsEl.createEl("button", {
+              text: action.emoji,
+              cls: "wp-v3-icon-btn",
+              attr: { "aria-label": action.label, title: action.label }
+            });
+            btn.addEventListener("click", action.onClick);
+          });
+        }
+        return section;
+      }
+      // ==================== V3.1 特色图片段 ====================
+      renderV3FeaturedImageSection(container, params) {
+        const imageToDisplay = this.featuredImage || this.autoFeaturedImage;
+        const hasImage = !!imageToDisplay || !!this.matterData.featurePicture;
+        const section = this.createV3Section(
+          container,
+          this.t("publishModal_previewFeaturedImage") || "Featured Image",
+          []
+        );
+        const body = section.createDiv("wp-v3-section-body");
+        const updateHeaderActions = (opts = {}) => {
+          var _a5;
+          const actionsEl = section.querySelector(".wp-v3-section-actions");
+          if (!actionsEl) return;
+          actionsEl.empty();
+          if (opts.sourceLabel) {
+            const tag = actionsEl.createSpan({ cls: `wp-v3-featured-source-tag ${(_a5 = opts.sourceCls) != null ? _a5 : ""}` });
+            tag.textContent = opts.sourceLabel;
+          }
+          if (opts.fileName) {
+            const nameEl = actionsEl.createSpan({ cls: "wp-v3-img-filename" });
+            nameEl.textContent = this.truncateMiddle(opts.fileName);
+            nameEl.title = opts.fileName;
+          }
+          if (opts.showDelete) {
+            const delBtn = actionsEl.createEl("button", {
+              text: "\u274C",
+              cls: "wp-v3-icon-btn wp-v3-icon-btn-delete",
+              attr: { title: this.t("publishModal_removeImage") || "Remove image" }
+            });
+            delBtn.onclick = () => {
+              this.featuredImage = null;
+              this.autoFeaturedImage = null;
+              this.matterData.featurePicture = "";
+              renderSetup();
+            };
+          }
+        };
+        const renderPreview = () => {
+          body.empty();
+          const wrap2 = body.createDiv("wp-v3-featured-image-wrap");
+          if (this.isLoadingRemoteImage) {
+            const loading = wrap2.createDiv("wp-v3-featured-status-wrap");
+            loading.createEl("p", { text: this.t("publishModal_loadingRemoteImage") || "\u6B63\u5728\u52A0\u8F7D\u8FDC\u7A0B\u56FE\u7247..." });
+            updateHeaderActions();
+          } else if (this.remoteImageLoadFailed) {
+            const errDiv = wrap2.createDiv("wp-v3-featured-status-wrap wp-v3-featured-status-error");
+            errDiv.createEl("p", { text: "\u274C " + (this.remoteImageError || "") });
+            const btnRow = errDiv.createDiv("wp-v3-featured-btn-row");
+            const retryBtn = btnRow.createEl("button", {
+              text: this.t("publishModal_retryLoadImage") || "\u91CD\u8BD5",
+              cls: "wp-v3-feature-btn"
+            });
+            retryBtn.onclick = async () => {
+              if (this.remoteImagePostId) {
+                this.remoteImageLoadFailed = false;
+                this.remoteImageError = null;
+                await this.loadRemoteFeaturedImage(this.remoteImagePostId, params);
+              }
+            };
+            const skipBtn = btnRow.createEl("button", {
+              text: this.t("publishModal_skipRemoteImage") || "\u8DF3\u8FC7",
+              cls: "wp-v3-feature-btn"
+            });
+            skipBtn.onclick = () => {
+              this.remoteImageLoadFailed = false;
+              this.remoteImageError = null;
+              this.remoteImagePostId = null;
+              this.display(params);
+            };
+            updateHeaderActions();
+          } else if (imageToDisplay) {
+            const isLocalNew = this.imageSource !== "cached";
+            const imgContainer = wrap2.createDiv("wp-v3-featured-img-container");
+            const blob = new Blob([imageToDisplay.content], { type: imageToDisplay.mimeType });
+            const url = URL.createObjectURL(blob);
+            imgContainer.createEl("img", { cls: "wp-v3-featured-img", attr: { src: url, alt: "Featured Image" } });
+            if (isLocalNew) {
+              updateHeaderActions({
+                sourceLabel: "\u{1F4BE} Local",
+                sourceCls: "wp-v3-source-local",
+                fileName: `${imageToDisplay.fileName} (${this.formatFileSize(imageToDisplay.content.byteLength)})`,
+                showDelete: true
+              });
+            } else {
+              const urlStr = this.matterData.featurePicture ? String(this.matterData.featurePicture) : imageToDisplay.fileName;
+              updateHeaderActions({
+                sourceLabel: "\u2601\uFE0F WordPress",
+                sourceCls: "wp-v3-source-uploaded",
+                fileName: urlStr,
+                showDelete: true
+              });
+            }
+          } else if (this.matterData.featurePicture) {
+            const imgContainer = wrap2.createDiv("wp-v3-featured-img-container");
+            imgContainer.createEl("img", {
+              cls: "wp-v3-featured-img",
+              attr: { src: this.matterData.featurePicture, alt: "Featured Image" }
+            });
+            const urlStr = String(this.matterData.featurePicture);
+            updateHeaderActions({
+              sourceLabel: "\u2601\uFE0F WordPress",
+              sourceCls: "wp-v3-source-uploaded",
+              fileName: urlStr,
+              showDelete: true
+            });
+          } else {
+            renderSetup();
+            return;
+          }
+        };
+        const renderSetup = () => {
+          var _a5;
+          body.empty();
+          const setup = body.createDiv("wp-v3-featured-setup");
+          setup.createDiv({ cls: "wp-v3-featured-empty", text: this.t("publishModal_noImageSelected") || "\u6682\u65E0\u7279\u8272\u56FE\u7247" });
+          const btnRow = setup.createDiv("wp-v3-featured-btn-row");
+          const localBtn = btnRow.createEl("button", {
+            text: "\u{1F4BE} " + this.t("publishModal_selectFromLocal"),
+            cls: "wp-v3-feature-btn"
+          });
+          localBtn.onclick = () => this.selectLocalFile(params);
+          const vaultBtn = btnRow.createEl("button", {
+            text: "\u{1F4C1} " + this.t("publishModal_selectFromVault"),
+            cls: "wp-v3-feature-btn"
+          });
+          vaultBtn.onclick = () => this.selectVaultImage(params);
+          if (this.unsplashService) {
+            const unsplashBtn = btnRow.createEl("button", {
+              text: "\u{1F5BC}\uFE0F Unsplash",
+              cls: "wp-v3-feature-btn"
+            });
+            unsplashBtn.onclick = () => this.selectUnsplashImage(params);
+          }
+          if ((_a5 = this.aiService) == null ? void 0 : _a5.hasImageAIKey()) {
+            const aiBtn = btnRow.createEl("button", {
+              text: "\u{1F916} " + this.t("publishModal_aiGenerate"),
+              cls: "wp-v3-feature-btn"
+            });
+            aiBtn.onclick = () => this.generateFeaturedImage(params);
+          } else {
+            const aiBtn = btnRow.createEl("button", {
+              text: "\u{1F916} " + this.t("publishModal_aiGenerate"),
+              cls: "wp-v3-feature-btn disabled"
+            });
+            aiBtn.onclick = () => new import_obsidian9.Notice(this.t("notice_imageAIApiKeyRequired"));
+          }
+          updateHeaderActions();
+        };
+        if (hasImage) {
+          renderPreview();
+        } else {
+          renderSetup();
+        }
+        const SUPPORTED_MIME = ["image/jpeg", "image/png", "image/gif", "image/webp", "image/svg+xml"];
+        const SUPPORTED_EXT = ["jpg", "jpeg", "png", "gif", "webp", "svg"];
+        section.addEventListener("dragover", (e) => {
+          var _a5, _b, _c;
+          e.preventDefault();
+          e.stopPropagation();
+          const items = (_a5 = e.dataTransfer) == null ? void 0 : _a5.items;
+          if (items && items.length > 0 && items[0].kind === "file") {
+            body.addClass("drag-over");
+            (_b = body.querySelector(".wp-v3-featured-empty")) == null ? void 0 : _b.addClass("drag-over");
+            (_c = body.querySelector(".wp-v3-featured-img-container")) == null ? void 0 : _c.addClass("drag-over");
+          }
+        });
+        section.addEventListener("dragleave", (e) => {
+          var _a5, _b;
+          if (!section.contains(e.relatedTarget)) {
+            body.removeClass("drag-over");
+            (_a5 = body.querySelector(".wp-v3-featured-empty")) == null ? void 0 : _a5.removeClass("drag-over");
+            (_b = body.querySelector(".wp-v3-featured-img-container")) == null ? void 0 : _b.removeClass("drag-over");
+          }
+        });
+        section.addEventListener("drop", async (e) => {
+          var _a5, _b, _c, _d, _e;
+          e.preventDefault();
+          e.stopPropagation();
+          body.removeClass("drag-over");
+          (_a5 = body.querySelector(".wp-v3-featured-empty")) == null ? void 0 : _a5.removeClass("drag-over");
+          (_b = body.querySelector(".wp-v3-featured-img-container")) == null ? void 0 : _b.removeClass("drag-over");
+          const file = (_d = (_c = e.dataTransfer) == null ? void 0 : _c.files) == null ? void 0 : _d[0];
+          if (!file) return;
+          const ext = ((_e = file.name.split(".").pop()) == null ? void 0 : _e.toLowerCase()) || "";
+          const mimeOk = SUPPORTED_MIME.includes(file.type);
+          const extOk = SUPPORTED_EXT.includes(ext);
+          if (!mimeOk && !extOk) {
+            const errEl = body.createDiv("wp-v3-drop-error");
+            errEl.textContent = `\u274C \u4E0D\u652F\u6301\u7684\u56FE\u7247\u683C\u5F0F: .${ext}`;
+            setTimeout(() => errEl.remove(), 2500);
+            return;
+          }
+          try {
+            const arrayBuffer = await file.arrayBuffer();
+            const mimeType = mimeOk ? file.type : `image/${ext === "jpg" ? "jpeg" : ext}`;
+            this.featuredImage = {
+              fileName: file.name,
+              content: new Uint8Array(arrayBuffer),
+              mimeType
+            };
+            this.display(params);
+          } catch (err) {
+            new import_obsidian9.Notice("\u56FE\u7247\u52A0\u8F7D\u5931\u8D25");
+          }
+        });
+      }
+      // ==================== V3.1 摘要段 ====================
+      renderV3ExcerptSection(container, params) {
+        let isEditing = false;
+        let originalValue = "";
+        const section = this.createV3Section(
+          container,
+          this.t("publishModal_excerptLabel") || "Excerpt",
+          []
+          // 有内容时动态加入按钮
+        );
+        const body = section.createDiv("wp-v3-section-body");
+        const renderDisplay = () => {
+          body.empty();
+          section.removeClass("is-editing");
+          const actionsEl = section.querySelector(".wp-v3-section-actions");
+          if (actionsEl) {
+            actionsEl.empty();
+            if (params.excerpt) {
+              const editBtn = actionsEl.createEl("button", {
+                text: "\u270F\uFE0F",
+                cls: "wp-v3-icon-btn",
+                attr: { title: this.t("publishModal_editButton") || "Edit" }
+              });
+              editBtn.onclick = () => enterEdit();
+              const aiBtn = actionsEl.createEl("button", {
+                text: "\u{1F916}",
+                cls: "wp-v3-icon-btn",
+                attr: { title: this.t("publishModal_generateSummary") || "AI \u751F\u6210\u6458\u8981" }
+              });
+              aiBtn.onclick = () => this.generateSummary(params);
+            }
+          }
+          if (params.excerpt) {
+            const text4 = body.createDiv("wp-v3-excerpt-text");
+            text4.textContent = params.excerpt;
+          } else {
+            const row = body.createDiv("wp-v3-empty-action-row");
+            const editBtn = row.createEl("button", {
+              text: "\u270F\uFE0F " + (this.t("publishModal_editButton") || "\u7F16\u8F91\u6458\u8981"),
+              cls: "wp-v3-empty-action-btn"
+            });
+            editBtn.onclick = () => enterEdit();
+            const aiBtn = row.createEl("button", {
+              text: "\u{1F916} " + (this.t("publishModal_generateSummary") || "AI \u751F\u6210\u6458\u8981"),
+              cls: "wp-v3-empty-action-btn"
+            });
+            aiBtn.onclick = () => this.generateSummary(params);
+          }
+        };
+        const enterEdit = () => {
+          if (isEditing) return;
+          isEditing = true;
+          originalValue = params.excerpt || "";
+          section.addClass("is-editing");
+          body.empty();
+          const textarea = body.createEl("textarea", {
+            cls: "wp-v3-textarea",
+            attr: { placeholder: this.t("publishModal_excerptPlaceholder") || "Enter excerpt..." }
+          });
+          textarea.value = originalValue;
+          textarea.rows = 4;
+          const actions = body.createDiv("wp-v3-edit-actions");
+          const cancelBtn = actions.createEl("button", {
+            text: this.t("publishModal_cancel") || "Cancel",
+            cls: "wp-v3-cancel-btn"
+          });
+          const saveBtn = actions.createEl("button", {
+            text: this.t("publishModal_save") || "Save",
+            cls: "wp-v3-save-btn"
+          });
+          saveBtn.onclick = () => {
+            params.excerpt = textarea.value;
+            isEditing = false;
+            renderDisplay();
+          };
+          cancelBtn.onclick = () => {
+            params.excerpt = originalValue;
+            isEditing = false;
+            renderDisplay();
+          };
+          textarea.addEventListener("keydown", (e) => {
+            if (e.key === "Escape") {
+              e.preventDefault();
+              params.excerpt = originalValue;
+              isEditing = false;
+              renderDisplay();
+            } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+              e.preventDefault();
+              params.excerpt = textarea.value;
+              isEditing = false;
+              renderDisplay();
+            }
+          });
+          textarea.focus();
+        };
+        renderDisplay();
+      }
+      // ==================== V3.1 标签段 ====================
+      renderV3TagsSection(container, params) {
+        const paramsTagsStr = JSON.stringify(params.tags || []);
+        const editableTagsStr = JSON.stringify(this.editableTags);
+        if (paramsTagsStr !== editableTagsStr && (params.tags || []).length > 0) {
+          this.editableTags = params.tags ? [...params.tags] : [];
+        }
+        let isEditing = false;
+        let originalTags = [];
+        const section = this.createV3Section(
+          container,
+          this.t("publishModal_tagsLabel") || "Tags",
+          []
+          // 动态更新
+        );
+        const body = section.createDiv("wp-v3-section-body");
+        const renderTagsDisplay = () => {
+          body.empty();
+          section.removeClass("is-editing");
+          const actionsEl = section.querySelector(".wp-v3-section-actions");
+          if (actionsEl) {
+            actionsEl.empty();
+            if (this.editableTags.length > 0) {
+              const editBtn = actionsEl.createEl("button", {
+                text: "\u270F\uFE0F",
+                cls: "wp-v3-icon-btn",
+                attr: { title: this.t("publishModal_editButton") || "Edit" }
+              });
+              editBtn.onclick = () => enterEdit();
+              const aiBtn = actionsEl.createEl("button", {
+                text: "\u{1F916}",
+                cls: "wp-v3-icon-btn",
+                attr: { title: this.t("publishModal_generateTags") || "AI \u751F\u6210\u6807\u7B7E" }
+              });
+              aiBtn.onclick = () => this.generateTags(params);
+            }
+          }
+          if (this.editableTags.length > 0) {
+            const tagsWrap = body.createDiv("wp-v3-tags-container");
+            this.editableTags.forEach((tag) => {
+              const tagEl = tagsWrap.createEl("span", { cls: "wp-v3-tag-item" });
+              tagEl.style.backgroundColor = getTagColor(tag);
+              tagEl.createSpan({ text: tag });
+              const removeBtn = tagEl.createEl("button", { cls: "wp-v3-tag-remove", text: "\xD7" });
+              removeBtn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                this.editableTags = this.editableTags.filter((t) => t !== tag);
+                params.tags = [...this.editableTags];
+                renderTagsDisplay();
+              });
+            });
+            const addBtn = tagsWrap.createEl("button", { cls: "wp-v3-tag-add-btn", text: "+" });
+            addBtn.addEventListener("click", () => showInlineTagInput(tagsWrap, addBtn));
+          } else {
+            const row = body.createDiv("wp-v3-empty-action-row");
+            const addTagBtn = row.createEl("button", {
+              text: "+ \u6DFB\u52A0\u6807\u7B7E",
+              cls: "wp-v3-empty-action-btn"
+            });
+            addTagBtn.onclick = () => {
+              body.empty();
+              const tagsWrap = body.createDiv("wp-v3-tags-container");
+              const addBtn = tagsWrap.createEl("button", { cls: "wp-v3-tag-add-btn", text: "+" });
+              showInlineTagInput(tagsWrap, addBtn);
+            };
+            const aiBtn = row.createEl("button", {
+              text: "\u{1F916} " + (this.t("publishModal_generateTags") || "AI \u751F\u6210\u6807\u7B7E"),
+              cls: "wp-v3-empty-action-btn"
+            });
+            aiBtn.onclick = () => this.generateTags(params);
+          }
+        };
+        const showInlineTagInput = (parent2, addBtn) => {
+          addBtn.style.display = "none";
+          const input = parent2.createEl("input", { cls: "wp-v3-tag-input", type: "text" });
+          input.placeholder = this.plugin.t("publishModal_tagInputPlaceholder") || "\u8F93\u5165\u6807\u7B7E...";
+          input.focus();
+          let committed = false;
+          const commit = () => {
+            if (committed) return;
+            committed = true;
+            const val2 = input.value.trim();
+            if (val2 && !this.editableTags.includes(val2)) {
+              this.editableTags.push(val2);
+              params.tags = [...this.editableTags];
+            }
+            input.remove();
+            addBtn.style.display = "";
+            renderTagsDisplay();
+          };
+          input.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              commit();
+            } else if (e.key === "Escape") {
+              committed = true;
+              input.remove();
+              addBtn.style.display = "";
+            }
+          });
+          input.addEventListener("blur", () => setTimeout(commit, 200));
+        };
+        const enterEdit = () => {
+          if (isEditing) return;
+          isEditing = true;
+          originalTags = [...this.editableTags];
+          section.addClass("is-editing");
+          body.empty();
+          const textarea = body.createEl("textarea", {
+            cls: "wp-v3-textarea",
+            attr: { placeholder: this.t("publishModal_tagsPlaceholder") || "tag1, tag2, tag3..." }
+          });
+          textarea.value = this.editableTags.join(", ");
+          textarea.rows = 3;
+          const actions = body.createDiv("wp-v3-edit-actions");
+          const cancelBtn = actions.createEl("button", { text: this.t("publishModal_cancel") || "Cancel", cls: "wp-v3-cancel-btn" });
+          const saveBtn = actions.createEl("button", { text: this.t("publishModal_save") || "Save", cls: "wp-v3-save-btn" });
+          saveBtn.onclick = () => {
+            this.editableTags = textarea.value.split(",").map((t) => t.trim()).filter((t) => t.length > 0);
+            params.tags = [...this.editableTags];
+            isEditing = false;
+            renderTagsDisplay();
+          };
+          cancelBtn.onclick = () => {
+            this.editableTags = [...originalTags];
+            params.tags = [...originalTags];
+            isEditing = false;
+            renderTagsDisplay();
+          };
+          textarea.addEventListener("keydown", (e) => {
+            if (e.key === "Escape") {
+              e.preventDefault();
+              this.editableTags = [...originalTags];
+              params.tags = [...originalTags];
+              isEditing = false;
+              renderTagsDisplay();
+            } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+              e.preventDefault();
+              saveBtn.click();
+            }
+          });
+          textarea.focus();
+        };
+        renderTagsDisplay();
+      }
+      // ==================== V3.1 文章内容段（含嵌入摘要/标签） ====================
+      renderV3ContentSection(container, params) {
+        let isContentEditing = false;
+        let originalContent = "";
+        const section = this.createV3Section(
+          container,
+          this.t("publishModal_previewContent") || "Content Preview",
+          []
+        );
+        section.dataset.contentSection = "true";
+        const body = section.createDiv("wp-v3-section-body");
+        const renderHtmlPreview = () => {
+          body.empty();
+          section.removeClass("is-editing");
+          renderExcerptRow(body, params);
+          renderTagsRow(body, params);
+          const previewDiv = body.createDiv("wp-v3-content-preview");
+          const html3 = AppState.markdownParser.render(this.editableContent);
+          previewDiv.innerHTML = html3;
+        };
+        const enterContentEdit = () => {
+          if (isContentEditing) return;
+          isContentEditing = true;
+          originalContent = this.editableContent;
+          section.addClass("is-editing");
+          body.empty();
+          const textarea = body.createEl("textarea", { cls: "wp-v3-content-edit-area" });
+          textarea.value = this.editableContent;
+          textarea.placeholder = this.t("publishModal_previewEditPlaceholder") || "Edit Markdown content...";
+          const actions = body.createDiv("wp-v3-edit-actions");
+          const cancelBtn = actions.createEl("button", { text: this.t("publishModal_cancel") || "Cancel", cls: "wp-v3-cancel-btn" });
+          const saveBtn = actions.createEl("button", { text: this.t("publishModal_save") || "Save", cls: "wp-v3-save-btn" });
+          saveBtn.onclick = () => {
+            this.editableContent = textarea.value;
+            isContentEditing = false;
+            renderHtmlPreview();
+          };
+          cancelBtn.onclick = () => {
+            this.editableContent = originalContent;
+            isContentEditing = false;
+            renderHtmlPreview();
+          };
+          textarea.addEventListener("keydown", (e) => {
+            if (e.key === "Escape") {
+              e.preventDefault();
+              this.editableContent = originalContent;
+              isContentEditing = false;
+              renderHtmlPreview();
+            } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+              e.preventDefault();
+              saveBtn.click();
+            }
+          });
+          textarea.focus();
+        };
+        section.__enterContentEdit = enterContentEdit;
+        const renderExcerptRow = (parent2, p) => {
+          const excerptWrap = parent2.createDiv("wp-v3-excerpt-row");
+          if (p.excerpt) {
+            const textEl = excerptWrap.createDiv("wp-v3-excerpt-inline-text");
+            textEl.textContent = p.excerpt;
+            const editBtn = excerptWrap.createEl("button", {
+              text: "\u270F\uFE0F",
+              cls: "wp-v3-inline-edit-btn",
+              attr: { title: this.t("publishModal_editButton") || "Edit excerpt" }
+            });
+            editBtn.onclick = () => openExcerptModal(p);
+          } else {
+            const placeholder = excerptWrap.createDiv("wp-v3-excerpt-placeholder");
+            const btnRow = placeholder.createDiv("wp-v3-placeholder-btn-row");
+            const aiBtn = btnRow.createEl("button", {
+              text: "\u{1F916}\u751F\u6210\u6458\u8981",
+              cls: "wp-v3-placeholder-btn"
+            });
+            aiBtn.onclick = () => this.generateSummary(p);
+            const manualBtn = btnRow.createEl("button", {
+              text: "\u{1F4DD}\u624B\u52A8\u8F93\u5165",
+              cls: "wp-v3-placeholder-btn"
+            });
+            manualBtn.onclick = () => openExcerptModal(p);
+          }
+        };
+        const openExcerptModal = (p) => {
+          const overlay = body.createDiv("wp-v3-excerpt-edit-overlay");
+          const originalVal = p.excerpt || "";
+          const textarea = overlay.createEl("textarea", {
+            cls: "wp-v3-textarea",
+            attr: { placeholder: this.t("publishModal_excerptPlaceholder") || "Enter excerpt..." }
+          });
+          textarea.value = originalVal;
+          textarea.rows = 4;
+          const actions = overlay.createDiv("wp-v3-edit-actions");
+          const cancelBtn = actions.createEl("button", { text: this.t("publishModal_cancel") || "Cancel", cls: "wp-v3-cancel-btn" });
+          const saveBtn = actions.createEl("button", { text: this.t("publishModal_save") || "Save", cls: "wp-v3-save-btn" });
+          saveBtn.onclick = () => {
+            p.excerpt = textarea.value;
+            overlay.remove();
+            renderHtmlPreview();
+          };
+          cancelBtn.onclick = () => {
+            p.excerpt = originalVal;
+            overlay.remove();
+            renderHtmlPreview();
+          };
+          textarea.addEventListener("keydown", (e) => {
+            if (e.key === "Escape") {
+              p.excerpt = originalVal;
+              overlay.remove();
+              renderHtmlPreview();
+            } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+              e.preventDefault();
+              saveBtn.click();
+            }
+          });
+          textarea.focus();
+        };
+        const renderTagsRow = (parent2, p) => {
+          if ((p.tags || []).length > 0 && JSON.stringify(p.tags) !== JSON.stringify(this.editableTags)) {
+            this.editableTags = p.tags ? [...p.tags] : [];
+          }
+          const tagsWrap = parent2.createDiv("wp-v3-tags-row");
+          let isTagEditing = false;
+          const renderTagsContent = () => {
+            tagsWrap.empty();
+            if (this.editableTags.length > 0) {
+              const tagsContainer = tagsWrap.createDiv("wp-v3-tags-container");
+              if (isTagEditing) {
+                this.editableTags.forEach((tag, index2) => {
+                  const tagEl = tagsContainer.createEl("span", { cls: "wp-v3-tag-item is-shaking is-draggable" });
+                  tagEl.style.backgroundColor = getTagColor(tag);
+                  tagEl.dataset.tagIndex = String(index2);
+                  tagEl.createSpan({ text: tag });
+                  const xBtn = tagEl.createEl("button", { cls: "wp-v3-tag-delete-btn", text: "\xD7" });
+                  xBtn.addEventListener("click", (e) => {
+                    e.stopPropagation();
+                    this.editableTags = this.editableTags.filter((t) => t !== tag);
+                    p.tags = [...this.editableTags];
+                    renderTagsContent();
+                  });
+                });
+                const addBtn = tagsContainer.createEl("button", { cls: "wp-v3-tag-action-btn", text: "+", attr: { title: "\u6DFB\u52A0\u6807\u7B7E" } });
+                addBtn.onclick = () => showInlineTagInput(tagsContainer, addBtn, p, renderTagsContent);
+                this.enableTagDragSort(tagsContainer, p, renderTagsContent);
+                const actionsRow = tagsWrap.createDiv("wp-v3-tags-editing-actions");
+                const doneBtn = actionsRow.createEl("button", {
+                  text: this.t("publishModal_save") || "Done",
+                  cls: "wp-v3-tag-action-btn wp-v3-tag-done-btn"
+                });
+                doneBtn.onclick = () => {
+                  isTagEditing = false;
+                  renderTagsContent();
+                };
+              } else {
+                this.editableTags.forEach((tag) => {
+                  const tagEl = tagsContainer.createEl("span", { cls: "wp-v3-tag-item" });
+                  tagEl.style.backgroundColor = getTagColor(tag);
+                  tagEl.createSpan({ text: tag });
+                });
+                const editBtn = tagsContainer.createEl("button", {
+                  text: "\u270F\uFE0F",
+                  cls: "wp-v3-inline-edit-btn",
+                  attr: { title: this.t("publishModal_editButton") || "Edit tags" }
+                });
+                editBtn.onclick = () => {
+                  isTagEditing = true;
+                  renderTagsContent();
+                };
+              }
+            } else {
+              const emptyRow = tagsWrap.createDiv("wp-v3-tags-empty-row");
+              const addBtn = emptyRow.createEl("button", {
+                text: "+ \u6DFB\u52A0\u6807\u7B7E",
+                cls: "wp-v3-placeholder-btn"
+              });
+              addBtn.onclick = () => {
+                isTagEditing = true;
+                tagsWrap.empty();
+                const tagsContainer = tagsWrap.createDiv("wp-v3-tags-container");
+                const btnArea = tagsWrap.createDiv("wp-v3-tags-btn-area");
+                const plusBtn = btnArea.createEl("button", { cls: "wp-v3-tag-action-btn", text: "+", attr: { title: "\u6DFB\u52A0\u6807\u7B7E" } });
+                plusBtn.onclick = () => showInlineTagInput(tagsContainer, plusBtn, p, renderTagsContent);
+                showInlineTagInput(tagsContainer, plusBtn, p, renderTagsContent);
+              };
+              const aiBtn = emptyRow.createEl("button", {
+                text: "\u{1F916}\u751F\u6210\u6807\u7B7E",
+                cls: "wp-v3-placeholder-btn"
+              });
+              aiBtn.onclick = () => this.generateTags(p);
+            }
+          };
+          renderTagsContent();
+        };
+        const showInlineTagInput = (parent2, triggerBtn, p, onDone) => {
+          triggerBtn.style.display = "none";
+          const input = parent2.createEl("input", { cls: "wp-v3-tag-input", type: "text" });
+          input.placeholder = this.plugin.t("publishModal_tagInputPlaceholder") || "\u8F93\u5165\u6807\u7B7E...";
+          input.focus();
+          let committed = false;
+          const commit = () => {
+            if (committed) return;
+            committed = true;
+            const val2 = input.value.trim();
+            if (val2 && !this.editableTags.includes(val2)) {
+              this.editableTags.push(val2);
+              p.tags = [...this.editableTags];
+            }
+            input.remove();
+            triggerBtn.style.display = "";
+            onDone();
+          };
+          input.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              commit();
+            } else if (e.key === "Escape") {
+              committed = true;
+              input.remove();
+              triggerBtn.style.display = "";
+            }
+          });
+          input.addEventListener("blur", () => setTimeout(commit, 200));
+        };
+        renderHtmlPreview();
+      }
+      // ==================== 标签拖拽排序（桌面 + 移动端） ====================
+      enableTagDragSort(container, p, onReorder) {
+        let draggingEl = null;
+        let ghost = null;
+        let placeholder = null;
+        let originIndex = -1;
+        const getTagEls = () => Array.from(container.querySelectorAll(".wp-v3-tag-item.is-draggable"));
+        const getIndexOf = (el) => getTagEls().indexOf(el);
+        const createGhost = (source, clientX, clientY) => {
+          ghost = source.cloneNode(true);
+          ghost.className = "wp-v3-tag-item wp-v3-drag-ghost";
+          ghost.style.backgroundColor = source.style.backgroundColor;
+          ghost.style.left = `${clientX - source.offsetWidth / 2}px`;
+          ghost.style.top = `${clientY - source.offsetHeight / 2}px`;
+          document.body.appendChild(ghost);
+        };
+        const moveGhost = (clientX, clientY) => {
+          if (!ghost || !draggingEl) return;
+          ghost.style.left = `${clientX - draggingEl.offsetWidth / 2}px`;
+          ghost.style.top = `${clientY - draggingEl.offsetHeight / 2}px`;
+        };
+        const getTargetEl = (clientX, clientY) => {
+          const els = getTagEls().filter((el) => el !== draggingEl);
+          for (const el of els) {
+            const rect = el.getBoundingClientRect();
+            if (clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom) {
+              return el;
+            }
+          }
+          return null;
+        };
+        const applyReorder = (targetEl) => {
+          const fromIdx = getIndexOf(draggingEl);
+          const toIdx = getIndexOf(targetEl);
+          if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return;
+          const arr = [...this.editableTags];
+          const [item] = arr.splice(fromIdx, 1);
+          arr.splice(toIdx, 0, item);
+          this.editableTags = arr;
+          p.tags = [...arr];
+        };
+        const endDrag = (clientX, clientY) => {
+          if (!draggingEl) return;
+          const target = getTargetEl(clientX, clientY);
+          if (target) applyReorder(target);
+          draggingEl.classList.remove("is-dragging");
+          if (ghost) {
+            ghost.remove();
+            ghost = null;
+          }
+          if (placeholder) {
+            placeholder.remove();
+            placeholder = null;
+          }
+          draggingEl = null;
+          onReorder();
+        };
+        getTagEls().forEach((tagEl) => {
+          tagEl.addEventListener("pointerdown", (e) => {
+            if (e.target.classList.contains("wp-v3-tag-delete-btn")) return;
+            e.preventDefault();
+            draggingEl = tagEl;
+            originIndex = getIndexOf(tagEl);
+            tagEl.classList.add("is-dragging");
+            tagEl.setPointerCapture(e.pointerId);
+            createGhost(tagEl, e.clientX, e.clientY);
+          });
+          tagEl.addEventListener("pointermove", (e) => {
+            if (!draggingEl || draggingEl !== tagEl) return;
+            e.preventDefault();
+            moveGhost(e.clientX, e.clientY);
+          });
+          tagEl.addEventListener("pointerup", (e) => {
+            if (!draggingEl || draggingEl !== tagEl) return;
+            endDrag(e.clientX, e.clientY);
+          });
+          tagEl.addEventListener("pointercancel", () => {
+            if (draggingEl) {
+              draggingEl.classList.remove("is-dragging");
+              if (ghost) {
+                ghost.remove();
+                ghost = null;
+              }
+              draggingEl = null;
+              onReorder();
+            }
+          });
+        });
+      }
+      // ==================== V3.1 右侧：基本设置卡片 ====================
+      renderV3SettingsCard(container, params) {
+        const card = container.createDiv("wp-v3-settings-card");
+        card.createDiv({
+          cls: "wp-v3-settings-card-title",
+          text: this.plugin.t("publishModal_basicSettings") || "Settings"
+        });
+        const body = card.createDiv("wp-v3-settings-body");
+        this.renderV3Field(body, this.t("publishModal_titleName"), "publishModal_titleInfo", (fieldEl) => {
+          const input = fieldEl.createEl("input", { cls: "wp-v3-input", type: "text" });
+          input.value = params.title || "";
+          input.placeholder = this.t("publishModal_titlePlaceholder");
+          this.titleInput = input;
+          input.addEventListener("input", () => {
+            params.title = input.value;
+          });
+          input.addEventListener("blur", () => {
+            if (this.plugin.settings.autoGenerateSlug && this.slugInput) {
+              if (!this.lastAutoGeneratedSlug || params.slug === this.lastAutoGeneratedSlug) {
+                this.generateDefaultSlug(params.title, params);
+                this.lastAutoGeneratedSlug = params.slug || "";
+                if (this.slugInput) this.slugInput.value = params.slug || "";
+              }
+            }
+          });
+        });
+        this.renderV3Field(body, this.t("publishModal_slugName"), "publishModal_slugInfo", (fieldEl) => {
+          const slugRow = fieldEl.createDiv();
+          slugRow.style.display = "flex";
+          slugRow.style.gap = "6px";
+          slugRow.style.alignItems = "center";
+          const input = fieldEl.createEl("input", { cls: "wp-v3-input", type: "text" });
+          input.value = params.slug || "";
+          input.placeholder = this.t("publishModal_slugPlaceholder");
+          this.slugInput = input;
+          const initialSlugValue = params.slug;
+          input.addEventListener("input", () => {
+            const sanitized = SlugGenerator.sanitizeSlug(input.value);
+            params.slug = sanitized;
+            if (sanitized && initialSlugValue && sanitized !== initialSlugValue) {
+              this.lastAutoGeneratedSlug = "";
+            }
+          });
+        });
+        body.createDiv("wp-v3-divider");
+        this.renderV3Field(body, this.t("publishModal_statusName"), "publishModal_statusDesc", (fieldEl) => {
+          const select2 = fieldEl.createEl("select", { cls: "wp-v3-select" });
+          [
+            ["draft" /* Draft */, this.plugin.t("publishModal_statusDraft")],
+            ["publish" /* Publish */, this.plugin.t("publishModal_statusPublish")],
+            ["private" /* Private */, this.plugin.t("publishModal_statusPrivate")],
+            ["future" /* Future */, this.plugin.t("publishModal_statusFuture")]
+          ].forEach(([val2, label]) => {
+            const opt = select2.createEl("option", { value: val2, text: label });
+            if (val2 === params.status) opt.selected = true;
+          });
+          select2.addEventListener("change", () => {
+            params.status = select2.value;
+            this.display(params);
+          });
+        });
+        if (params.status === "future" /* Future */) {
+          this.renderV3Field(body, this.t("publishModal_postDateTimeName"), "publishModal_postDateTimeDescFormat", (fieldEl) => {
+            const input = fieldEl.createEl("input", { cls: "wp-v3-input", type: "text" });
+            input.value = format(/* @__PURE__ */ new Date(), "yyyy-MM-dd HH:mm:ss");
+            this.setupDateMask(input, params);
+          });
+        } else {
+          delete params.datetime;
+        }
+        this.renderV3Field(body, this.t("publishModal_commentName"), "publishModal_commentDesc", (fieldEl) => {
+          const select2 = fieldEl.createEl("select", { cls: "wp-v3-select" });
+          [
+            ["open" /* Open */, this.plugin.t("publishModal_commentOpen")],
+            ["closed" /* Closed */, this.plugin.t("publishModal_commentClosed")]
+          ].forEach(([val2, label]) => {
+            const opt = select2.createEl("option", { value: val2, text: label });
+            if (val2 === params.commentStatus) opt.selected = true;
+          });
+          select2.addEventListener("change", () => {
+            params.commentStatus = select2.value;
+          });
+        });
+        this.renderV3Field(body, this.t("publishModal_postTypeName"), "publishModal_postTypeDesc", (fieldEl) => {
+          const select2 = fieldEl.createEl("select", { cls: "wp-v3-select" });
+          [
+            ["html", this.plugin.t("publishModal_formatHTML")],
+            ["markdown", this.plugin.t("publishModal_formatMarkdown")]
+          ].forEach(([val2, label]) => {
+            select2.createEl("option", { value: val2, text: label });
+          });
+          select2.addEventListener("change", () => {
+            params.contentFormat = select2.value;
+          });
+        });
+        const validCategories = this.categories.items.filter((it) => it.name && it.name.trim());
+        if (params.postType === "post" /* Post */ && validCategories.length > 0) {
+          body.createDiv("wp-v3-divider");
+          this.renderV3Field(body, this.t("publishModal_categoryName"), "publishModal_categoryInfo", (fieldEl) => {
+            const tagsWrap = fieldEl.createDiv();
+            tagsWrap.style.display = "flex";
+            tagsWrap.style.flexWrap = "wrap";
+            tagsWrap.style.gap = "4px";
+            const renderCats = () => {
+              tagsWrap.empty();
+              params.categories.forEach((catId) => {
+                const cat = validCategories.find((c) => Number(c.id) === catId);
+                if (!cat) return;
+                const tag = tagsWrap.createEl("span", { cls: "wp-v3-tag-item" });
+                tag.style.backgroundColor = "var(--interactive-accent)";
+                tag.style.fontSize = "11px";
+                tag.createSpan({ text: cat.name });
+                const removeBtn = tag.createEl("button", { cls: "wp-v3-tag-delete-btn", text: "\xD7" });
+                removeBtn.addEventListener("click", (e) => {
+                  e.stopPropagation();
+                  params.categories = params.categories.filter((id) => id !== catId);
+                  renderCats();
+                });
+              });
+              const available = validCategories.filter((cat) => !params.categories.includes(Number(cat.id)));
+              if (available.length > 0) {
+                const select2 = tagsWrap.createEl("select", { cls: "wp-v3-select" });
+                select2.style.width = "auto";
+                select2.style.fontSize = "11px";
+                select2.style.padding = "2px 6px";
+                select2.createEl("option", { value: "", text: "+" });
+                available.forEach((cat) => select2.createEl("option", { value: String(cat.id), text: cat.name }));
+                select2.addEventListener("change", () => {
+                  if (select2.value) {
+                    params.categories.push(Number(select2.value));
+                    renderCats();
+                  }
+                });
+              }
+            };
+            if (params.categories.length === 0) {
+              const uncategorized = validCategories.find(
+                (it) => ["Uncategorized", "\u672A\u5206\u7C7B", this.plugin.t("publishModal_uncategorized")].includes(it.name)
+              );
+              if (uncategorized) params.categories = [Number(uncategorized.id)];
+            }
+            renderCats();
+          });
+        }
+        if (this.matterData.postId) {
+          body.createDiv("wp-v3-divider");
+          const toggleRow = body.createDiv("wp-v3-toggle-row");
+          const labelRow = toggleRow.createDiv("wp-v3-field-label-row");
+          labelRow.createSpan({ text: this.t("publishModal_publishAsNewName"), cls: "wp-v3-field-label" });
+          this.addV3HintBtn(labelRow, this.t("publishModal_publishAsNewDesc"));
+          const label = toggleRow.createEl("label", { cls: "wp-v3-toggle" });
+          const checkbox = label.createEl("input", { type: "checkbox" });
+          checkbox.checked = params.publishAsNew || false;
+          checkbox.addEventListener("change", () => {
+            params.publishAsNew = checkbox.checked;
+          });
+          label.createDiv("wp-v3-toggle-slider");
+        }
+      }
+      /**
+       * 渲染右侧设置区的单个字段（label + hint + control）
+       */
+      renderV3Field(container, label, hintKey, renderControl) {
+        const field = container.createDiv("wp-v3-field");
+        const labelRow = field.createDiv("wp-v3-field-label-row");
+        labelRow.createSpan({ text: label, cls: "wp-v3-field-label" });
+        if (hintKey) {
+          this.addV3HintBtn(labelRow, this.t(hintKey) || hintKey);
+        }
+        renderControl(field);
+      }
+      /**
+       * 添加 ⓘ hover tooltip 图标（非按钮，纯显示）
+       */
+      addV3HintBtn(container, hintText) {
+        const icon = container.createEl("span", { cls: "wp-v3-hint-icon", text: "\u24D8" });
+        const tooltip = icon.createDiv("wp-v3-tooltip");
+        tooltip.textContent = hintText;
+      }
+      // ==================== V3.1 右侧：历史记录卡片 ====================
+      renderV3HistoryCard(container, params) {
+        const card = container.createDiv("wp-v3-settings-card wp-v3-collapsible-card");
+        card.addClass("is-collapsed");
+        const titleRow = card.createDiv("wp-v3-settings-card-title wp-v3-card-title-clickable");
+        titleRow.createSpan({ text: this.plugin.t("publishModal_historyPanel") || "History" });
+        const chevron = titleRow.createSpan({ cls: "wp-v3-collapse-chevron", text: "\u25B6" });
+        const body = card.createDiv("wp-v3-settings-body wp-v3-collapsible-body");
+        body.style.display = "none";
+        const historyList = body.createDiv("wp-v3-history-list");
+        historyList.createDiv({ cls: "wp-v3-history-empty", text: this.plugin.t("publishModal_noHistory") || "No history yet" });
+        titleRow.addEventListener("click", () => {
+          const collapsed = card.hasClass("is-collapsed");
+          if (collapsed) {
+            card.removeClass("is-collapsed");
+            body.style.display = "";
+            chevron.textContent = "\u25BC";
+          } else {
+            card.addClass("is-collapsed");
+            body.style.display = "none";
+            chevron.textContent = "\u25B6";
+          }
+        });
+      }
+      // ==================== V3.1 底部操作栏 ====================
+      renderV3Footer(container, params) {
+        const footer = container.createDiv("wp-v3-footer");
+        const editBtn = footer.createEl("button", {
+          text: this.t("publishModal_editButton") || "\u270F\uFE0F \u7F16\u8F91",
+          cls: "wp-v3-edit-footer-btn"
+        });
+        editBtn.onclick = () => {
+          const contentSection = container.querySelector('[data-content-section="true"]');
+          if (contentSection == null ? void 0 : contentSection.__enterContentEdit) contentSection.__enterContentEdit();
+        };
+        const cancelBtn = footer.createEl("button", {
+          text: "\u274C " + (this.t("publishModal_cancel") || "\u53D6\u6D88"),
+          cls: "wp-v3-cancel-footer-btn"
+        });
+        cancelBtn.onclick = () => this.close();
+        const publishBtn = footer.createEl("button", {
+          text: this.t("publishModal_publishButton") || "\u{1F680} \u53D1\u5E03",
+          cls: "wp-v3-publish-footer-btn"
+        });
+        this.publishBtn = publishBtn;
+        publishBtn.onclick = () => this.doPublish(params, publishBtn);
+      }
+      /**
+       * 设置滚动监听，为 sticky 元素添加阴影效果
+       */
+      setupStickyScrollListener(container) {
+        const tabBar = container.querySelector(".wp-publish-tabs");
+        const bottomBar = container.querySelector(".wp-publish-bottom-bar");
+        if (!tabBar || !bottomBar) {
+          return;
+        }
+        const handleScroll = () => {
+          const scrollTop = container.scrollTop;
+          const scrollHeight = container.scrollHeight;
+          const clientHeight = container.clientHeight;
+          const scrollBottom = scrollHeight - scrollTop - clientHeight;
+          if (scrollTop > 10) {
+            tabBar.addClass("scrolled");
+          } else {
+            tabBar.removeClass("scrolled");
+          }
+          if (scrollBottom > 10) {
+            bottomBar.addClass("scrolled");
+          } else {
+            bottomBar.removeClass("scrolled");
+          }
+        };
+        container.addEventListener("scroll", handleScroll);
+        handleScroll();
       }
       renderTabBar(container, params) {
         const tabContainer = container.createDiv("wp-publish-tabs");
         const tabs = [
           { id: "settings", label: this.plugin.t("publishModal_settingsTab") },
-          { id: "preview", label: this.plugin.t("publishModal_previewTab") },
-          { id: "advanced", label: this.plugin.t("publishModal_advancedTab") }
+          { id: "preview", label: this.plugin.t("publishModal_previewTab") }
         ];
         tabs.forEach((tab) => {
           const tabEl = tabContainer.createDiv({
@@ -107737,146 +108857,365 @@ var init_wp_publish_modal_v2 = __esm({
           };
         });
       }
-      // ==================== 设置标签 ====================
-      renderSettingsTab(container, params) {
-        const topSection = container.createDiv("wp-settings-top");
-        this.renderFeaturedImageSettings(topSection, params);
-        const bottomSection = container.createDiv("wp-settings-bottom");
-        this.renderBasicSettings(bottomSection, params);
+      // ==================== 新布局：预览区 ====================
+      renderPreviewArea(container, params) {
+        const previewContainer = container.createDiv("wp-preview-container");
+        this.renderFeaturedImageSection(previewContainer, params);
+        this.renderExcerptSection(previewContainer, params);
+        this.renderTagsSection(previewContainer, params);
+        this.renderContentSection(previewContainer, params);
       }
-      renderFeaturedImageSettings(container, params) {
-        var _a5;
-        const card = container.createDiv("wp-settings-card");
-        card.createEl("h3", { text: this.t("publishModal_featuredImage"), cls: "wp-settings-section-title" });
-        const previewContainer = card.createDiv("featured-image-preview-large");
-        if (this.isLoadingRemoteImage) {
-          const loadingDiv = previewContainer.createDiv("featured-image-loading");
-          loadingDiv.style.display = "flex";
-          loadingDiv.style.flexDirection = "column";
-          loadingDiv.style.alignItems = "center";
-          loadingDiv.style.justifyContent = "center";
-          loadingDiv.style.padding = "40px 20px";
-          loadingDiv.style.color = "var(--text-muted)";
-          const spinner = loadingDiv.createDiv("featured-image-spinner");
-          spinner.style.width = "32px";
-          spinner.style.height = "32px";
-          spinner.style.border = "3px solid var(--background-modifier-border)";
-          spinner.style.borderTop = "3px solid var(--interactive-accent)";
-          spinner.style.borderRadius = "50%";
-          spinner.style.animation = "spin 1s linear infinite";
-          spinner.style.marginBottom = "12px";
-          loadingDiv.createEl("p", {
-            text: this.t("publishModal_loadingRemoteImage") || "\u6B63\u5728\u52A0\u8F7D\u8FDC\u7A0B\u56FE\u7247...",
-            cls: "featured-image-loading-text"
-          });
-          if (!document.getElementById("featured-image-spinner-style")) {
-            const style = document.createElement("style");
-            style.id = "featured-image-spinner-style";
-            style.textContent = `
-          @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-          }
-        `;
-            document.head.appendChild(style);
-          }
-        } else if (this.remoteImageLoadFailed) {
-          const errorDiv = previewContainer.createDiv("featured-image-error");
-          errorDiv.style.display = "flex";
-          errorDiv.style.flexDirection = "column";
-          errorDiv.style.alignItems = "center";
-          errorDiv.style.justifyContent = "center";
-          errorDiv.style.padding = "40px 20px";
-          errorDiv.style.color = "var(--text-error)";
-          errorDiv.createEl("p", {
-            text: "\u26A0\uFE0F " + (this.remoteImageError || this.t("publishModal_remoteImageLoadFailed") || "\u8FDC\u7A0B\u56FE\u7247\u52A0\u8F7D\u5931\u8D25"),
-            cls: "featured-image-error-text"
-          });
-          const btnContainer = errorDiv.createDiv("featured-image-error-buttons");
-          btnContainer.style.display = "flex";
-          btnContainer.style.gap = "8px";
-          btnContainer.style.marginTop = "12px";
-          const retryBtn = btnContainer.createEl("button", {
-            text: this.t("publishModal_retry") || "\u91CD\u8BD5",
-            cls: "mod-cta"
-          });
-          retryBtn.onclick = async () => {
-            if (this.remoteImagePostId) {
-              await this.loadFeaturePictureFromRemote(this.remoteImagePostId);
-            }
-          };
-          const skipBtn = btnContainer.createEl("button", {
-            text: this.t("publishModal_skip") || "\u8DF3\u8FC7"
-          });
-          skipBtn.onclick = () => {
-            this.remoteImageLoadFailed = false;
-            this.autoFeaturedImage = null;
-            this.display(params);
-          };
-          const closeBtn = btnContainer.createEl("button", {
-            text: this.t("confirmModal_cancel") || "\u5173\u95ED"
-          });
-          closeBtn.onclick = () => {
-            this.close();
-          };
-        } else {
-          const imageToDisplay = this.featuredImage || this.autoFeaturedImage;
-          if (imageToDisplay) {
-            const blob = new Blob([imageToDisplay.content], { type: imageToDisplay.mimeType });
-            const url = URL.createObjectURL(blob);
-            const img = previewContainer.createEl("img", {
-              attr: { src: url },
-              cls: "featured-image-full"
-            });
-            img.style.maxWidth = "100%";
-            img.style.maxHeight = "160px";
-            img.style.objectFit = "cover";
-            img.style.borderRadius = "6px";
-            const info = previewContainer.createDiv("featured-image-info");
-            info.createSpan({ text: imageToDisplay.fileName });
-            if (this.featuredImage) {
-              const removeBtn = previewContainer.createEl("button", {
-                text: this.t("confirmModal_cancel"),
-                cls: "featured-image-remove-btn"
-              });
-              removeBtn.onclick = async () => {
-                await this.clearImageCache();
-                this.featuredImage = null;
-                this.display(params);
-              };
-            }
+      // ==================== 新布局：面板区 ====================
+      renderPanelsArea(container, params) {
+        const settingsPanel = container.createDiv("wp-panel wp-panel-settings");
+        this.renderCollapsiblePanel(
+          settingsPanel,
+          this.plugin.t("publishModal_settingsPanel") || "Settings",
+          "settings",
+          (content) => this.renderSettingsPanel(content, params)
+        );
+        const historyPanel = container.createDiv("wp-panel wp-panel-history");
+        this.renderCollapsiblePanel(
+          historyPanel,
+          this.plugin.t("publishModal_historyPanel") || "History",
+          "history",
+          (content) => this.renderHistoryPanel(content, params)
+        );
+      }
+      /**
+       * 渲染可折叠面板
+       */
+      renderCollapsiblePanel(container, title, panelId, renderContent) {
+        const header = container.createDiv("wp-panel-header");
+        const collapseIcon = header.createSpan("wp-panel-collapse-icon");
+        (0, import_obsidian9.setIcon)(collapseIcon, "chevron-down");
+        header.createSpan({ text: title, cls: "wp-panel-title" });
+        const content = container.createDiv("wp-panel-content");
+        renderContent(content);
+        let isCollapsed = false;
+        header.onclick = () => {
+          isCollapsed = !isCollapsed;
+          if (isCollapsed) {
+            container.addClass("collapsed");
+            (0, import_obsidian9.setIcon)(collapseIcon, "chevron-right");
           } else {
-            previewContainer.createEl("p", {
-              text: this.t("publishModal_noFeaturedImage"),
-              cls: "featured-image-placeholder-text"
-            });
-          }
-        }
-        const btnRow = card.createDiv("featured-image-btn-row");
-        const localBtn = btnRow.createEl("button", { text: this.t("publishModal_localImage"), cls: "feature-btn" });
-        localBtn.onclick = () => this.selectLocalImage(params);
-        const onlineBtn = btnRow.createEl("button", { text: this.t("publishModal_onlineImage"), cls: "feature-btn" });
-        onlineBtn.onclick = () => {
-          if (!this.plugin.settings.unsplashAccessKey) {
-            new import_obsidian9.Notice(this.t("publishModal_unsplashKeyRequired"));
-          } else {
-            this.selectUnsplashImage(params);
+            container.removeClass("collapsed");
+            (0, import_obsidian9.setIcon)(collapseIcon, "chevron-down");
           }
         };
-        const aiBtn = btnRow.createEl("button", { text: this.t("publishModal_aiGenerateBtn"), cls: "feature-btn" });
-        if (!this.plugin.settings.aiConfig) {
-          aiBtn.onclick = () => {
-            new import_obsidian9.Notice(this.t("publishModal_imageAIRequired"));
-          };
-        } else if (!((_a5 = this.aiService) == null ? void 0 : _a5.hasImageAIKey())) {
-          aiBtn.onclick = () => {
-            new import_obsidian9.Notice(this.t("notice_imageAIApiKeyRequired"));
-          };
+        this.setupPanelResize(container);
+      }
+      /**
+       * 设置面板拖拽调整大小
+       */
+      setupPanelResize(panel) {
+        const resizeHandle = panel.createDiv("wp-panel-resize-handle");
+        let isResizing = false;
+        let startY = 0;
+        let startHeight = 0;
+        resizeHandle.addEventListener("mousedown", (e) => {
+          isResizing = true;
+          startY = e.clientY;
+          startHeight = panel.offsetHeight;
+          document.body.addClass("wp-resizing");
+          panel.addClass("resizing");
+          e.preventDefault();
+        });
+        document.addEventListener("mousemove", (e) => {
+          if (!isResizing) return;
+          const deltaY = e.clientY - startY;
+          const newHeight = startHeight + deltaY;
+          const minHeight = 100;
+          const maxHeight = window.innerHeight * 0.8;
+          if (newHeight >= minHeight && newHeight <= maxHeight) {
+            panel.style.height = `${newHeight}px`;
+          }
+        });
+        document.addEventListener("mouseup", () => {
+          if (isResizing) {
+            isResizing = false;
+            document.body.removeClass("wp-resizing");
+            panel.removeClass("resizing");
+          }
+        });
+      }
+      renderSettingsPanel(container, params) {
+        const aiSection = container.createDiv("wp-settings-ai");
+        this.renderAIAssistSection(aiSection, params);
+        const basicSection = container.createDiv("wp-settings-bottom");
+        this.renderBasicSettings(basicSection, params);
+      }
+      renderHistoryPanel(container, params) {
+        container.createSpan({ text: this.plugin.t("publishModal_noHistory") || "No history yet", cls: "wp-panel-empty" });
+      }
+      // ==================== 四段式预览区 ====================
+      /**
+       * 1. 特色图片段落
+       */
+      renderFeaturedImageSection(container, params) {
+        const section = container.createDiv("wp-preview-section wp-preview-featured-image-section");
+        const header = section.createDiv("wp-preview-section-header");
+        header.createEl("h4", { text: this.t("publishModal_previewFeaturedImage"), cls: "wp-preview-section-title" });
+        const editBtn = header.createEl("button", {
+          text: "\u270F\uFE0F",
+          cls: "wp-preview-edit-btn",
+          attr: { "aria-label": "Edit featured image" }
+        });
+        editBtn.onclick = () => {
+          const imageSection = this.contentEl.querySelector(".wp-ai-featured-image");
+          if (imageSection) {
+            imageSection.scrollIntoView({ behavior: "smooth", block: "center" });
+            imageSection.classList.add("wp-highlight-section");
+            setTimeout(() => imageSection.classList.remove("wp-highlight-section"), 2e3);
+          }
+        };
+        const content = section.createDiv("wp-preview-section-content");
+        const imageToDisplay = this.featuredImage || this.autoFeaturedImage;
+        if (imageToDisplay) {
+          const imgContainer = content.createDiv("wp-preview-image-container");
+          const blob = new Blob([imageToDisplay.content], { type: imageToDisplay.mimeType });
+          const url = URL.createObjectURL(blob);
+          const img = imgContainer.createEl("img", { cls: "wp-preview-image" });
+          img.src = url;
+          img.alt = "Featured Image";
+          const info = content.createDiv("wp-preview-image-info");
+          info.createSpan({ text: `${imageToDisplay.fileName} (${this.formatFileSize(imageToDisplay.content.byteLength)})` });
+        } else if (this.matterData.featurePicture) {
+          const imgContainer = content.createDiv("wp-preview-image-container");
+          const img = imgContainer.createEl("img", { cls: "wp-preview-image" });
+          img.src = this.matterData.featurePicture;
+          img.alt = "Featured Image";
+          const info = content.createDiv("wp-preview-image-info");
+          info.createSpan({ text: this.t("publishModal_previewFeaturedImageUploaded") });
         } else {
-          aiBtn.onclick = () => this.generateAImage(params);
+          content.createDiv("wp-preview-empty").createSpan({
+            text: this.t("publishModal_noFeaturedImage") || "No featured image",
+            cls: "wp-preview-empty-text"
+          });
         }
-        const galleryBtn = btnRow.createEl("button", { text: this.t("publishModal_galleryImage"), cls: "feature-btn" });
-        galleryBtn.onclick = () => this.selectVaultImage(params);
+      }
+      /**
+       * 2. 摘要段落
+       */
+      renderExcerptSection(container, params) {
+        const section = container.createDiv("wp-preview-section wp-preview-excerpt-section");
+        const header = section.createDiv("wp-preview-section-header");
+        header.createEl("h4", { text: this.t("publishModal_excerptLabel") || "Excerpt", cls: "wp-preview-section-title" });
+        const editBtn = header.createEl("button", {
+          text: "\u270F\uFE0F",
+          cls: "wp-preview-edit-btn",
+          attr: { "aria-label": "Edit excerpt" }
+        });
+        const content = section.createDiv("wp-preview-section-content");
+        const renderDisplay = () => {
+          content.empty();
+          if (params.excerpt) {
+            const excerptText = content.createDiv("wp-preview-excerpt-text");
+            excerptText.textContent = params.excerpt;
+          } else {
+            content.createDiv("wp-preview-empty").createSpan({
+              text: this.t("publishModal_noExcerpt") || "No excerpt",
+              cls: "wp-preview-empty-text"
+            });
+          }
+        };
+        renderDisplay();
+        let isEditing = false;
+        let originalValue = "";
+        const exitEdit = () => {
+          isEditing = false;
+          section.removeClass("is-editing");
+          editBtn.textContent = "\u270F\uFE0F";
+          renderDisplay();
+        };
+        const saveEdit = (newValue) => {
+          params.excerpt = newValue;
+          exitEdit();
+        };
+        editBtn.onclick = () => {
+          if (isEditing) return;
+          isEditing = true;
+          originalValue = params.excerpt || "";
+          section.addClass("is-editing");
+          content.empty();
+          const textarea = content.createEl("textarea", {
+            cls: "wp-preview-textarea",
+            attr: { placeholder: this.t("publishModal_excerptPlaceholder") || "Enter excerpt..." }
+          });
+          textarea.value = originalValue;
+          textarea.style.width = "100%";
+          textarea.style.minHeight = "100px";
+          const btnGroup = content.createDiv("wp-preview-edit-actions");
+          const saveBtn = btnGroup.createEl("button", { text: this.t("publishModal_save") || "Save", cls: "wp-preview-save-btn" });
+          const cancelBtn = btnGroup.createEl("button", { text: this.t("publishModal_cancel") || "Cancel", cls: "wp-preview-cancel-btn" });
+          saveBtn.onclick = () => saveEdit(textarea.value);
+          cancelBtn.onclick = () => {
+            params.excerpt = originalValue;
+            exitEdit();
+          };
+          textarea.addEventListener("keydown", (e) => {
+            if (e.key === "Escape") {
+              e.preventDefault();
+              params.excerpt = originalValue;
+              exitEdit();
+            } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+              e.preventDefault();
+              saveEdit(textarea.value);
+            }
+          });
+          textarea.focus();
+        };
+      }
+      /**
+       * 3. 标签段落
+       */
+      renderTagsSection(container, params) {
+        const section = container.createDiv("wp-preview-section wp-preview-tags-section");
+        const header = section.createDiv("wp-preview-section-header");
+        header.createEl("h4", { text: this.t("publishModal_tagsLabel") || "Tags", cls: "wp-preview-section-title" });
+        const editBtn = header.createEl("button", {
+          text: "\u270F\uFE0F",
+          cls: "wp-preview-edit-btn",
+          attr: { "aria-label": "Edit tags" }
+        });
+        const content = section.createDiv("wp-preview-section-content");
+        const renderDisplay = () => {
+          content.empty();
+          if (this.editableTags && this.editableTags.length > 0) {
+            const tagsContainer = content.createDiv("wp-preview-tags-container");
+            this.editableTags.forEach((tag) => {
+              const tagEl = tagsContainer.createDiv("wp-preview-tag");
+              tagEl.textContent = tag;
+            });
+          } else {
+            content.createDiv("wp-preview-empty").createSpan({
+              text: this.t("publishModal_noTags") || "No tags",
+              cls: "wp-preview-empty-text"
+            });
+          }
+        };
+        renderDisplay();
+        let isEditing = false;
+        let originalTags = [];
+        const exitEdit = () => {
+          isEditing = false;
+          section.removeClass("is-editing");
+          editBtn.textContent = "\u270F\uFE0F";
+          renderDisplay();
+        };
+        const saveEdit = (tagsStr) => {
+          this.editableTags = tagsStr.split(",").map((t) => t.trim()).filter((t) => t.length > 0);
+          params.tags = [...this.editableTags];
+          exitEdit();
+        };
+        editBtn.onclick = () => {
+          if (isEditing) return;
+          isEditing = true;
+          originalTags = [...this.editableTags];
+          section.addClass("is-editing");
+          content.empty();
+          const textarea = content.createEl("textarea", {
+            cls: "wp-preview-textarea",
+            attr: { placeholder: this.t("publishModal_tagsPlaceholder") || "Enter tags, separated by commas..." }
+          });
+          textarea.value = this.editableTags.join(", ");
+          textarea.style.width = "100%";
+          textarea.style.minHeight = "60px";
+          const btnGroup = content.createDiv("wp-preview-edit-actions");
+          const saveBtn = btnGroup.createEl("button", { text: this.t("publishModal_save") || "Save", cls: "wp-preview-save-btn" });
+          const cancelBtn = btnGroup.createEl("button", { text: this.t("publishModal_cancel") || "Cancel", cls: "wp-preview-cancel-btn" });
+          saveBtn.onclick = () => saveEdit(textarea.value);
+          cancelBtn.onclick = () => {
+            this.editableTags = [...originalTags];
+            params.tags = [...originalTags];
+            exitEdit();
+          };
+          textarea.addEventListener("keydown", (e) => {
+            if (e.key === "Escape") {
+              e.preventDefault();
+              this.editableTags = [...originalTags];
+              params.tags = [...originalTags];
+              exitEdit();
+            } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+              e.preventDefault();
+              saveEdit(textarea.value);
+            }
+          });
+          textarea.focus();
+        };
+      }
+      /**
+       * 4. 文章内容段落
+       */
+      renderContentSection(container, params) {
+        const section = container.createDiv("wp-preview-section wp-preview-content-section");
+        const header = section.createDiv("wp-preview-section-header");
+        header.createEl("h4", { text: this.t("publishModal_previewContent") || "Content", cls: "wp-preview-section-title" });
+        const editBtn = header.createEl("button", {
+          text: "\u270F\uFE0F",
+          cls: "wp-preview-edit-btn",
+          attr: { "aria-label": "Edit content" }
+        });
+        const content = section.createDiv("wp-preview-section-content");
+        const renderDisplay = () => {
+          content.empty();
+          const previewDiv = content.createDiv("wp-preview-html-content");
+          previewDiv.innerHTML = this.editableContent;
+        };
+        renderDisplay();
+        let isEditing = false;
+        let originalContent = "";
+        const exitEdit = () => {
+          isEditing = false;
+          section.removeClass("is-editing");
+          editBtn.textContent = "\u270F\uFE0F";
+          renderDisplay();
+        };
+        const saveEdit = (newContent) => {
+          this.editableContent = newContent;
+          exitEdit();
+        };
+        editBtn.onclick = () => {
+          if (isEditing) return;
+          isEditing = true;
+          originalContent = this.editableContent;
+          section.addClass("is-editing");
+          content.empty();
+          const textarea = content.createEl("textarea", {
+            cls: "wp-preview-textarea",
+            attr: { placeholder: this.t("publishModal_previewEditPlaceholder") || "Edit HTML content..." }
+          });
+          textarea.value = this.editableContent;
+          textarea.style.width = "100%";
+          textarea.style.minHeight = "300px";
+          textarea.style.fontFamily = "var(--font-mono)";
+          const btnGroup = content.createDiv("wp-preview-edit-actions");
+          const saveBtn = btnGroup.createEl("button", { text: this.t("publishModal_save") || "Save", cls: "wp-preview-save-btn" });
+          const cancelBtn = btnGroup.createEl("button", { text: this.t("publishModal_cancel") || "Cancel", cls: "wp-preview-cancel-btn" });
+          saveBtn.onclick = () => saveEdit(textarea.value);
+          cancelBtn.onclick = () => {
+            this.editableContent = originalContent;
+            exitEdit();
+          };
+          textarea.addEventListener("keydown", (e) => {
+            if (e.key === "Escape") {
+              e.preventDefault();
+              this.editableContent = originalContent;
+              exitEdit();
+            } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+              e.preventDefault();
+              saveEdit(textarea.value);
+            }
+          });
+          textarea.focus();
+        };
+      }
+      // ==================== 设置标签 ====================
+      renderSettingsTab(container, params) {
+        const aiSection = container.createDiv("wp-settings-ai");
+        this.renderAIAssistSection(aiSection, params);
+        const bottomSection = container.createDiv("wp-settings-bottom");
+        this.renderBasicSettings(bottomSection, params);
       }
       selectLocalImage(params) {
         const fileInput = document.createElement("input");
@@ -107985,6 +109324,12 @@ var init_wp_publish_modal_v2 = __esm({
           new import_obsidian9.Notice(this.t("publishModal_aiImageGenerateFailed", { error: error2 instanceof Error ? error2.message : "Unknown error" }));
         }
       }
+      /**
+       * 别名方法：生成特色图片（用于新的 AI 标签页）
+       */
+      async generateFeaturedImage(params) {
+        return this.generateAImage(params);
+      }
       async getImagePromptContent(params) {
         var _a5;
         if (params.excerpt) {
@@ -108044,11 +109389,89 @@ var init_wp_publish_modal_v2 = __esm({
         );
         modal.open();
       }
+      /**
+       * 从本地文件系统选择图片
+       */
+      selectLocalFile(params) {
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = "image/jpeg,image/png,image/gif,image/webp";
+        input.style.display = "none";
+        input.onchange = async () => {
+          var _a5;
+          const file = (_a5 = input.files) == null ? void 0 : _a5[0];
+          if (!file) return;
+          if (!file.type.match(/^image\/(jpeg|png|gif|webp)$/)) {
+            new import_obsidian9.Notice(this.t("notice_invalidImageFormat"));
+            return;
+          }
+          const maxSize = 10 * 1024 * 1024;
+          if (file.size > maxSize) {
+            new import_obsidian9.Notice(this.t("notice_imageTooLarge"));
+            return;
+          }
+          try {
+            let arrayBuffer = await file.arrayBuffer();
+            const ratio = this.plugin.settings.imageCropRatio || "16:9";
+            const processed = await resizeFeaturedImage(
+              arrayBuffer,
+              file.type,
+              this.plugin.settings.imageCropWidth || 1200,
+              ratio
+            );
+            if (processed) {
+              arrayBuffer = processed;
+              new import_obsidian9.Notice(this.t("featuredImageModal_imageCropped", {
+                width: (this.plugin.settings.imageCropWidth || 1200).toString(),
+                height: Math.round((this.plugin.settings.imageCropWidth || 1200) * this.getAspectRatio()).toString(),
+                ratio
+              }));
+            }
+            this.featuredImage = {
+              fileName: file.name,
+              mimeType: file.type,
+              content: arrayBuffer,
+              width: this.plugin.settings.imageCropWidth || 1200
+            };
+            this.imageSource = "local";
+            await this.saveImageToCache(arrayBuffer, file.name, file.type, "local");
+            this.display(params);
+            new import_obsidian9.Notice(this.t("publishModal_imageFromLocal", { fileName: file.name }));
+          } catch (error2) {
+            new import_obsidian9.Notice(this.t("notice_imageLoadFailed"));
+            log4.error("Failed to load local image:", error2);
+          }
+        };
+        document.body.appendChild(input);
+        input.click();
+        setTimeout(() => document.body.removeChild(input), 1e3);
+      }
+      /**
+       * 获取宽高比数值
+       */
+      getAspectRatio() {
+        const ratio = this.plugin.settings.imageCropRatio || "16:9";
+        const parts = ratio.split(":").map(Number);
+        return parts[1] / parts[0];
+      }
+      /**
+       * 为 Setting 添加信息按钮
+       */
+      addInfoButton(setting, infoKey) {
+        setting.addExtraButton((btn) => {
+          btn.setIcon("info").setTooltip(this.t(infoKey)).onClick(() => {
+            new import_obsidian9.Notice(this.t(infoKey), 5e3);
+          });
+          btn.extraSettingsEl.addClass("wp-info-button");
+        });
+      }
       renderBasicSettings(container, params) {
         var _a5;
         const card = container.createDiv("wp-settings-card");
         card.createEl("h3", { text: this.plugin.t("publishModal_basicSettings"), cls: "wp-settings-section-title" });
-        new import_obsidian9.Setting(card).setName(this.t("publishModal_titleName")).setDesc(this.t("publishModal_titleDesc")).addText((text4) => {
+        const gridContainer = card.createDiv("wp-settings-grid");
+        const titleWrapper = gridContainer.createDiv("wp-grid-full");
+        const titleSetting = new import_obsidian9.Setting(titleWrapper).setName(this.t("publishModal_titleName")).addText((text4) => {
           this.titleInput = text4.inputEl;
           text4.setPlaceholder(this.t("publishModal_titlePlaceholder")).setValue(params.title || "").onChange((value) => {
             params.title = value;
@@ -108073,7 +109496,9 @@ var init_wp_publish_modal_v2 = __esm({
             autoUpdateSlug();
           });
         });
-        const slugSetting = new import_obsidian9.Setting(card).setName(this.t("publishModal_slugName")).setDesc(this.t("publishModal_slugDesc"));
+        this.addInfoButton(titleSetting, "publishModal_titleInfo");
+        const slugWrapper = gridContainer.createDiv("wp-grid-full");
+        const slugSetting = new import_obsidian9.Setting(slugWrapper).setName(this.t("publishModal_slugName"));
         const initialSlugValue = params.slug;
         slugSetting.addText((text4) => {
           this.slugInput = text4.inputEl;
@@ -108121,11 +109546,19 @@ var init_wp_publish_modal_v2 = __esm({
             });
           }
         }
+        this.addInfoButton(slugSetting, "publishModal_slugInfo");
         const validCategories = this.categories.items.filter((it) => it.name && it.name.trim());
         if (params.postType === "post" /* Post */ && validCategories.length > 0) {
-          const categoryHeader = card.createDiv("wp-category-header");
-          categoryHeader.createEl("div", { cls: "setting-item-name", text: this.t("publishModal_categoryName") });
-          categoryHeader.createEl("div", { cls: "setting-item-description", text: this.t("publishModal_categoryDesc") });
+          const categoryWrapper = gridContainer.createDiv("wp-grid-full");
+          const categoryHeader = categoryWrapper.createDiv("wp-category-header");
+          const titleRow = categoryHeader.createDiv("wp-category-title-row");
+          titleRow.createEl("div", { cls: "setting-item-name", text: this.t("publishModal_categoryName") });
+          const infoBtn = titleRow.createEl("button", { cls: "wp-info-button clickable-icon" });
+          infoBtn.setAttribute("aria-label", this.t("publishModal_categoryInfo"));
+          (0, import_obsidian9.setIcon)(infoBtn, "info");
+          infoBtn.addEventListener("click", () => {
+            new import_obsidian9.Notice(this.t("publishModal_categoryInfo"), 5e3);
+          });
           const tagsContainer = document.createElement("div");
           tagsContainer.className = "wp-category-tags-container";
           categoryHeader.appendChild(tagsContainer);
@@ -108207,37 +109640,288 @@ var init_wp_publish_modal_v2 = __esm({
             }
           }
         }
-        new import_obsidian9.Setting(card).setName(this.t("publishModal_statusName")).setDesc(this.t("publishModal_statusDesc")).addDropdown((dropdown) => {
+        const statusWrapper = gridContainer.createDiv();
+        new import_obsidian9.Setting(statusWrapper).setName(this.t("publishModal_statusName")).setDesc(this.t("publishModal_statusDesc")).addDropdown((dropdown) => {
           dropdown.addOption("draft" /* Draft */, this.plugin.t("publishModal_statusDraft")).addOption("publish" /* Publish */, this.plugin.t("publishModal_statusPublish")).addOption("private" /* Private */, this.plugin.t("publishModal_statusPrivate")).addOption("future" /* Future */, this.plugin.t("publishModal_statusFuture")).setValue(params.status).onChange((value) => {
             params.status = value;
             this.display(params);
           });
         });
         if (params.status === "future" /* Future */) {
-          new import_obsidian9.Setting(card).setName(this.t("publishModal_postDateTimeName")).setDesc(this.t("publishModal_postDateTimeDescFormat")).addText((text4) => {
+          const dateWrapper = gridContainer.createDiv("wp-grid-full");
+          new import_obsidian9.Setting(dateWrapper).setName(this.t("publishModal_postDateTimeName")).setDesc(this.t("publishModal_postDateTimeDescFormat")).addText((text4) => {
             text4.setValue(format(/* @__PURE__ */ new Date(), "yyyy-MM-dd HH:mm:ss"));
             this.setupDateMask(text4.inputEl, params);
           });
         } else {
           delete params.datetime;
         }
-        new import_obsidian9.Setting(card).setName(this.t("publishModal_commentName")).setDesc(this.t("publishModal_commentDesc")).addDropdown((dropdown) => {
+        const commentWrapper = gridContainer.createDiv();
+        new import_obsidian9.Setting(commentWrapper).setName(this.t("publishModal_commentName")).setDesc(this.t("publishModal_commentDesc")).addDropdown((dropdown) => {
           dropdown.addOption("open" /* Open */, this.plugin.t("publishModal_commentOpen")).addOption("closed" /* Closed */, this.plugin.t("publishModal_commentClosed")).setValue(params.commentStatus).onChange((value) => {
             params.commentStatus = value;
           });
         });
-        new import_obsidian9.Setting(card).setName(this.t("publishModal_postTypeName")).setDesc(this.t("publishModal_postTypeDesc")).addDropdown((dropdown) => {
+        const formatWrapper = gridContainer.createDiv();
+        new import_obsidian9.Setting(formatWrapper).setName(this.t("publishModal_postTypeName")).setDesc(this.t("publishModal_postTypeDesc")).addDropdown((dropdown) => {
           dropdown.addOption("html", this.plugin.t("publishModal_formatHTML")).addOption("markdown", this.plugin.t("publishModal_formatMarkdown")).setValue("html").onChange((value) => {
             params.contentFormat = value;
           });
         });
         if (this.matterData.postId) {
-          new import_obsidian9.Setting(card).setName(this.t("publishModal_publishAsNewName")).setDesc(this.t("publishModal_publishAsNewDesc")).addToggle((toggle) => {
+          const publishAsNewWrapper = gridContainer.createDiv();
+          new import_obsidian9.Setting(publishAsNewWrapper).setName(this.t("publishModal_publishAsNewName")).setDesc(this.t("publishModal_publishAsNewDesc")).addToggle((toggle) => {
             toggle.setValue(params.publishAsNew || false).onChange((value) => {
               params.publishAsNew = value;
             });
           });
         }
+      }
+      // ==================== AI 辅助区域 ====================
+      renderAIAssistSection(container, params) {
+        const card = container.createDiv("wp-settings-card");
+        this.renderAITabBar(card, params);
+        const aiContentContainer = card.createDiv("wp-ai-tab-content");
+        if (this.currentAITab === "featured-image") {
+          this.renderAIFeaturedImageTab(aiContentContainer, params);
+        } else if (this.currentAITab === "excerpt") {
+          this.renderAIExcerptTab(aiContentContainer, params);
+        } else if (this.currentAITab === "tags") {
+          this.renderAITagsTab(aiContentContainer, params);
+        }
+      }
+      /**
+       * 渲染 AI 标签页导航栏
+       */
+      renderAITabBar(container, params) {
+        const tabContainer = container.createDiv("wp-ai-tabs");
+        const tabs = [
+          { id: "featured-image", label: this.plugin.t("publishModal_featuredImage") },
+          { id: "excerpt", label: this.plugin.t("publishModal_aiExcerpt") },
+          { id: "tags", label: this.plugin.t("publishModal_aiTags") }
+        ];
+        tabs.forEach((tab) => {
+          const tabEl = tabContainer.createDiv({
+            cls: `wp-ai-tab-item ${this.currentAITab === tab.id ? "active" : ""}`
+          });
+          tabEl.createSpan({ text: tab.label });
+          tabEl.onclick = () => {
+            this.currentAITab = tab.id;
+            this.display(params);
+          };
+        });
+      }
+      /**
+       * 渲染特色图片标签页（从基本设置迁移过来）
+       */
+      renderAIFeaturedImageTab(container, params) {
+        var _a5;
+        const previewContainer = container.createDiv("featured-image-preview-large");
+        if (this.isLoadingRemoteImage) {
+          const loadingDiv = previewContainer.createDiv("featured-image-loading");
+          loadingDiv.style.display = "flex";
+          loadingDiv.style.flexDirection = "column";
+          loadingDiv.style.alignItems = "center";
+          loadingDiv.style.justifyContent = "center";
+          loadingDiv.style.padding = "40px 20px";
+          loadingDiv.style.color = "var(--text-muted)";
+          const spinner = loadingDiv.createDiv("featured-image-spinner");
+          spinner.style.width = "32px";
+          spinner.style.height = "32px";
+          spinner.style.border = "3px solid var(--background-modifier-border)";
+          spinner.style.borderTop = "3px solid var(--interactive-accent)";
+          spinner.style.borderRadius = "50%";
+          spinner.style.animation = "spin 1s linear infinite";
+          spinner.style.marginBottom = "12px";
+          loadingDiv.createEl("p", {
+            text: this.t("publishModal_loadingRemoteImage") || "\u6B63\u5728\u52A0\u8F7D\u8FDC\u7A0B\u56FE\u7247...",
+            cls: "featured-image-loading-text"
+          });
+          if (!document.getElementById("featured-image-spinner-style")) {
+            const style = document.createElement("style");
+            style.id = "featured-image-spinner-style";
+            style.textContent = `
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        `;
+            document.head.appendChild(style);
+          }
+        } else if (this.remoteImageLoadFailed) {
+          const errorDiv = previewContainer.createDiv("featured-image-error");
+          errorDiv.style.display = "flex";
+          errorDiv.style.flexDirection = "column";
+          errorDiv.style.alignItems = "center";
+          errorDiv.style.justifyContent = "center";
+          errorDiv.style.padding = "40px 20px";
+          errorDiv.style.color = "var(--text-error)";
+          errorDiv.createEl("p", {
+            text: "\u274C " + (this.remoteImageError || this.t("publishModal_remoteImageLoadFailed")),
+            cls: "featured-image-error-text"
+          });
+          const btnRow2 = errorDiv.createDiv("featured-image-btn-row");
+          btnRow2.style.marginTop = "16px";
+          const retryBtn = btnRow2.createEl("button", {
+            text: this.t("publishModal_retryLoadImage") || "\u91CD\u8BD5",
+            cls: "feature-btn"
+          });
+          retryBtn.onclick = async () => {
+            if (this.remoteImagePostId) {
+              this.remoteImageLoadFailed = false;
+              this.remoteImageError = null;
+              await this.loadRemoteFeaturedImage(this.remoteImagePostId, params);
+            }
+          };
+          const skipBtn = btnRow2.createEl("button", {
+            text: this.t("publishModal_skipRemoteImage") || "\u8DF3\u8FC7",
+            cls: "feature-btn"
+          });
+          skipBtn.onclick = () => {
+            this.remoteImageLoadFailed = false;
+            this.remoteImageError = null;
+            this.remoteImagePostId = null;
+            this.display(params);
+          };
+        } else if (this.featuredImage) {
+          const img = previewContainer.createEl("img", {
+            cls: "featured-image-full"
+          });
+          img.src = `data:${this.featuredImage.mimeType};base64,${this.arrayBufferToBase64(this.featuredImage.content)}`;
+          const info = previewContainer.createDiv("featured-image-info");
+          info.textContent = `${this.featuredImage.fileName} (${this.formatFileSize(this.featuredImage.content.byteLength)})`;
+          const removeBtn = previewContainer.createEl("button", {
+            text: this.t("publishModal_removeImage"),
+            cls: "featured-image-remove-btn"
+          });
+          removeBtn.onclick = async () => {
+            this.featuredImage = null;
+            this.imageSource = "auto";
+            await this.clearImageCache();
+            this.display(params);
+          };
+        } else {
+          previewContainer.createEl("p", {
+            text: this.t("publishModal_noImageSelected"),
+            cls: "featured-image-placeholder-text"
+          });
+        }
+        const btnRow = container.createDiv("featured-image-btn-row");
+        const localBtn = btnRow.createEl("button", {
+          text: "\u{1F4BE} " + this.t("publishModal_selectFromLocal"),
+          cls: "feature-btn"
+        });
+        localBtn.onclick = () => this.selectLocalFile(params);
+        const vaultBtn = btnRow.createEl("button", {
+          text: "\u{1F4C1} " + this.t("publishModal_selectFromVault"),
+          cls: "feature-btn"
+        });
+        vaultBtn.onclick = () => this.selectVaultImage(params);
+        if (this.unsplashService) {
+          const unsplashBtn = btnRow.createEl("button", {
+            text: "\u{1F5BC}\uFE0F Unsplash",
+            cls: "feature-btn"
+          });
+          unsplashBtn.onclick = () => this.selectUnsplashImage(params);
+        }
+        if ((_a5 = this.aiService) == null ? void 0 : _a5.hasImageAIKey()) {
+          const aiBtn = btnRow.createEl("button", {
+            text: "\u{1F916} " + this.t("publishModal_aiGenerate"),
+            cls: "feature-btn"
+          });
+          aiBtn.onclick = () => this.generateFeaturedImage(params);
+        } else {
+          const aiBtn = btnRow.createEl("button", {
+            text: "\u{1F916} " + this.t("publishModal_aiGenerate"),
+            cls: "feature-btn disabled"
+          });
+          aiBtn.onclick = () => {
+            new import_obsidian9.Notice(this.t("notice_imageAIApiKeyRequired"));
+          };
+        }
+      }
+      /**
+       * 渲染摘要标签页（支持编辑）
+       */
+      renderAIExcerptTab(container, params) {
+        const btnContainer = container.createDiv("wp-ai-buttons");
+        const generateBtn = btnContainer.createEl("button", { text: this.t("publishModal_generateSummary") });
+        if (!this.aiService) {
+          generateBtn.addClass("disabled");
+          generateBtn.onclick = () => {
+            new import_obsidian9.Notice(this.t("notice_aiConfigRequired"));
+          };
+        } else if (!this.aiService.hasTextAIKey()) {
+          generateBtn.addClass("disabled");
+          generateBtn.onclick = () => {
+            new import_obsidian9.Notice(this.t("notice_textAIApiKeyRequired"));
+          };
+        } else {
+          generateBtn.onclick = () => this.generateSummary(params);
+        }
+        const excerptEditor = container.createDiv("wp-ai-excerpt-editor");
+        excerptEditor.style.marginTop = "16px";
+        const label = excerptEditor.createEl("label", {
+          text: this.t("publishModal_excerptLabel") || "\u6458\u8981\u5185\u5BB9",
+          cls: "wp-ai-editor-label"
+        });
+        label.style.display = "block";
+        label.style.marginBottom = "8px";
+        label.style.fontWeight = "500";
+        label.style.color = "var(--text-normal)";
+        const textarea = excerptEditor.createEl("textarea", {
+          cls: "wp-preview-textarea"
+        });
+        textarea.value = params.excerpt || "";
+        textarea.placeholder = this.t("publishModal_excerptPlaceholder") || "\u5728\u6B64\u8F93\u5165\u6216\u751F\u6210\u6458\u8981...";
+        textarea.style.width = "100%";
+        textarea.style.minHeight = "120px";
+        textarea.style.padding = "12px";
+        textarea.style.borderRadius = "6px";
+        textarea.style.border = "1px solid var(--background-modifier-border)";
+        textarea.style.backgroundColor = "var(--background-primary)";
+        textarea.style.color = "var(--text-normal)";
+        textarea.style.fontFamily = "var(--font-text)";
+        textarea.style.fontSize = "14px";
+        textarea.style.lineHeight = "1.6";
+        textarea.style.resize = "vertical";
+        textarea.addEventListener("input", () => {
+          params.excerpt = textarea.value;
+        });
+      }
+      /**
+       * 渲染标签标签页（支持编辑）
+       */
+      renderAITagsTab(container, params) {
+        const btnContainer = container.createDiv("wp-ai-buttons");
+        const generateBtn = btnContainer.createEl("button", { text: this.t("publishModal_generateTags") });
+        if (!this.aiService) {
+          generateBtn.addClass("disabled");
+          generateBtn.onclick = () => {
+            new import_obsidian9.Notice(this.t("notice_aiConfigRequired"));
+          };
+        } else if (!this.aiService.hasTextAIKey()) {
+          generateBtn.addClass("disabled");
+          generateBtn.onclick = () => {
+            new import_obsidian9.Notice(this.t("notice_textAIApiKeyRequired"));
+          };
+        } else {
+          generateBtn.onclick = () => this.generateTags(params);
+        }
+        const tagsEditor = container.createDiv("wp-ai-tags-editor");
+        tagsEditor.style.marginTop = "16px";
+        const label = tagsEditor.createEl("label", {
+          text: this.t("publishModal_tagsLabel") || "\u6807\u7B7E",
+          cls: "wp-ai-editor-label"
+        });
+        label.style.display = "block";
+        label.style.marginBottom = "8px";
+        label.style.fontWeight = "500";
+        label.style.color = "var(--text-normal)";
+        const tagsContainer = tagsEditor.createDiv("wp-preview-tags-editable");
+        this.tagsContainer = tagsContainer;
+        this.editableTags = params.tags ? [...params.tags] : [];
+        this.refreshTagsPreview(params);
       }
       setupDateMask(inputEl, params) {
         const dateTimeFormat = "yyyy-MM-dd HH:mm:ss";
@@ -108448,7 +110132,7 @@ var init_wp_publish_modal_v2 = __esm({
         });
         tagEl.addEventListener("mouseenter", () => {
           tagEl.style.transform = "translateY(-1px)";
-          tagEl.style.boxShadow = "0 2px 4px rgba(0, 0, 0, 0.2)";
+          tagEl.style.boxShadow = "var(--wp-shadow-hover)";
         });
         tagEl.addEventListener("mouseleave", () => {
           tagEl.style.transform = "translateY(0)";
@@ -108598,66 +110282,6 @@ var init_wp_publish_modal_v2 = __esm({
         previewContent.appendChild(style);
       }
       // ==================== Advanced Settings Tab ====================
-      renderAdvancedTab(container, params) {
-        const card = container.createDiv("wp-advanced-card");
-        const header = card.createDiv("wp-advanced-header");
-        header.createEl("h3", { text: this.plugin.t("publishModal_advancedTitle"), cls: "wp-advanced-card-title" });
-        const notice = header.createDiv("wp-advanced-notice");
-        notice.style.padding = "12px";
-        notice.style.backgroundColor = "var(--background-secondary)";
-        notice.style.borderRadius = "6px";
-        notice.style.marginBottom = "20px";
-        notice.createEl("p", { text: this.plugin.t("publishModal_advancedNotice") });
-        const summarySection = card.createDiv("wp-advanced-section");
-        summarySection.createEl("h4", { text: this.plugin.t("publishModal_summaryPromptTitle"), cls: "wp-advanced-section-title" });
-        const summarySetting = new import_obsidian9.Setting(summarySection);
-        summarySetting.addTextArea((text4) => {
-          text4.setPlaceholder(this.plugin.t("defaultPrompt_summary")).setValue(this.plugin.settings.summaryPrompt || "").onChange((value) => {
-            this.plugin.settings.summaryPrompt = value;
-          });
-          text4.inputEl.rows = 6;
-          text4.inputEl.style.width = "100%";
-          text4.inputEl.style.minHeight = "120px";
-          text4.inputEl.style.fontFamily = "var(--font-mono)";
-          text4.inputEl.style.fontSize = "12px";
-          text4.inputEl.style.lineHeight = "1.5";
-        });
-        const tagsSection = card.createDiv("wp-advanced-section");
-        tagsSection.createEl("h4", { text: this.plugin.t("publishModal_tagsPromptTitle"), cls: "wp-advanced-section-title" });
-        const tagsSetting = new import_obsidian9.Setting(tagsSection);
-        tagsSetting.addTextArea((text4) => {
-          text4.setPlaceholder(this.plugin.t("defaultPrompt_tags")).setValue(this.plugin.settings.tagsPrompt || "").onChange((value) => {
-            this.plugin.settings.tagsPrompt = value;
-          });
-          text4.inputEl.rows = 6;
-          text4.inputEl.style.width = "100%";
-          text4.inputEl.style.minHeight = "120px";
-          text4.inputEl.style.fontFamily = "var(--font-mono)";
-          text4.inputEl.style.fontSize = "12px";
-          text4.inputEl.style.lineHeight = "1.5";
-        });
-        const imageSection = card.createDiv("wp-advanced-section");
-        imageSection.createEl("h4", { text: this.plugin.t("publishModal_imagePromptTitle"), cls: "wp-advanced-section-title" });
-        const imageSetting = new import_obsidian9.Setting(imageSection);
-        imageSetting.addTextArea((text4) => {
-          text4.setPlaceholder(this.plugin.t("defaultPrompt_image")).setValue(this.plugin.settings.imageGenerationPrompt || "").onChange((value) => {
-            this.plugin.settings.imageGenerationPrompt = value;
-          });
-          text4.inputEl.rows = 6;
-          text4.inputEl.style.width = "100%";
-          text4.inputEl.style.minHeight = "120px";
-          text4.inputEl.style.fontFamily = "var(--font-mono)";
-          text4.inputEl.style.fontSize = "12px";
-          text4.inputEl.style.lineHeight = "1.5";
-        });
-        const saveSection = card.createDiv("wp-advanced-save");
-        new import_obsidian9.Setting(saveSection).addButton((btn) => {
-          btn.setButtonText(this.t("publishModal_saveSettings")).setCta().onClick(async () => {
-            await this.plugin.saveSettings();
-            new import_obsidian9.Notice(this.t("publishModal_settingsSaved"));
-          });
-        });
-      }
       // ==================== API Warning Display ====================
       renderApiWarning(container, apiType) {
         const warningContainer = container.createDiv("wp-api-warning");
@@ -108713,7 +110337,7 @@ Consider migrating to REST API for better security and feature support.
         const modal = (_a5 = this.plugin.app.workspace.activeLeaf) == null ? void 0 : _a5.view.containerEl.createEl("div");
         if (modal) {
           modal.innerHTML = `
-        <div class="modal-bg" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;">
+        <div class="modal-bg" style="position:fixed;top:0;left:0;width:100%;height:100%;background:var(--wp-modal-overlay);z-index:9999;">
           <div class="modal" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--background-primary);padding:20px;border-radius:8px;max-width:600px;max-height:80vh;overflow:auto;">
             <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
               <h3 style="margin:0;">API Information</h3>
@@ -108752,34 +110376,6 @@ Consider migrating to REST API for better security and feature support.
             }
             this.display(params);
           };
-          const summaryBtn = bottomContainer.createEl("button", { text: this.t("publishModal_generateSummary") });
-          if (!this.aiService) {
-            summaryBtn.addClass("disabled");
-            summaryBtn.onclick = () => {
-              new import_obsidian9.Notice(this.t("notice_aiConfigRequired"));
-            };
-          } else if (!this.aiService.hasTextAIKey()) {
-            summaryBtn.addClass("disabled");
-            summaryBtn.onclick = () => {
-              new import_obsidian9.Notice(this.t("notice_textAIApiKeyRequired"));
-            };
-          } else {
-            summaryBtn.onclick = () => this.generateSummary(params);
-          }
-          const tagsBtn = bottomContainer.createEl("button", { text: this.t("publishModal_generateTags") });
-          if (!this.aiService) {
-            tagsBtn.addClass("disabled");
-            tagsBtn.onclick = () => {
-              new import_obsidian9.Notice(this.t("notice_aiConfigRequired"));
-            };
-          } else if (!this.aiService.hasTextAIKey()) {
-            tagsBtn.addClass("disabled");
-            tagsBtn.onclick = () => {
-              new import_obsidian9.Notice(this.t("notice_textAIApiKeyRequired"));
-            };
-          } else {
-            tagsBtn.onclick = () => this.generateTags(params);
-          }
           const publishBtn = bottomContainer.createEl("button", {
             text: this.t("publishModal_publishButton"),
             cls: "mod-cta publish-btn"
@@ -109015,6 +110611,63 @@ Consider migrating to REST API for better security and feature support.
             this.close();
           }
         }, 8e3);
+      }
+      /**
+       * 添加涟漪效果到按钮
+       */
+      addRippleEffect(button) {
+        button.addEventListener("click", (e) => {
+          const ripple = button.createDiv("wp-ripple-effect");
+          const rect = button.getBoundingClientRect();
+          const size = Math.max(rect.width, rect.height);
+          const x = e.clientX - rect.left - size / 2;
+          const y = e.clientY - rect.top - size / 2;
+          ripple.style.width = ripple.style.height = `${size}px`;
+          ripple.style.left = `${x}px`;
+          ripple.style.top = `${y}px`;
+          setTimeout(() => ripple.remove(), 600);
+        });
+      }
+      /**
+       * 显示工具提示
+       */
+      showTooltip(element, text4, duration = 2e3) {
+        const tooltip = document.body.createDiv("wp-tooltip");
+        tooltip.setText(text4);
+        const rect = element.getBoundingClientRect();
+        tooltip.style.left = `${rect.left + rect.width / 2}px`;
+        tooltip.style.top = `${rect.top - 40}px`;
+        tooltip.style.transform = "translateX(-50%)";
+        setTimeout(() => tooltip.addClass("show"), 10);
+        setTimeout(() => {
+          tooltip.removeClass("show");
+          setTimeout(() => tooltip.remove(), 200);
+        }, duration);
+      }
+      /**
+       * 添加输入框焦点动画
+       */
+      enhanceInputFocus(input) {
+        input.addEventListener("focus", () => {
+          var _a5;
+          (_a5 = input.parentElement) == null ? void 0 : _a5.addClass("wp-input-focused");
+        });
+        input.addEventListener("blur", () => {
+          var _a5;
+          (_a5 = input.parentElement) == null ? void 0 : _a5.removeClass("wp-input-focused");
+        });
+      }
+      /**
+       * 添加平滑滚动到元素
+       */
+      scrollToElement(element, offset = 20) {
+        const rect = element.getBoundingClientRect();
+        const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+        const targetY = rect.top + scrollTop - offset;
+        window.scrollTo({
+          top: targetY,
+          behavior: "smooth"
+        });
       }
       generateDefaultSlug(title, params) {
         if (!title || !this.slugInput) return;
@@ -111214,21 +112867,27 @@ var init_frontmatter_manager = __esm({
         return frontmatter;
       }
       /**
-       * Detect conflicts between local frontmatter and remote post data
+       * Detect conflicts between local frontmatter and remote post data.
+       *
+       * Rule: if one side is empty and the other is not, it is NOT a conflict —
+       * the caller should simply use the non-empty value.  A conflict only exists
+       * when BOTH sides have a value and those values differ.
+       *
        * @param localMatter - Local frontmatter data
        * @param remoteData - Remote post data
        * @returns Array of conflicts
        */
       detectConflicts(localMatter, remoteData) {
         const conflicts = [];
-        if (localMatter.postId && String(localMatter.postId) !== String(remoteData.postId)) {
+        const hasValue = (v) => v !== null && v !== void 0 && String(v).trim() !== "";
+        if (hasValue(localMatter.postId) && hasValue(remoteData.postId) && String(localMatter.postId) !== String(remoteData.postId)) {
           conflicts.push({
             field: "postId",
             localValue: localMatter.postId,
             remoteValue: remoteData.postId
           });
         }
-        if (localMatter.postType && localMatter.postType !== remoteData.postType) {
+        if (hasValue(localMatter.postType) && hasValue(remoteData.postType) && localMatter.postType !== remoteData.postType) {
           conflicts.push({
             field: "postType",
             localValue: localMatter.postType,
@@ -111237,14 +112896,14 @@ var init_frontmatter_manager = __esm({
         }
         const localCats = this.normalizeToArray(localMatter.categories);
         const remoteCats = this.normalizeToArray(remoteData.categories);
-        if (localCats.length > 0 && !this.arraysEqual(localCats, remoteCats)) {
+        if (localCats.length > 0 && remoteCats.length > 0 && !this.arraysEqual(localCats, remoteCats)) {
           conflicts.push({
             field: "categories",
             localValue: localCats,
             remoteValue: remoteCats
           });
         }
-        if (localMatter.slug && localMatter.slug !== remoteData.slug) {
+        if (hasValue(localMatter.slug) && hasValue(remoteData.slug) && localMatter.slug !== remoteData.slug) {
           conflicts.push({
             field: "slug",
             localValue: localMatter.slug,
@@ -111253,14 +112912,14 @@ var init_frontmatter_manager = __esm({
         }
         const localTags = this.normalizeToArray(localMatter.tags);
         const remoteTags = this.normalizeToArray(remoteData.tags);
-        if (localTags.length > 0 && !this.arraysEqual(localTags, remoteTags)) {
+        if (localTags.length > 0 && remoteTags.length > 0 && !this.arraysEqual(localTags, remoteTags)) {
           conflicts.push({
             field: "tags",
             localValue: localTags,
             remoteValue: remoteTags
           });
         }
-        if (localMatter.featuredImageId && remoteData.featuredImageId && Number(localMatter.featuredImageId) !== Number(remoteData.featuredImageId)) {
+        if (hasValue(localMatter.featuredImageId) && hasValue(remoteData.featuredImageId) && Number(localMatter.featuredImageId) !== Number(remoteData.featuredImageId)) {
           conflicts.push({
             field: "featuredImageId",
             localValue: localMatter.featuredImageId,
@@ -111268,6 +112927,19 @@ var init_frontmatter_manager = __esm({
           });
         }
         return conflicts;
+      }
+      /**
+       * Merge local and remote values: if one side is empty, return the non-empty
+       * one.  If both are present (and presumably equal after conflict resolution),
+       * prefer local.  Returns null when both sides are empty.
+       */
+      mergeValue(localValue, remoteValue) {
+        const localEmpty = localValue === null || localValue === void 0 || typeof localValue === "string" && localValue.trim() === "" || Array.isArray(localValue) && localValue.length === 0;
+        const remoteEmpty = remoteValue === null || remoteValue === void 0 || typeof remoteValue === "string" && remoteValue.trim() === "" || Array.isArray(remoteValue) && remoteValue.length === 0;
+        if (localEmpty && remoteEmpty) return null;
+        if (localEmpty) return remoteValue;
+        if (remoteEmpty) return localValue;
+        return localValue;
       }
       /**
        * Update frontmatter with resolved values
@@ -114255,6 +115927,9 @@ __export(en_exports, {
   notice_imageAIConfigInvalid: () => notice_imageAIConfigInvalid,
   notice_imageAIConfigRequired: () => notice_imageAIConfigRequired,
   notice_imageAIConfigValid: () => notice_imageAIConfigValid,
+  notice_imageLoadFailed: () => notice_imageLoadFailed,
+  notice_imageTooLarge: () => notice_imageTooLarge,
+  notice_invalidImageFormat: () => notice_invalidImageFormat,
   notice_publishCancelled: () => notice_publishCancelled,
   notice_slugModeRequiresAI: () => notice_slugModeRequiresAI,
   notice_textAIApiKeyRequired: () => notice_textAIApiKeyRequired,
@@ -114283,6 +115958,8 @@ __export(en_exports, {
   publishModal_advancedNotice: () => publishModal_advancedNotice,
   publishModal_advancedTab: () => publishModal_advancedTab,
   publishModal_advancedTitle: () => publishModal_advancedTitle,
+  publishModal_aiExcerpt: () => publishModal_aiExcerpt,
+  publishModal_aiGenerate: () => publishModal_aiGenerate,
   publishModal_aiGenerateBtn: () => publishModal_aiGenerateBtn,
   publishModal_aiGenerateImage: () => publishModal_aiGenerateImage,
   publishModal_aiGenerateImageButton: () => publishModal_aiGenerateImageButton,
@@ -114292,10 +115969,13 @@ __export(en_exports, {
   publishModal_aiImageGenerated: () => publishModal_aiImageGenerated,
   publishModal_aiPrompts_tab: () => publishModal_aiPrompts_tab,
   publishModal_aiServiceRequired: () => publishModal_aiServiceRequired,
+  publishModal_aiTags: () => publishModal_aiTags,
   publishModal_basicSettings: () => publishModal_basicSettings,
+  publishModal_cancel: () => publishModal_cancel,
   publishModal_cancelButton: () => publishModal_cancelButton,
   publishModal_category: () => publishModal_category,
   publishModal_categoryDesc: () => publishModal_categoryDesc,
+  publishModal_categoryInfo: () => publishModal_categoryInfo,
   publishModal_categoryName: () => publishModal_categoryName,
   publishModal_closeButton: () => publishModal_closeButton,
   publishModal_commentClosed: () => publishModal_commentClosed,
@@ -114314,6 +115994,8 @@ __export(en_exports, {
   publishModal_editButton: () => publishModal_editButton,
   publishModal_emptyContent: () => publishModal_emptyContent,
   publishModal_emptyContentForTags: () => publishModal_emptyContentForTags,
+  publishModal_excerptLabel: () => publishModal_excerptLabel,
+  publishModal_excerptPlaceholder: () => publishModal_excerptPlaceholder,
   publishModal_featuredImage: () => publishModal_featuredImage,
   publishModal_featuredImageUploaded: () => publishModal_featuredImageUploaded,
   publishModal_featuredImage_tab: () => publishModal_featuredImage_tab,
@@ -114328,8 +116010,10 @@ __export(en_exports, {
   publishModal_generatingPrompt: () => publishModal_generatingPrompt,
   publishModal_generatingSummary: () => publishModal_generatingSummary,
   publishModal_generatingTags: () => publishModal_generatingTags,
+  publishModal_historyPanel: () => publishModal_historyPanel,
   publishModal_imageAIRequired: () => publishModal_imageAIRequired,
   publishModal_imageFromGallery: () => publishModal_imageFromGallery,
+  publishModal_imageFromLocal: () => publishModal_imageFromLocal,
   publishModal_imagePromptTitle: () => publishModal_imagePromptTitle,
   publishModal_imageSelectFailed: () => publishModal_imageSelectFailed,
   publishModal_imageSelected: () => publishModal_imageSelected,
@@ -114337,7 +116021,11 @@ __export(en_exports, {
   publishModal_loadingRemoteImage: () => publishModal_loadingRemoteImage,
   publishModal_localImage: () => publishModal_localImage,
   publishModal_localImageButton: () => publishModal_localImageButton,
+  publishModal_noExcerpt: () => publishModal_noExcerpt,
   publishModal_noFeaturedImage: () => publishModal_noFeaturedImage,
+  publishModal_noHistory: () => publishModal_noHistory,
+  publishModal_noImageSelected: () => publishModal_noImageSelected,
+  publishModal_noTags: () => publishModal_noTags,
   publishModal_onlineImage: () => publishModal_onlineImage,
   publishModal_postDateTime: () => publishModal_postDateTime,
   publishModal_postDateTimeDesc: () => publishModal_postDateTimeDesc,
@@ -114372,22 +116060,30 @@ __export(en_exports, {
   publishModal_regenerateButton: () => publishModal_regenerateButton,
   publishModal_regenerating: () => publishModal_regenerating,
   publishModal_remoteImageLoadFailed: () => publishModal_remoteImageLoadFailed,
+  publishModal_removeImage: () => publishModal_removeImage,
   publishModal_retry: () => publishModal_retry,
   publishModal_retryButton: () => publishModal_retryButton,
+  publishModal_retryLoadImage: () => publishModal_retryLoadImage,
+  publishModal_save: () => publishModal_save,
   publishModal_saveAndUseButton: () => publishModal_saveAndUseButton,
   publishModal_saveButton: () => publishModal_saveButton,
   publishModal_saveSettings: () => publishModal_saveSettings,
   publishModal_selectCategory: () => publishModal_selectCategory,
   publishModal_selectFeaturedImage: () => publishModal_selectFeaturedImage,
+  publishModal_selectFromLocal: () => publishModal_selectFromLocal,
+  publishModal_selectFromVault: () => publishModal_selectFromVault,
+  publishModal_settingsPanel: () => publishModal_settingsPanel,
   publishModal_settingsSaved: () => publishModal_settingsSaved,
   publishModal_settingsTab: () => publishModal_settingsTab,
   publishModal_skip: () => publishModal_skip,
+  publishModal_skipRemoteImage: () => publishModal_skipRemoteImage,
   publishModal_slugAIButton: () => publishModal_slugAIButton,
   publishModal_slugAIButtonNeedConfig: () => publishModal_slugAIButtonNeedConfig,
   publishModal_slugAIButtonTranslating: () => publishModal_slugAIButtonTranslating,
   publishModal_slugAutoUpdated: () => publishModal_slugAutoUpdated,
   publishModal_slugDesc: () => publishModal_slugDesc,
   publishModal_slugGenerated: () => publishModal_slugGenerated,
+  publishModal_slugInfo: () => publishModal_slugInfo,
   publishModal_slugName: () => publishModal_slugName,
   publishModal_slugNeedTitle: () => publishModal_slugNeedTitle,
   publishModal_slugPlaceholder: () => publishModal_slugPlaceholder,
@@ -114406,9 +116102,12 @@ __export(en_exports, {
   publishModal_tagInputPlaceholder: () => publishModal_tagInputPlaceholder,
   publishModal_tagsGenerateFailed: () => publishModal_tagsGenerateFailed,
   publishModal_tagsGenerated: () => publishModal_tagsGenerated,
+  publishModal_tagsLabel: () => publishModal_tagsLabel,
+  publishModal_tagsPlaceholder: () => publishModal_tagsPlaceholder,
   publishModal_tagsPromptTitle: () => publishModal_tagsPromptTitle,
   publishModal_title: () => publishModal_title,
   publishModal_titleDesc: () => publishModal_titleDesc,
+  publishModal_titleInfo: () => publishModal_titleInfo,
   publishModal_titleName: () => publishModal_titleName,
   publishModal_titlePlaceholder: () => publishModal_titlePlaceholder,
   publishModal_title_tab: () => publishModal_title_tab,
@@ -114730,6 +116429,9 @@ var notice_aiConfigRequired = "Please configure AI service first";
 var notice_aiApiKeyRequired = "Please enter an AI API Key in plugin settings first";
 var notice_textAIApiKeyRequired = "Please enter a Text AI API Key in plugin settings first";
 var notice_imageAIApiKeyRequired = "Please enter an Image Generation AI API Key in plugin settings first";
+var notice_invalidImageFormat = "Invalid image format. Please select a JPEG, PNG, GIF, or WebP image.";
+var notice_imageTooLarge = "Image file is too large. Maximum size is 10MB.";
+var notice_imageLoadFailed = "Failed to load image file.";
 var notice_aiConfigValid = "\u2713 AI configuration validated successfully";
 var notice_aiConfigInvalid = "\u2717 AI configuration validation failed: <%= error %>";
 var notice_imageAIConfigRequired = "Please configure Image Generation AI first";
@@ -114761,6 +116463,7 @@ var publishModal_unsplashKeyRequired = "Please configure Unsplash API Key in plu
 var publishModal_imageAIRequired = "Please configure AI service (Image Generation AI) in plugin settings first";
 var publishModal_imageSelected = "Image selected: <%= fileName %>";
 var publishModal_imageFromGallery = "Selected from gallery: <%= fileName %>";
+var publishModal_imageFromLocal = "Selected from local: <%= fileName %>";
 var publishModal_uploadedToWordPress = "\u2705 Uploaded to WordPress";
 var publishModal_emptyContentForTags = "Article content is empty";
 var publishModal_summaryGenerated = "Summary generated: <%= summary %>...";
@@ -114871,6 +116574,8 @@ var publishModal_previewTab = "\u{1F441}\uFE0F Preview";
 var publishModal_advancedTab = "\u{1F527} Advanced";
 var publishModal_previewTitle = "Post Preview";
 var publishModal_previewEditPlaceholder = "Edit Markdown content here...";
+var publishModal_save = "Save";
+var publishModal_cancel = "Cancel";
 var publishModal_previewFeaturedImage = "Featured Image";
 var publishModal_previewFeaturedImageUploaded = "Featured Image (Uploaded to WordPress)";
 var publishModal_previewInconsistencyWarning = "Featured Image Inconsistency Detected";
@@ -114923,6 +116628,27 @@ var defaultPrompt_image = "Generate an English image description suitable for a 
 var defaultPrompt_summaryEn = "Please generate a concise summary of 100-200 words based on the following article content.\nRequirements:\n1. Summarize the core content and main points\n2. Use fluent and natural language\n3. Return only the summary text without any prefix or explanation\n\nArticle content:\n{content}";
 var defaultPrompt_tagsEn = "Please extract 1-4 most relevant keywords as tags based on the following article content.\nRequirements:\n1. Each tag should be concise (2-4 words)\n2. Separate tags with commas\n3. Return only comma-separated tags without any prefix or explanation\n\nArticle content:\n{content}";
 var defaultPrompt_imageEn = "Generate an English image description suitable for a blog cover image based on the following article summary or tags.\nRequirements: Concise, visual, professional, suitable for AI image generation.\nReturn only the English image description without any prefix or explanation.\n\nArticle title: {title}\nArticle summary/tags: {content}";
+var publishModal_excerptLabel = "Excerpt";
+var publishModal_noExcerpt = "No excerpt";
+var publishModal_excerptPlaceholder = "Enter excerpt...";
+var publishModal_tagsLabel = "Tags";
+var publishModal_noTags = "No tags";
+var publishModal_tagsPlaceholder = "Enter tags, separated by commas...";
+var publishModal_titleInfo = "Post title";
+var publishModal_slugInfo = "URL slug (permalink)";
+var publishModal_categoryInfo = "Post category";
+var publishModal_aiExcerpt = "AI Excerpt";
+var publishModal_aiTags = "AI Tags";
+var publishModal_retryLoadImage = "Retry";
+var publishModal_skipRemoteImage = "Skip";
+var publishModal_removeImage = "Remove";
+var publishModal_noImageSelected = "No image selected";
+var publishModal_selectFromVault = "Select from Vault";
+var publishModal_selectFromLocal = "Select Local File";
+var publishModal_aiGenerate = "AI Generate";
+var publishModal_settingsPanel = "Settings";
+var publishModal_historyPanel = "History";
+var publishModal_noHistory = "No history yet";
 var en_default = {
   error_noEndpoint,
   error_notWpCom,
@@ -115111,6 +116837,9 @@ var en_default = {
   notice_aiApiKeyRequired,
   notice_textAIApiKeyRequired,
   notice_imageAIApiKeyRequired,
+  notice_invalidImageFormat,
+  notice_imageTooLarge,
+  notice_imageLoadFailed,
   notice_aiConfigValid,
   notice_aiConfigInvalid,
   notice_imageAIConfigRequired,
@@ -115142,6 +116871,7 @@ var en_default = {
   publishModal_imageAIRequired,
   publishModal_imageSelected,
   publishModal_imageFromGallery,
+  publishModal_imageFromLocal,
   publishModal_uploadedToWordPress,
   publishModal_emptyContentForTags,
   publishModal_summaryGenerated,
@@ -115252,6 +116982,8 @@ var en_default = {
   publishModal_advancedTab,
   publishModal_previewTitle,
   publishModal_previewEditPlaceholder,
+  publishModal_save,
+  publishModal_cancel,
   publishModal_previewFeaturedImage,
   publishModal_previewFeaturedImageUploaded,
   publishModal_previewInconsistencyWarning,
@@ -115303,7 +117035,28 @@ var en_default = {
   defaultPrompt_image,
   defaultPrompt_summaryEn,
   defaultPrompt_tagsEn,
-  defaultPrompt_imageEn
+  defaultPrompt_imageEn,
+  publishModal_excerptLabel,
+  publishModal_noExcerpt,
+  publishModal_excerptPlaceholder,
+  publishModal_tagsLabel,
+  publishModal_noTags,
+  publishModal_tagsPlaceholder,
+  publishModal_titleInfo,
+  publishModal_slugInfo,
+  publishModal_categoryInfo,
+  publishModal_aiExcerpt,
+  publishModal_aiTags,
+  publishModal_retryLoadImage,
+  publishModal_skipRemoteImage,
+  publishModal_removeImage,
+  publishModal_noImageSelected,
+  publishModal_selectFromVault,
+  publishModal_selectFromLocal,
+  publishModal_aiGenerate,
+  publishModal_settingsPanel,
+  publishModal_historyPanel,
+  publishModal_noHistory
 };
 
 // src/i18n/zh-cn.json
@@ -115403,6 +117156,9 @@ __export(zh_cn_exports, {
   notice_imageAIConfigInvalid: () => notice_imageAIConfigInvalid2,
   notice_imageAIConfigRequired: () => notice_imageAIConfigRequired2,
   notice_imageAIConfigValid: () => notice_imageAIConfigValid2,
+  notice_imageLoadFailed: () => notice_imageLoadFailed2,
+  notice_imageTooLarge: () => notice_imageTooLarge2,
+  notice_invalidImageFormat: () => notice_invalidImageFormat2,
   notice_publishCancelled: () => notice_publishCancelled2,
   notice_slugModeRequiresAI: () => notice_slugModeRequiresAI2,
   notice_textAIApiKeyRequired: () => notice_textAIApiKeyRequired2,
@@ -115431,6 +117187,8 @@ __export(zh_cn_exports, {
   publishModal_advancedNotice: () => publishModal_advancedNotice2,
   publishModal_advancedTab: () => publishModal_advancedTab2,
   publishModal_advancedTitle: () => publishModal_advancedTitle2,
+  publishModal_aiExcerpt: () => publishModal_aiExcerpt2,
+  publishModal_aiGenerate: () => publishModal_aiGenerate2,
   publishModal_aiGenerateBtn: () => publishModal_aiGenerateBtn2,
   publishModal_aiGenerateImage: () => publishModal_aiGenerateImage2,
   publishModal_aiGenerateImageButton: () => publishModal_aiGenerateImageButton2,
@@ -115440,10 +117198,13 @@ __export(zh_cn_exports, {
   publishModal_aiImageGenerated: () => publishModal_aiImageGenerated2,
   publishModal_aiPrompts_tab: () => publishModal_aiPrompts_tab2,
   publishModal_aiServiceRequired: () => publishModal_aiServiceRequired2,
+  publishModal_aiTags: () => publishModal_aiTags2,
   publishModal_basicSettings: () => publishModal_basicSettings2,
+  publishModal_cancel: () => publishModal_cancel2,
   publishModal_cancelButton: () => publishModal_cancelButton2,
   publishModal_category: () => publishModal_category2,
   publishModal_categoryDesc: () => publishModal_categoryDesc2,
+  publishModal_categoryInfo: () => publishModal_categoryInfo2,
   publishModal_categoryName: () => publishModal_categoryName2,
   publishModal_closeButton: () => publishModal_closeButton2,
   publishModal_commentClosed: () => publishModal_commentClosed2,
@@ -115462,6 +117223,8 @@ __export(zh_cn_exports, {
   publishModal_editButton: () => publishModal_editButton2,
   publishModal_emptyContent: () => publishModal_emptyContent2,
   publishModal_emptyContentForTags: () => publishModal_emptyContentForTags2,
+  publishModal_excerptLabel: () => publishModal_excerptLabel2,
+  publishModal_excerptPlaceholder: () => publishModal_excerptPlaceholder2,
   publishModal_featuredImage: () => publishModal_featuredImage2,
   publishModal_featuredImageUploaded: () => publishModal_featuredImageUploaded2,
   publishModal_featuredImage_tab: () => publishModal_featuredImage_tab2,
@@ -115476,8 +117239,10 @@ __export(zh_cn_exports, {
   publishModal_generatingPrompt: () => publishModal_generatingPrompt2,
   publishModal_generatingSummary: () => publishModal_generatingSummary2,
   publishModal_generatingTags: () => publishModal_generatingTags2,
+  publishModal_historyPanel: () => publishModal_historyPanel2,
   publishModal_imageAIRequired: () => publishModal_imageAIRequired2,
   publishModal_imageFromGallery: () => publishModal_imageFromGallery2,
+  publishModal_imageFromLocal: () => publishModal_imageFromLocal2,
   publishModal_imagePromptTitle: () => publishModal_imagePromptTitle2,
   publishModal_imageSelectFailed: () => publishModal_imageSelectFailed2,
   publishModal_imageSelected: () => publishModal_imageSelected2,
@@ -115485,7 +117250,11 @@ __export(zh_cn_exports, {
   publishModal_loadingRemoteImage: () => publishModal_loadingRemoteImage2,
   publishModal_localImage: () => publishModal_localImage2,
   publishModal_localImageButton: () => publishModal_localImageButton2,
+  publishModal_noExcerpt: () => publishModal_noExcerpt2,
   publishModal_noFeaturedImage: () => publishModal_noFeaturedImage2,
+  publishModal_noHistory: () => publishModal_noHistory2,
+  publishModal_noImageSelected: () => publishModal_noImageSelected2,
+  publishModal_noTags: () => publishModal_noTags2,
   publishModal_onlineImage: () => publishModal_onlineImage2,
   publishModal_postDateTime: () => publishModal_postDateTime2,
   publishModal_postDateTimeDesc: () => publishModal_postDateTimeDesc2,
@@ -115520,22 +117289,30 @@ __export(zh_cn_exports, {
   publishModal_regenerateButton: () => publishModal_regenerateButton2,
   publishModal_regenerating: () => publishModal_regenerating2,
   publishModal_remoteImageLoadFailed: () => publishModal_remoteImageLoadFailed2,
+  publishModal_removeImage: () => publishModal_removeImage2,
   publishModal_retry: () => publishModal_retry2,
   publishModal_retryButton: () => publishModal_retryButton2,
+  publishModal_retryLoadImage: () => publishModal_retryLoadImage2,
+  publishModal_save: () => publishModal_save2,
   publishModal_saveAndUseButton: () => publishModal_saveAndUseButton2,
   publishModal_saveButton: () => publishModal_saveButton2,
   publishModal_saveSettings: () => publishModal_saveSettings2,
   publishModal_selectCategory: () => publishModal_selectCategory2,
   publishModal_selectFeaturedImage: () => publishModal_selectFeaturedImage2,
+  publishModal_selectFromLocal: () => publishModal_selectFromLocal2,
+  publishModal_selectFromVault: () => publishModal_selectFromVault2,
+  publishModal_settingsPanel: () => publishModal_settingsPanel2,
   publishModal_settingsSaved: () => publishModal_settingsSaved2,
   publishModal_settingsTab: () => publishModal_settingsTab2,
   publishModal_skip: () => publishModal_skip2,
+  publishModal_skipRemoteImage: () => publishModal_skipRemoteImage2,
   publishModal_slugAIButton: () => publishModal_slugAIButton2,
   publishModal_slugAIButtonNeedConfig: () => publishModal_slugAIButtonNeedConfig2,
   publishModal_slugAIButtonTranslating: () => publishModal_slugAIButtonTranslating2,
   publishModal_slugAutoUpdated: () => publishModal_slugAutoUpdated2,
   publishModal_slugDesc: () => publishModal_slugDesc2,
   publishModal_slugGenerated: () => publishModal_slugGenerated2,
+  publishModal_slugInfo: () => publishModal_slugInfo2,
   publishModal_slugName: () => publishModal_slugName2,
   publishModal_slugNeedTitle: () => publishModal_slugNeedTitle2,
   publishModal_slugPlaceholder: () => publishModal_slugPlaceholder2,
@@ -115554,9 +117331,12 @@ __export(zh_cn_exports, {
   publishModal_tagInputPlaceholder: () => publishModal_tagInputPlaceholder2,
   publishModal_tagsGenerateFailed: () => publishModal_tagsGenerateFailed2,
   publishModal_tagsGenerated: () => publishModal_tagsGenerated2,
+  publishModal_tagsLabel: () => publishModal_tagsLabel2,
+  publishModal_tagsPlaceholder: () => publishModal_tagsPlaceholder2,
   publishModal_tagsPromptTitle: () => publishModal_tagsPromptTitle2,
   publishModal_title: () => publishModal_title2,
   publishModal_titleDesc: () => publishModal_titleDesc2,
+  publishModal_titleInfo: () => publishModal_titleInfo2,
   publishModal_titleName: () => publishModal_titleName2,
   publishModal_titlePlaceholder: () => publishModal_titlePlaceholder2,
   publishModal_title_tab: () => publishModal_title_tab2,
@@ -115878,6 +117658,9 @@ var notice_aiConfigRequired2 = "\u8BF7\u5148\u914D\u7F6E AI \u670D\u52A1";
 var notice_aiApiKeyRequired2 = "\u8BF7\u5148\u5728\u63D2\u4EF6\u8BBE\u7F6E\u4E2D\u586B\u5199 AI API Key";
 var notice_textAIApiKeyRequired2 = "\u8BF7\u5148\u5728\u63D2\u4EF6\u8BBE\u7F6E\u4E2D\u586B\u5199\u6587\u672C AI \u7684 API Key";
 var notice_imageAIApiKeyRequired2 = "\u8BF7\u5148\u5728\u63D2\u4EF6\u8BBE\u7F6E\u4E2D\u586B\u5199\u56FE\u7247\u751F\u6210 AI \u7684 API Key";
+var notice_invalidImageFormat2 = "\u65E0\u6548\u7684\u56FE\u7247\u683C\u5F0F\u3002\u8BF7\u9009\u62E9 JPEG\u3001PNG\u3001GIF \u6216 WebP \u56FE\u7247\u3002";
+var notice_imageTooLarge2 = "\u56FE\u7247\u6587\u4EF6\u8FC7\u5927\u3002\u6700\u5927\u652F\u6301 10MB\u3002";
+var notice_imageLoadFailed2 = "\u52A0\u8F7D\u56FE\u7247\u6587\u4EF6\u5931\u8D25\u3002";
 var notice_aiConfigValid2 = "\u2713 AI \u914D\u7F6E\u9A8C\u8BC1\u6210\u529F";
 var notice_aiConfigInvalid2 = "\u2717 AI \u914D\u7F6E\u9A8C\u8BC1\u5931\u8D25: <%= error %>";
 var notice_imageAIConfigRequired2 = "\u8BF7\u5148\u914D\u7F6E\u56FE\u7247\u751F\u6210 AI";
@@ -115909,6 +117692,7 @@ var publishModal_unsplashKeyRequired2 = "\u8BF7\u5148\u5728\u63D2\u4EF6\u8BBE\u7
 var publishModal_imageAIRequired2 = "\u8BF7\u5148\u5728\u63D2\u4EF6\u8BBE\u7F6E\u4E2D\u914D\u7F6E AI \u670D\u52A1\uFF08\u56FE\u7247\u751F\u6210 AI\uFF09";
 var publishModal_imageSelected2 = "\u5DF2\u9009\u62E9\u56FE\u7247: <%= fileName %>";
 var publishModal_imageFromGallery2 = "\u5DF2\u4ECE\u56FE\u5E93\u9009\u62E9: <%= fileName %>";
+var publishModal_imageFromLocal2 = "\u5DF2\u4ECE\u672C\u5730\u9009\u62E9: <%= fileName %>";
 var publishModal_uploadedToWordPress2 = "\u2705 \u5DF2\u4E0A\u4F20\u5230 WordPress";
 var publishModal_emptyContentForTags2 = "\u6587\u7AE0\u5185\u5BB9\u4E3A\u7A7A";
 var publishModal_summaryGenerated2 = "\u6458\u8981\u5DF2\u751F\u6210: <%= summary %>...";
@@ -116019,6 +117803,8 @@ var publishModal_previewTab2 = "\u{1F441}\uFE0F \u9884\u89C8";
 var publishModal_advancedTab2 = "\u{1F527} \u9AD8\u7EA7\u8BBE\u7F6E";
 var publishModal_previewTitle2 = "\u6587\u7AE0\u9884\u89C8";
 var publishModal_previewEditPlaceholder2 = "\u5728\u6B64\u7F16\u8F91 Markdown \u5185\u5BB9...";
+var publishModal_save2 = "\u4FDD\u5B58";
+var publishModal_cancel2 = "\u53D6\u6D88";
 var publishModal_previewFeaturedImage2 = "\u7279\u8272\u56FE\u7247";
 var publishModal_previewFeaturedImageUploaded2 = "\u7279\u8272\u56FE\u7247\uFF08\u5DF2\u4E0A\u4F20\u5230 WordPress\uFF09";
 var publishModal_previewInconsistencyWarning2 = "\u68C0\u6D4B\u5230\u7279\u8272\u56FE\u7247\u4E0D\u4E00\u81F4";
@@ -116071,6 +117857,27 @@ var defaultPrompt_image2 = "\u6839\u636E\u4EE5\u4E0B\u6587\u7AE0\u6458\u8981\u62
 var defaultPrompt_summaryEn2 = "Please generate a concise summary of 100-200 words based on the following article content.\nRequirements:\n1. Summarize the core content and main points\n2. Use fluent and natural language\n3. Return only the summary text without any prefix or explanation\n\nArticle content:\n{content}";
 var defaultPrompt_tagsEn2 = "Please extract 1-4 most relevant keywords as tags based on the following article content.\nRequirements:\n1. Each tag should be concise (2-4 words)\n2. Separate tags with commas\n3. Return only comma-separated tags without any prefix or explanation\n\nArticle content:\n{content}";
 var defaultPrompt_imageEn2 = "Generate an English image description suitable for a blog cover image based on the following article summary or tags.\nRequirements: Concise, visual, professional, suitable for AI image generation.\nReturn only the English image description without any prefix or explanation.\n\nArticle title: {title}\nArticle summary/tags: {content}";
+var publishModal_excerptLabel2 = "\u6458\u8981";
+var publishModal_noExcerpt2 = "\u6682\u65E0\u6458\u8981";
+var publishModal_excerptPlaceholder2 = "\u8F93\u5165\u6458\u8981...";
+var publishModal_tagsLabel2 = "\u6807\u7B7E";
+var publishModal_noTags2 = "\u6682\u65E0\u6807\u7B7E";
+var publishModal_tagsPlaceholder2 = "\u8F93\u5165\u6807\u7B7E\uFF0C\u7528\u9017\u53F7\u5206\u9694...";
+var publishModal_titleInfo2 = "\u6587\u7AE0\u6807\u9898";
+var publishModal_slugInfo2 = "URL \u522B\u540D\uFF08\u56FA\u5B9A\u94FE\u63A5\uFF09";
+var publishModal_categoryInfo2 = "\u6587\u7AE0\u5206\u7C7B";
+var publishModal_aiExcerpt2 = "AI \u6458\u8981";
+var publishModal_aiTags2 = "AI \u6807\u7B7E";
+var publishModal_retryLoadImage2 = "\u91CD\u8BD5";
+var publishModal_skipRemoteImage2 = "\u8DF3\u8FC7";
+var publishModal_removeImage2 = "\u79FB\u9664";
+var publishModal_noImageSelected2 = "\u672A\u9009\u62E9\u56FE\u7247";
+var publishModal_selectFromVault2 = "\u4ECE\u4ED3\u5E93\u9009\u62E9";
+var publishModal_selectFromLocal2 = "\u9009\u62E9\u672C\u5730\u6587\u4EF6";
+var publishModal_aiGenerate2 = "AI \u751F\u6210";
+var publishModal_settingsPanel2 = "\u8BBE\u7F6E";
+var publishModal_historyPanel2 = "\u5386\u53F2\u8BB0\u5F55";
+var publishModal_noHistory2 = "\u6682\u65E0\u5386\u53F2\u8BB0\u5F55";
 var zh_cn_default = {
   error_noEndpoint: error_noEndpoint2,
   error_notWpCom: error_notWpCom2,
@@ -116259,6 +118066,9 @@ var zh_cn_default = {
   notice_aiApiKeyRequired: notice_aiApiKeyRequired2,
   notice_textAIApiKeyRequired: notice_textAIApiKeyRequired2,
   notice_imageAIApiKeyRequired: notice_imageAIApiKeyRequired2,
+  notice_invalidImageFormat: notice_invalidImageFormat2,
+  notice_imageTooLarge: notice_imageTooLarge2,
+  notice_imageLoadFailed: notice_imageLoadFailed2,
   notice_aiConfigValid: notice_aiConfigValid2,
   notice_aiConfigInvalid: notice_aiConfigInvalid2,
   notice_imageAIConfigRequired: notice_imageAIConfigRequired2,
@@ -116290,6 +118100,7 @@ var zh_cn_default = {
   publishModal_imageAIRequired: publishModal_imageAIRequired2,
   publishModal_imageSelected: publishModal_imageSelected2,
   publishModal_imageFromGallery: publishModal_imageFromGallery2,
+  publishModal_imageFromLocal: publishModal_imageFromLocal2,
   publishModal_uploadedToWordPress: publishModal_uploadedToWordPress2,
   publishModal_emptyContentForTags: publishModal_emptyContentForTags2,
   publishModal_summaryGenerated: publishModal_summaryGenerated2,
@@ -116400,6 +118211,8 @@ var zh_cn_default = {
   publishModal_advancedTab: publishModal_advancedTab2,
   publishModal_previewTitle: publishModal_previewTitle2,
   publishModal_previewEditPlaceholder: publishModal_previewEditPlaceholder2,
+  publishModal_save: publishModal_save2,
+  publishModal_cancel: publishModal_cancel2,
   publishModal_previewFeaturedImage: publishModal_previewFeaturedImage2,
   publishModal_previewFeaturedImageUploaded: publishModal_previewFeaturedImageUploaded2,
   publishModal_previewInconsistencyWarning: publishModal_previewInconsistencyWarning2,
@@ -116451,7 +118264,28 @@ var zh_cn_default = {
   defaultPrompt_image: defaultPrompt_image2,
   defaultPrompt_summaryEn: defaultPrompt_summaryEn2,
   defaultPrompt_tagsEn: defaultPrompt_tagsEn2,
-  defaultPrompt_imageEn: defaultPrompt_imageEn2
+  defaultPrompt_imageEn: defaultPrompt_imageEn2,
+  publishModal_excerptLabel: publishModal_excerptLabel2,
+  publishModal_noExcerpt: publishModal_noExcerpt2,
+  publishModal_excerptPlaceholder: publishModal_excerptPlaceholder2,
+  publishModal_tagsLabel: publishModal_tagsLabel2,
+  publishModal_noTags: publishModal_noTags2,
+  publishModal_tagsPlaceholder: publishModal_tagsPlaceholder2,
+  publishModal_titleInfo: publishModal_titleInfo2,
+  publishModal_slugInfo: publishModal_slugInfo2,
+  publishModal_categoryInfo: publishModal_categoryInfo2,
+  publishModal_aiExcerpt: publishModal_aiExcerpt2,
+  publishModal_aiTags: publishModal_aiTags2,
+  publishModal_retryLoadImage: publishModal_retryLoadImage2,
+  publishModal_skipRemoteImage: publishModal_skipRemoteImage2,
+  publishModal_removeImage: publishModal_removeImage2,
+  publishModal_noImageSelected: publishModal_noImageSelected2,
+  publishModal_selectFromVault: publishModal_selectFromVault2,
+  publishModal_selectFromLocal: publishModal_selectFromLocal2,
+  publishModal_aiGenerate: publishModal_aiGenerate2,
+  publishModal_settingsPanel: publishModal_settingsPanel2,
+  publishModal_historyPanel: publishModal_historyPanel2,
+  publishModal_noHistory: publishModal_noHistory2
 };
 
 // src/i18n/langs.ts
