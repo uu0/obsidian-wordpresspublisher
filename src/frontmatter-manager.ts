@@ -309,34 +309,20 @@ export class FrontmatterManager {
   }
 
   /**
-   * Normalize category value for comparison
-   * Handles common category name/ID mappings
+   * Normalize category value for comparison.
+   * Maps known default category names to their canonical ID "1".
+   * Numeric ID "1" is kept as-is (no reverse mapping to avoid asymmetry).
    */
   private normalizeCategoryValue(value: string): string[] | null {
     const trimmed = value.trim();
-    
-    // Default WordPress category mappings
-    const categoryMappings: Record<string, string> = {
-      // Chinese
-      '未分类': '1',
-      'Uncategorized': '1',
-      // Add other common mappings as needed
-    };
-    
-    // Check if value is a known category name
-    if (categoryMappings[trimmed]) {
-      return [categoryMappings[trimmed]];
+
+    // All known display names for WordPress's built-in default category (ID 1)
+    const defaultCategoryNames = ['未分类', 'Uncategorized', 'uncategorized'];
+    if (defaultCategoryNames.includes(trimmed)) {
+      return ['1'];
     }
-    
-    // Check if value is a known category ID that maps to a common name
-    const reverseMappings: Record<string, string> = {
-      '1': '未分类', // Default category ID
-    };
-    
-    if (reverseMappings[trimmed]) {
-      return [reverseMappings[trimmed]];
-    }
-    
+
+    // Do NOT reverse-map "1" back to a name — keep it as "1" so comparisons stay consistent.
     return null;
   }
 

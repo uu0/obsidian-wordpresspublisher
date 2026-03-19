@@ -2,6 +2,9 @@ import { arrayBufferToBase64, request } from 'obsidian';
 import { isArray, isArrayBuffer, isBoolean, isDate, isNumber, isObject, isSafeInteger } from 'lodash-es';
 import { format, parse } from 'date-fns';
 import { SafeAny } from './utils';
+import { logger } from './utils/logger';
+
+const MODULE = 'XmlRpcClient';
 
 interface XmlRpcOptions {
   url: URL;
@@ -27,7 +30,7 @@ export class XmlRpcClient {
   constructor(
     private readonly options: XmlRpcOptions
   ) {
-    console.log(options);
+    logger.debug(MODULE, 'Initializing', { url: options.url.href });
 
     this.href = this.options.url.href;
     if (this.href.endsWith('/')) {
@@ -50,7 +53,7 @@ export class XmlRpcClient {
     params: unknown
   ): Promise<unknown> {
     const xml = this.objectToXml(method, params);
-    console.log(`Endpoint: ${this.endpoint}, ${method}, request: ${xml}`, params);
+    logger.debug(MODULE, 'methodCall', { endpoint: this.endpoint, method });
     return request({
       url: this.endpoint,
       method: 'POST',
@@ -153,7 +156,7 @@ export class XmlRpcClient {
         .children[0];
       response = this.fromElement(responseValue);
     }
-    console.log(`response: ${xml}`, response);
+    logger.debug(MODULE, 'methodCall response received');
     return response;
   }
 

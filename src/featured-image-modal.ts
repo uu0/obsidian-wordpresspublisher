@@ -1,4 +1,4 @@
-import { App, Modal, Setting, Notice, TFile } from 'obsidian';
+import { App, Modal, Setting, Notice, TFile, requestUrl } from 'obsidian';
 import { UnsplashService, UnsplashImage } from './unsplash-service';
 import { AIService } from './ai-service';
 import WordpressPlugin from './main';
@@ -71,6 +71,78 @@ export async function resizeFeaturedImage(
     return await outputBlob.arrayBuffer();
   } catch (error) {
     log.error('Image resize failed', error);
+    return null;
+  }
+}
+
+// 导出工具函数：图片压缩（使用二分搜索找到最佳压缩质量）
+export async function compressImage(
+  arrayBuffer: ArrayBuffer,
+  mimeType: string,
+  maxSizeKB: number = 500,
+  minQuality: number = 0.6
+): Promise<ArrayBuffer | null> {
+  try {
+    const maxSizeBytes = maxSizeKB * 1024;
+
+    // If already small enough, return null (no compression needed)
+    if (arrayBuffer.byteLength <= maxSizeBytes) {
+      return null;
+    }
+
+    log.info(`Compressing image: ${(arrayBuffer.byteLength / 1024).toFixed(1)}KB -> target: ${maxSizeKB}KB`);
+
+    const blob = new Blob([arrayBuffer], { type: mimeType });
+    const bitmap = await createImageBitmap(blob);
+
+    // Create canvas with original dimensions
+    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      bitmap.close();
+      return null;
+    }
+
+    ctx.drawImage(bitmap, 0, 0);
+    bitmap.close();
+
+    // Binary search for optimal quality
+    let low = minQuality;
+    let high = 0.92;
+    let bestBlob: Blob | null = null;
+
+    // For PNG, we need to convert to JPEG for better compression
+    const outputType = mimeType === 'image/png' ? 'image/jpeg' : mimeType;
+
+    while (low <= high) {
+      const mid = (low + high) / 2;
+      const blob = await canvas.convertToBlob({
+        type: outputType,
+        quality: mid
+      });
+
+      if (blob.size <= maxSizeBytes) {
+        bestBlob = blob;
+        // Try to find even smaller size with lower quality
+        high = mid - 0.05;
+      } else {
+        // Need higher quality (but we're capped at 0.92)
+        low = mid + 0.05;
+      }
+    }
+
+    if (bestBlob) {
+      const compressedSize = bestBlob.size / 1024;
+      const originalSize = arrayBuffer.byteLength / 1024;
+      log.info(`Image compressed successfully: ${originalSize.toFixed(1)}KB -> ${compressedSize.toFixed(1)}KB`);
+      return await bestBlob.arrayBuffer();
+    }
+
+    // If compression failed to reach target size, return null
+    log.warn('Failed to compress image to target size');
+    return null;
+  } catch (error) {
+    log.error('Image compression failed', error);
     return null;
   }
 }
@@ -692,9 +764,9 @@ class AIGenerateModal extends Modal {
       try {
         const imageUrl = await this.aiService.generateImage(prompt);
 
-        // Download image
-        const response = await fetch(imageUrl);
-        this.currentArrayBuffer = await response.arrayBuffer();
+        // Download image using Obsidian's requestUrl to bypass CORS
+        const response = await requestUrl({ url: imageUrl, method: 'GET' });
+        this.currentArrayBuffer = response.arrayBuffer;
         this.currentImageUrl = imageUrl;
 
         // Show preview
@@ -726,8 +798,9 @@ class AIGenerateModal extends Modal {
 
           try {
             const newImageUrl = await this.aiService.generateImage(originalPrompt);
-            const newResponse = await fetch(newImageUrl);
-            this.currentArrayBuffer = await newResponse.arrayBuffer();
+            // Use Obsidian's requestUrl to bypass CORS
+            const newResponse = await requestUrl({ url: newImageUrl, method: 'GET' });
+            this.currentArrayBuffer = newResponse.arrayBuffer;
             this.currentImageUrl = newImageUrl;
 
             resultContainer.empty();

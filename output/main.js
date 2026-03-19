@@ -54,11 +54,25 @@ var init_wp_api = __esm({
 });
 
 // src/consts.ts
-var ERROR_NOTICE_TIMEOUT, WP_OAUTH2_CLIENT_ID, WP_OAUTH2_CLIENT_SECRET, WP_OAUTH2_TOKEN_ENDPOINT, WP_OAUTH2_AUTHORIZE_ENDPOINT, WP_OAUTH2_VALIDATE_TOKEN_ENDPOINT, WP_OAUTH2_URL_ACTION, WP_OAUTH2_REDIRECT_URI, WP_DEFAULT_PROFILE_NAME;
+var ERROR_NOTICE_TIMEOUT, FEATURED_IMAGE_UPLOAD_MAX_RETRIES, FEATURED_IMAGE_UPLOAD_RETRY_DELAY_MS, AUTH_CACHE_DURATION_MS, WP_OAUTH2_CLIENT_ID, WP_OAUTH2_CLIENT_SECRET, WP_OAUTH2_TOKEN_ENDPOINT, WP_OAUTH2_AUTHORIZE_ENDPOINT, WP_OAUTH2_VALIDATE_TOKEN_ENDPOINT, WP_OAUTH2_URL_ACTION, WP_OAUTH2_REDIRECT_URI, WP_DEFAULT_PROFILE_NAME;
 var init_consts = __esm({
   "src/consts.ts"() {
     "use strict";
     ERROR_NOTICE_TIMEOUT = 15e3;
+    FEATURED_IMAGE_UPLOAD_MAX_RETRIES = 2;
+    FEATURED_IMAGE_UPLOAD_RETRY_DELAY_MS = 2e3;
+    AUTH_CACHE_DURATION_MS = {
+      "1d": 24 * 60 * 60 * 1e3,
+      // 1 day
+      "1w": 7 * 24 * 60 * 60 * 1e3,
+      // 1 week
+      "1m": 30 * 24 * 60 * 60 * 1e3,
+      // 1 month (approx)
+      "6m": 180 * 24 * 60 * 60 * 1e3,
+      // 6 months (approx)
+      "forever": Number.MAX_SAFE_INTEGER
+      // Never expire
+    };
     WP_OAUTH2_CLIENT_ID = "79085";
     WP_OAUTH2_CLIENT_SECRET = "zg4mKy9O1mc1mmynShJTVxs8r1k3X4e3g1sv5URlkpZqlWdUdAA7C2SSBOo02P7X";
     WP_OAUTH2_TOKEN_ENDPOINT = "https://public-api.wordpress.com/oauth2/token";
@@ -65199,6 +65213,123 @@ var init_lodash = __esm({
   }
 });
 
+// src/utils/logger.ts
+function createModuleLogger(moduleName) {
+  return {
+    debug: (message2, data2) => logger.debug(moduleName, message2, data2),
+    info: (message2, data2) => logger.info(moduleName, message2, data2),
+    warn: (message2, data2) => logger.warn(moduleName, message2, data2),
+    error: (message2, error2) => logger.error(moduleName, message2, error2)
+  };
+}
+var Logger, logger;
+var init_logger = __esm({
+  "src/utils/logger.ts"() {
+    "use strict";
+    Logger = class _Logger {
+      constructor() {
+        this.config = {
+          level: 1 /* INFO */,
+          enableConsole: true
+        };
+      }
+      /**
+       * Get singleton instance
+       */
+      static getInstance() {
+        if (!_Logger.instance) {
+          _Logger.instance = new _Logger();
+        }
+        return _Logger.instance;
+      }
+      /**
+       * Set logging level
+       */
+      setLevel(level) {
+        this.config.level = level;
+      }
+      /**
+       * Enable or disable console logging
+       */
+      setEnableConsole(enable) {
+        this.config.enableConsole = enable;
+      }
+      /**
+       * Format log entry
+       */
+      formatEntry(level, module2, message2, data2) {
+        return {
+          timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+          level,
+          module: module2,
+          message: message2,
+          ...data2 !== void 0 && { data: data2 }
+        };
+      }
+      /**
+       * Log debug message
+       */
+      debug(module2, message2, data2) {
+        if (this.config.level <= 0 /* DEBUG */ && this.config.enableConsole) {
+          const entry = this.formatEntry("DEBUG", module2, message2, data2);
+          console.debug(`[${entry.timestamp}] [${entry.module}] ${entry.message}`, data2 || "");
+        }
+      }
+      /**
+       * Log info message
+       */
+      info(module2, message2, data2) {
+        if (this.config.level <= 1 /* INFO */ && this.config.enableConsole) {
+          const entry = this.formatEntry("INFO", module2, message2, data2);
+          console.info(`[${entry.timestamp}] [${entry.module}] ${entry.message}`, data2 || "");
+        }
+      }
+      /**
+       * Log warning message
+       */
+      warn(module2, message2, data2) {
+        if (this.config.level <= 2 /* WARN */ && this.config.enableConsole) {
+          const entry = this.formatEntry("WARN", module2, message2, data2);
+          console.warn(`[${entry.timestamp}] [${entry.module}] ${entry.message}`, data2 || "");
+        }
+      }
+      /**
+       * Log error message
+       */
+      error(module2, message2, error2) {
+        if (this.config.level <= 3 /* ERROR */ && this.config.enableConsole) {
+          const entry = this.formatEntry("ERROR", module2, message2, error2);
+          if (true) {
+            console.error(`[${entry.timestamp}] [${entry.module}] ${entry.message}`, error2 || "");
+          }
+        }
+      }
+      /**
+       * Log with custom log level
+       */
+      log(level, module2, message2, data2) {
+        switch (level) {
+          case 0 /* DEBUG */:
+            this.debug(module2, message2, data2);
+            break;
+          case 1 /* INFO */:
+            this.info(module2, message2, data2);
+            break;
+          case 2 /* WARN */:
+            this.warn(module2, message2, data2);
+            break;
+          case 3 /* ERROR */:
+            this.error(module2, message2, data2);
+            break;
+          default:
+            break;
+        }
+      }
+    };
+    logger = Logger.getInstance();
+  }
+});
+
 // src/pass-crypto.ts
 var AES_GCM, FORMAT_JWK, PassCrypto;
 var init_pass_crypto = __esm({
@@ -65247,7 +65378,12 @@ var init_pass_crypto = __esm({
       async decrypt(encrypted, key, vector) {
         if (this.canUse()) {
           if (key && vector) {
-            const keyObject = JSON.parse(key);
+            let keyObject;
+            try {
+              keyObject = JSON.parse(key);
+            } catch (e) {
+              throw new Error("Decryption failed: stored key is corrupted");
+            }
             const thisKey = await crypto.subtle.importKey(
               FORMAT_JWK,
               keyObject,
@@ -65267,7 +65403,7 @@ var init_pass_crypto = __esm({
             );
             return new TextDecoder().decode(decrypted);
           }
-          return "xx";
+          throw new Error("Decryption failed: missing key or vector");
         } else {
           return this.reverseString(this.base64ToString(this.reverseString(encrypted)));
         }
@@ -65301,7 +65437,7 @@ var init_pass_crypto = __esm({
 
 // src/plugin-settings.ts
 async function upgradeSettings(existingSettings, to) {
-  console.log(existingSettings, to);
+  logger.debug("upgradeSettings", "upgrading settings", { from: existingSettings == null ? void 0 : existingSettings.version, to });
   if (isUndefined_default(existingSettings.version)) {
     if (to === "2" /* V2 */) {
       const newSettings = Object.assign({}, DEFAULT_SETTINGS, {
@@ -65360,6 +65496,7 @@ var init_plugin_settings = __esm({
     "use strict";
     init_wp_api();
     init_lodash();
+    init_logger();
     init_pass_crypto();
     init_consts();
     DEFAULT_SETTINGS = {
@@ -65378,7 +65515,11 @@ var init_plugin_settings = __esm({
       slugGenerationMode: "pinyin",
       imageCropRatio: "16:9",
       imageCropWidth: 1200,
-      tagFormat: "yaml" /* YAML */
+      enableImageCompression: true,
+      imageMaxSizeKB: 500,
+      imageMinQuality: 0.6,
+      tagFormat: "yaml" /* YAML */,
+      authCacheDuration: "1m" /* OneMonth */
     };
   }
 });
@@ -71192,18 +71333,20 @@ var init_date_fns = __esm({
 });
 
 // src/xmlrpc-client.ts
-var import_obsidian, XmlRpcClient;
+var import_obsidian, MODULE, XmlRpcClient;
 var init_xmlrpc_client = __esm({
   "src/xmlrpc-client.ts"() {
     "use strict";
     import_obsidian = require("obsidian");
     init_lodash();
     init_date_fns();
+    init_logger();
+    MODULE = "XmlRpcClient";
     XmlRpcClient = class {
       constructor(options) {
         this.options = options;
         var _a5;
-        console.log(options);
+        logger.debug(MODULE, "Initializing", { url: options.url.href });
         this.href = this.options.url.href;
         if (this.href.endsWith("/")) {
           this.href = this.href.substring(0, this.href.length - 1);
@@ -71219,7 +71362,7 @@ var init_xmlrpc_client = __esm({
       }
       methodCall(method, params) {
         const xml2 = this.objectToXml(method, params);
-        console.log(`Endpoint: ${this.endpoint}, ${method}, request: ${xml2}`, params);
+        logger.debug(MODULE, "methodCall", { endpoint: this.endpoint, method });
         return (0, import_obsidian.request)({
           url: this.endpoint,
           method: "POST",
@@ -71309,7 +71452,7 @@ var init_xmlrpc_client = __esm({
           const responseValue = methodResponse.children[0].children[0].children[0].children[0];
           response = this.fromElement(responseValue);
         }
-        console.log(`response: ${xml2}`, response);
+        logger.debug(MODULE, "methodCall response received");
         return response;
       }
       fromElement(element) {
@@ -99278,123 +99421,6 @@ var init_dist3 = __esm({
   }
 });
 
-// src/utils/logger.ts
-function createModuleLogger(moduleName) {
-  return {
-    debug: (message2, data2) => logger.debug(moduleName, message2, data2),
-    info: (message2, data2) => logger.info(moduleName, message2, data2),
-    warn: (message2, data2) => logger.warn(moduleName, message2, data2),
-    error: (message2, error2) => logger.error(moduleName, message2, error2)
-  };
-}
-var Logger, logger;
-var init_logger = __esm({
-  "src/utils/logger.ts"() {
-    "use strict";
-    Logger = class _Logger {
-      constructor() {
-        this.config = {
-          level: 1 /* INFO */,
-          enableConsole: true
-        };
-      }
-      /**
-       * Get singleton instance
-       */
-      static getInstance() {
-        if (!_Logger.instance) {
-          _Logger.instance = new _Logger();
-        }
-        return _Logger.instance;
-      }
-      /**
-       * Set logging level
-       */
-      setLevel(level) {
-        this.config.level = level;
-      }
-      /**
-       * Enable or disable console logging
-       */
-      setEnableConsole(enable) {
-        this.config.enableConsole = enable;
-      }
-      /**
-       * Format log entry
-       */
-      formatEntry(level, module2, message2, data2) {
-        return {
-          timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-          level,
-          module: module2,
-          message: message2,
-          ...data2 !== void 0 && { data: data2 }
-        };
-      }
-      /**
-       * Log debug message
-       */
-      debug(module2, message2, data2) {
-        if (this.config.level <= 0 /* DEBUG */ && this.config.enableConsole) {
-          const entry = this.formatEntry("DEBUG", module2, message2, data2);
-          console.debug(`[${entry.timestamp}] [${entry.module}] ${entry.message}`, data2 || "");
-        }
-      }
-      /**
-       * Log info message
-       */
-      info(module2, message2, data2) {
-        if (this.config.level <= 1 /* INFO */ && this.config.enableConsole) {
-          const entry = this.formatEntry("INFO", module2, message2, data2);
-          console.info(`[${entry.timestamp}] [${entry.module}] ${entry.message}`, data2 || "");
-        }
-      }
-      /**
-       * Log warning message
-       */
-      warn(module2, message2, data2) {
-        if (this.config.level <= 2 /* WARN */ && this.config.enableConsole) {
-          const entry = this.formatEntry("WARN", module2, message2, data2);
-          console.warn(`[${entry.timestamp}] [${entry.module}] ${entry.message}`, data2 || "");
-        }
-      }
-      /**
-       * Log error message
-       */
-      error(module2, message2, error2) {
-        if (this.config.level <= 3 /* ERROR */ && this.config.enableConsole) {
-          const entry = this.formatEntry("ERROR", module2, message2, error2);
-          if (true) {
-            console.error(`[${entry.timestamp}] [${entry.module}] ${entry.message}`, error2 || "");
-          }
-        }
-      }
-      /**
-       * Log with custom log level
-       */
-      log(level, module2, message2, data2) {
-        switch (level) {
-          case 0 /* DEBUG */:
-            this.debug(module2, message2, data2);
-            break;
-          case 1 /* INFO */:
-            this.info(module2, message2, data2);
-            break;
-          case 2 /* WARN */:
-            this.warn(module2, message2, data2);
-            break;
-          case 3 /* ERROR */:
-            this.error(module2, message2, data2);
-            break;
-          default:
-            break;
-        }
-      }
-    };
-    logger = Logger.getInstance();
-  }
-});
-
 // src/slug-generator.ts
 var logger2, SlugGenerator;
 var init_slug_generator = __esm({
@@ -100917,6 +100943,53 @@ async function resizeFeaturedImage(arrayBuffer, mimeType, targetWidth, aspectRat
     return await outputBlob.arrayBuffer();
   } catch (error2) {
     log2.error("Image resize failed", error2);
+    return null;
+  }
+}
+async function compressImage(arrayBuffer, mimeType, maxSizeKB = 500, minQuality = 0.6) {
+  try {
+    const maxSizeBytes = maxSizeKB * 1024;
+    if (arrayBuffer.byteLength <= maxSizeBytes) {
+      return null;
+    }
+    log2.info(`Compressing image: ${(arrayBuffer.byteLength / 1024).toFixed(1)}KB -> target: ${maxSizeKB}KB`);
+    const blob = new Blob([arrayBuffer], { type: mimeType });
+    const bitmap = await createImageBitmap(blob);
+    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      bitmap.close();
+      return null;
+    }
+    ctx.drawImage(bitmap, 0, 0);
+    bitmap.close();
+    let low = minQuality;
+    let high = 0.92;
+    let bestBlob = null;
+    const outputType = mimeType === "image/png" ? "image/jpeg" : mimeType;
+    while (low <= high) {
+      const mid = (low + high) / 2;
+      const blob2 = await canvas.convertToBlob({
+        type: outputType,
+        quality: mid
+      });
+      if (blob2.size <= maxSizeBytes) {
+        bestBlob = blob2;
+        high = mid - 0.05;
+      } else {
+        low = mid + 0.05;
+      }
+    }
+    if (bestBlob) {
+      const compressedSize = bestBlob.size / 1024;
+      const originalSize = arrayBuffer.byteLength / 1024;
+      log2.info(`Image compressed successfully: ${originalSize.toFixed(1)}KB -> ${compressedSize.toFixed(1)}KB`);
+      return await bestBlob.arrayBuffer();
+    }
+    log2.warn("Failed to compress image to target size");
+    return null;
+  } catch (error2) {
+    log2.error("Image compression failed", error2);
     return null;
   }
 }
@@ -107571,11 +107644,16 @@ var init_wp_publish_modal_v2 = __esm({
       }
       async loadOnlineImage(imagePath) {
         try {
-          const response = await fetch(imagePath);
-          const arrayBuffer = await response.arrayBuffer();
+          const response = await (0, import_obsidian9.requestUrl)({
+            url: imagePath,
+            method: "GET"
+          });
+          const arrayBuffer = response.arrayBuffer;
+          const contentType = response.headers["content-type"];
+          const mimeType = this.getMimeTypeFromResponse(contentType, imagePath);
           this.autoFeaturedImage = {
             fileName: `featured-${Date.now()}.jpg`,
-            mimeType: "image/jpeg",
+            mimeType,
             content: arrayBuffer,
             width: 1200
           };
@@ -107684,6 +107762,30 @@ var init_wp_publish_modal_v2 = __esm({
         contentEl.empty();
         if (this.dateInputMask) {
           this.dateInputMask.destroy();
+        }
+      }
+      /**
+       * 保存当前参数到 frontmatter（不发布），保存后关闭弹窗
+       */
+      async saveParamsToFrontmatter(params) {
+        if (!this.notePath) return;
+        const file = this.plugin.app.vault.getAbstractFileByPath(this.notePath);
+        if (!file || !(file instanceof import_obsidian9.TFile)) return;
+        try {
+          await this.plugin.app.fileManager.processFrontMatter(file, (fm) => {
+            if (params.slug) fm.slug = params.slug;
+            const categoryNames = params.categories.map((catId) => this.categories.items.find((t) => Number(t.id) === catId)).filter((term) => !!term && Number(term.id) > 0).map((term) => term.name);
+            if (categoryNames.length > 0) fm.categories = categoryNames;
+            if (params.tags && params.tags.length > 0) {
+              fm.tags = TagFormatter.formatTags(params.tags, this.plugin.settings.tagFormat);
+            }
+            if (params.excerpt) fm.excerpt = params.excerpt;
+          });
+          new import_obsidian9.Notice(this.t("publishModal_settingsSaved") || "\u8BBE\u7F6E\u5DF2\u4FDD\u5B58");
+          this.close();
+        } catch (error2) {
+          log4.error("Failed to save params to frontmatter:", error2);
+          new import_obsidian9.Notice("\u4FDD\u5B58\u5931\u8D25: " + (error2 instanceof Error ? error2.message : String(error2)));
         }
       }
       /**
@@ -108681,55 +108783,87 @@ var init_wp_publish_modal_v2 = __esm({
             params.contentFormat = select2.value;
           });
         });
-        const validCategories = this.categories.items.filter((it) => it.name && it.name.trim());
-        if (params.postType === "post" /* Post */ && validCategories.length > 0) {
-          body.createDiv("wp-v3-divider");
-          this.renderV3Field(body, this.t("publishModal_categoryName"), "publishModal_categoryInfo", (fieldEl) => {
-            const tagsWrap = fieldEl.createDiv();
-            tagsWrap.style.display = "flex";
-            tagsWrap.style.flexWrap = "wrap";
-            tagsWrap.style.gap = "4px";
-            const renderCats = () => {
-              tagsWrap.empty();
-              params.categories.forEach((catId) => {
-                const cat = validCategories.find((c) => Number(c.id) === catId);
-                if (!cat) return;
-                const tag = tagsWrap.createEl("span", { cls: "wp-v3-tag-item" });
-                tag.style.backgroundColor = "var(--interactive-accent)";
-                tag.style.fontSize = "11px";
-                tag.createSpan({ text: cat.name });
-                const removeBtn = tag.createEl("button", { cls: "wp-v3-tag-delete-btn", text: "\xD7" });
-                removeBtn.addEventListener("click", (e) => {
-                  e.stopPropagation();
-                  params.categories = params.categories.filter((id) => id !== catId);
-                  renderCats();
-                });
+        const getValidCategoriesV3 = () => this.categories.items.filter((it) => it.name && it.name.trim());
+        body.createDiv("wp-v3-divider");
+        this.renderV3Field(body, this.t("publishModal_categoryName"), "publishModal_categoryInfo", (fieldEl) => {
+          const tagsWrap = fieldEl.createDiv();
+          tagsWrap.style.display = "flex";
+          tagsWrap.style.flexWrap = "wrap";
+          tagsWrap.style.gap = "4px";
+          if (params.categories.length === 0) {
+            const uncategorized = getValidCategoriesV3().find(
+              (it) => ["Uncategorized", "\u672A\u5206\u7C7B", this.plugin.t("publishModal_uncategorized")].includes(it.name)
+            );
+            if (uncategorized) params.categories = [Number(uncategorized.id)];
+          }
+          const renderCats = () => {
+            tagsWrap.empty();
+            const validCategories = getValidCategoriesV3();
+            params.categories.forEach((catId) => {
+              const cat = validCategories.find((c) => Number(c.id) === catId);
+              if (!cat) return;
+              const tag = tagsWrap.createEl("span", { cls: "wp-v3-tag-item" });
+              tag.style.backgroundColor = "var(--interactive-accent)";
+              tag.style.fontSize = "11px";
+              tag.createSpan({ text: cat.name });
+              const removeBtn = tag.createEl("button", { cls: "wp-v3-tag-delete-btn", text: "\xD7" });
+              removeBtn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                params.categories = params.categories.filter((id) => id !== catId);
+                renderCats();
               });
-              const available = validCategories.filter((cat) => !params.categories.includes(Number(cat.id)));
-              if (available.length > 0) {
-                const select2 = tagsWrap.createEl("select", { cls: "wp-v3-select" });
-                select2.style.width = "auto";
-                select2.style.fontSize = "11px";
-                select2.style.padding = "2px 6px";
-                select2.createEl("option", { value: "", text: "+" });
-                available.forEach((cat) => select2.createEl("option", { value: String(cat.id), text: cat.name }));
-                select2.addEventListener("change", () => {
-                  if (select2.value) {
-                    params.categories.push(Number(select2.value));
-                    renderCats();
-                  }
-                });
+            });
+            const btnRow = tagsWrap.createEl("span", { cls: "wp-v3-cat-btn-row" });
+            const available = validCategories.filter((cat) => !params.categories.includes(Number(cat.id)));
+            const select2 = btnRow.createEl("select", { cls: "wp-v3-select" });
+            select2.style.width = "auto";
+            select2.style.fontSize = "11px";
+            select2.createEl("option", { value: "", text: this.plugin.t("publishModal_selectCategory") || "\u9009\u62E9\u5206\u7C7B..." });
+            available.forEach((cat) => select2.createEl("option", { value: String(cat.id), text: cat.name }));
+            select2.addEventListener("change", () => {
+              if (select2.value) {
+                params.categories.push(Number(select2.value));
+                renderCats();
               }
-            };
-            if (params.categories.length === 0) {
-              const uncategorized = validCategories.find(
-                (it) => ["Uncategorized", "\u672A\u5206\u7C7B", this.plugin.t("publishModal_uncategorized")].includes(it.name)
-              );
-              if (uncategorized) params.categories = [Number(uncategorized.id)];
-            }
-            renderCats();
-          });
-        }
+            });
+            const addBtn = btnRow.createEl("button", { cls: "wp-v3-cat-add-btn", text: this.plugin.t("publishModal_addCategory") || "\u589E\u52A0" });
+            addBtn.addEventListener("click", () => {
+              addBtn.style.display = "none";
+              const input = btnRow.createEl("input", { cls: "wp-v3-input", type: "text" });
+              input.style.width = "80px";
+              input.style.fontSize = "11px";
+              input.placeholder = this.plugin.t("publishModal_newCategoryPlaceholder") || "\u65B0\u5206\u7C7B\u540D\u79F0";
+              const commit = () => {
+                const name = input.value.trim();
+                if (name) {
+                  const tempId = -(this.categories.items.length + 100 + params.categories.length);
+                  this.categories.items.push({ id: String(tempId), name, slug: name.toLowerCase().replace(/\s+/g, "-"), taxonomy: "category", description: "", count: 0 });
+                  params.categories.push(tempId);
+                }
+                input.remove();
+                addBtn.style.display = "";
+                renderCats();
+              };
+              let v3CatCommitted = false;
+              input.addEventListener("keydown", (e) => {
+                if (e.key === "Enter") {
+                  v3CatCommitted = true;
+                  commit();
+                }
+                if (e.key === "Escape") {
+                  v3CatCommitted = true;
+                  input.remove();
+                  addBtn.style.display = "";
+                }
+              });
+              input.addEventListener("blur", () => {
+                if (!v3CatCommitted) commit();
+              });
+              input.focus();
+            });
+          };
+          renderCats();
+        });
         if (this.matterData.postId) {
           body.createDiv("wp-v3-divider");
           const toggleRow = body.createDiv("wp-v3-toggle-row");
@@ -108800,8 +108934,13 @@ var init_wp_publish_modal_v2 = __esm({
           const contentSection = container.querySelector('[data-content-section="true"]');
           if (contentSection == null ? void 0 : contentSection.__enterContentEdit) contentSection.__enterContentEdit();
         };
+        const saveBtn = footer.createEl("button", {
+          text: this.t("publishModal_save") || "\u4FDD\u5B58",
+          cls: "wp-v3-save-footer-btn"
+        });
+        saveBtn.onclick = () => this.saveParamsToFrontmatter(params);
         const cancelBtn = footer.createEl("button", {
-          text: "\u274C " + (this.t("publishModal_cancel") || "\u53D6\u6D88"),
+          text: this.t("publishModal_cancel") || "\u53D6\u6D88",
           cls: "wp-v3-cancel-footer-btn"
         });
         cancelBtn.onclick = () => this.close();
@@ -109306,8 +109445,8 @@ var init_wp_publish_modal_v2 = __esm({
           const imageDescriptionPrompt = localizedPrompt.replace("{title}", params.title || "").replace("{content}", imagePromptContent);
           new import_obsidian9.Notice(this.t("publishModal_aiGeneratingImage"));
           const imageUrl = await this.aiService.generateImage(imageDescriptionPrompt);
-          const response = await fetch(imageUrl);
-          const arrayBuffer = await response.arrayBuffer();
+          const response = await (0, import_obsidian9.requestUrl)({ url: imageUrl, method: "GET" });
+          const arrayBuffer = response.arrayBuffer;
           const fileName = `ai-generated-${Date.now()}.png`;
           this.featuredImage = {
             fileName,
@@ -109547,8 +109686,8 @@ var init_wp_publish_modal_v2 = __esm({
           }
         }
         this.addInfoButton(slugSetting, "publishModal_slugInfo");
-        const validCategories = this.categories.items.filter((it) => it.name && it.name.trim());
-        if (params.postType === "post" /* Post */ && validCategories.length > 0) {
+        const getValidCategories = () => this.categories.items.filter((it) => it.name && it.name.trim());
+        {
           const categoryWrapper = gridContainer.createDiv("wp-grid-full");
           const categoryHeader = categoryWrapper.createDiv("wp-category-header");
           const titleRow = categoryHeader.createDiv("wp-category-title-row");
@@ -109563,82 +109702,118 @@ var init_wp_publish_modal_v2 = __esm({
           tagsContainer.className = "wp-category-tags-container";
           categoryHeader.appendChild(tagsContainer);
           const getAvailableCategories = () => {
-            return validCategories.filter(
+            return getValidCategories().filter(
               (cat) => !params.categories.includes(Number(cat.id))
             );
           };
           const renderCategoryTags = () => {
-            tagsContainer.empty();
+            Array.from(tagsContainer.children).forEach((child) => {
+              if (!child.classList.contains("wp-category-action-row")) {
+                tagsContainer.removeChild(child);
+              }
+            });
+            const actionRow = tagsContainer.querySelector(".wp-category-action-row");
             params.categories.forEach((catId) => {
-              const cat = validCategories.find((c) => Number(c.id) === catId);
+              const cat = getValidCategories().find((c) => Number(c.id) === catId);
               if (cat) {
-                const tag = tagsContainer.createEl("span", {
-                  cls: "wp-category-tag",
-                  text: cat.name
-                });
-                const removeBtn = tag.createEl("span", {
-                  cls: "wp-category-tag-remove",
-                  text: "\xD7"
-                });
+                const tag = document.createElement("span");
+                tag.className = "wp-category-tag";
+                tag.textContent = cat.name;
+                const removeBtn = document.createElement("span");
+                removeBtn.className = "wp-category-tag-remove";
+                removeBtn.textContent = "\xD7";
                 removeBtn.onclick = (e) => {
                   e.stopPropagation();
                   params.categories = params.categories.filter((id) => id !== catId);
                   renderCategoryTags();
-                  renderAddDropdown();
+                  renderActionButtons();
                 };
+                tag.appendChild(removeBtn);
+                if (actionRow) {
+                  tagsContainer.insertBefore(tag, actionRow);
+                } else {
+                  tagsContainer.appendChild(tag);
+                }
               }
             });
           };
-          const renderAddDropdown = () => {
-            const oldAddControl = tagsContainer.querySelector(".wp-category-add-control");
-            if (oldAddControl) oldAddControl.remove();
+          const renderActionButtons = () => {
+            const oldRow = tagsContainer.querySelector(".wp-category-action-row");
+            if (oldRow) oldRow.remove();
+            const actionRow = document.createElement("div");
+            actionRow.className = "wp-category-action-row";
             const available = getAvailableCategories();
-            if (available.length > 0) {
-              const addControl = tagsContainer.createEl("div", {
-                cls: "wp-category-add-control"
-              });
-              const addBtn = addControl.createEl("button", {
-                cls: "wp-category-add-btn",
-                text: "+"
-              });
-              addBtn.onclick = () => {
-                const select2 = addControl.createEl("select", {
-                  cls: "wp-category-dropdown"
-                });
-                select2.createEl("option", {
-                  value: "",
-                  text: this.t("publishModal_selectCategory") || "\u9009\u62E9\u5206\u7C7B..."
-                });
-                available.forEach((cat) => {
-                  select2.createEl("option", {
-                    value: String(cat.id),
-                    text: cat.name
-                  });
-                });
-                select2.onchange = () => {
-                  if (select2.value) {
-                    params.categories.push(Number(select2.value));
-                    renderCategoryTags();
-                    renderAddDropdown();
-                  }
-                };
-                select2.focus();
-                addBtn.style.display = "none";
+            const select2 = document.createElement("select");
+            select2.className = "wp-category-dropdown";
+            const placeholder = document.createElement("option");
+            placeholder.value = "";
+            placeholder.textContent = this.plugin.t("publishModal_selectCategory") || "\u9009\u62E9\u5206\u7C7B...";
+            select2.appendChild(placeholder);
+            available.forEach((cat) => {
+              const opt = document.createElement("option");
+              opt.value = String(cat.id);
+              opt.textContent = cat.name;
+              select2.appendChild(opt);
+            });
+            select2.onchange = () => {
+              if (select2.value) {
+                params.categories.push(Number(select2.value));
+                renderCategoryTags();
+                renderActionButtons();
+              }
+            };
+            actionRow.appendChild(select2);
+            const addBtn = document.createElement("button");
+            addBtn.className = "wp-category-add-btn";
+            addBtn.textContent = this.plugin.t("publishModal_addCategory") || "\u589E\u52A0";
+            addBtn.onclick = () => {
+              addBtn.style.display = "none";
+              const input = document.createElement("input");
+              input.className = "wp-category-new-input";
+              input.placeholder = this.plugin.t("publishModal_newCategoryPlaceholder") || "\u65B0\u5206\u7C7B\u540D\u79F0";
+              const commit = () => {
+                const name = input.value.trim();
+                if (name) {
+                  const tempId = -(this.categories.items.length + 100 + params.categories.length);
+                  this.categories.items.push({ id: String(tempId), name, slug: name.toLowerCase().replace(/\s+/g, "-"), taxonomy: "category", description: "", count: 0 });
+                  params.categories.push(tempId);
+                  renderCategoryTags();
+                  renderActionButtons();
+                }
+                input.remove();
+                addBtn.style.display = "";
               };
-            }
+              let gridCatCommitted = false;
+              input.onkeydown = (e) => {
+                if (e.key === "Enter") {
+                  gridCatCommitted = true;
+                  commit();
+                }
+                if (e.key === "Escape") {
+                  gridCatCommitted = true;
+                  input.remove();
+                  addBtn.style.display = "";
+                }
+              };
+              input.onblur = () => {
+                if (!gridCatCommitted) commit();
+              };
+              actionRow.insertBefore(input, addBtn);
+              input.focus();
+            };
+            actionRow.appendChild(addBtn);
+            tagsContainer.appendChild(actionRow);
           };
-          renderCategoryTags();
-          renderAddDropdown();
           if (params.categories.length === 0) {
-            const uncategorized = validCategories.find(
+            const uncategorized = getValidCategories().find(
               (it) => it.name === this.plugin.t("publishModal_uncategorized") || it.name === "Uncategorized" || it.name === "\u672A\u5206\u7C7B"
             );
             if (uncategorized) {
               params.categories = [Number(uncategorized.id)];
-              renderCategoryTags();
-              renderAddDropdown();
             }
           }
+          renderCategoryTags();
+          renderActionButtons();
         }
         const statusWrapper = gridContainer.createDiv();
         new import_obsidian9.Setting(statusWrapper).setName(this.t("publishModal_statusName")).setDesc(this.t("publishModal_statusDesc")).addDropdown((dropdown) => {
@@ -113000,26 +113175,15 @@ var init_frontmatter_manager = __esm({
         return [];
       }
       /**
-       * Normalize category value for comparison
-       * Handles common category name/ID mappings
+       * Normalize category value for comparison.
+       * Maps known default category names to their canonical ID "1".
+       * Numeric ID "1" is kept as-is (no reverse mapping to avoid asymmetry).
        */
       normalizeCategoryValue(value) {
         const trimmed = value.trim();
-        const categoryMappings = {
-          // Chinese
-          "\u672A\u5206\u7C7B": "1",
-          "Uncategorized": "1"
-          // Add other common mappings as needed
-        };
-        if (categoryMappings[trimmed]) {
-          return [categoryMappings[trimmed]];
-        }
-        const reverseMappings = {
-          "1": "\u672A\u5206\u7C7B"
-          // Default category ID
-        };
-        if (reverseMappings[trimmed]) {
-          return [reverseMappings[trimmed]];
+        const defaultCategoryNames = ["\u672A\u5206\u7C7B", "Uncategorized", "uncategorized"];
+        if (defaultCategoryNames.includes(trimmed)) {
+          return ["1"];
         }
         return null;
       }
@@ -113164,13 +113328,14 @@ function getImages(content) {
   }
   return paths;
 }
-var import_obsidian13, import_file_type_checker, AbstractWordPressClient;
+var import_obsidian13, import_file_type_checker, globalAuthCache, AbstractWordPressClient;
 var init_abstract_wp_client = __esm({
   "src/abstract-wp-client.ts"() {
     "use strict";
     import_obsidian13 = require("obsidian");
     init_wp_client();
     init_wp_publish_modal_v2();
+    init_featured_image_modal();
     init_wp_api();
     init_consts();
     init_utils5();
@@ -113183,6 +113348,7 @@ var init_abstract_wp_client = __esm({
     init_frontmatter_manager();
     init_frontmatter_conflict_modal();
     init_tag_formatter();
+    globalAuthCache = /* @__PURE__ */ new Map();
     AbstractWordPressClient = class {
       constructor(plugin4, profile) {
         this.plugin = plugin4;
@@ -113254,6 +113420,61 @@ var init_abstract_wp_client = __esm({
           return term ? term.name : String(id);
         });
       }
+      /**
+       * Get the cache key for the current profile
+       */
+      getAuthCacheKey() {
+        return `${this.profile.name}_${this.profile.endpoint}`;
+      }
+      /**
+       * Check if the cached authentication is still valid based on user's cache duration setting
+       */
+      isAuthCacheValid(cacheEntry) {
+        var _a5, _b;
+        const cacheDuration = (_a5 = this.plugin.settings.authCacheDuration) != null ? _a5 : "1m";
+        const maxAge = (_b = AUTH_CACHE_DURATION_MS[cacheDuration]) != null ? _b : AUTH_CACHE_DURATION_MS["1m"];
+        const age = Date.now() - cacheEntry.timestamp;
+        return age < maxAge;
+      }
+      /**
+       * Get cached authentication if available and valid
+       */
+      getCachedAuth() {
+        const cacheKey = this.getAuthCacheKey();
+        const cacheEntry = globalAuthCache.get(cacheKey);
+        if (cacheEntry && cacheEntry.profileName === this.profile.name) {
+          if (this.isAuthCacheValid(cacheEntry)) {
+            console.log(`[getCachedAuth] Using cached auth for profile: ${this.profile.name}`);
+            return cacheEntry.auth;
+          } else {
+            console.log(`[getCachedAuth] Cache expired for profile: ${this.profile.name}`);
+            globalAuthCache.delete(cacheKey);
+          }
+        }
+        return null;
+      }
+      /**
+       * Cache authentication for future use
+       */
+      cacheAuth(auth) {
+        var _a5;
+        const cacheKey = this.getAuthCacheKey();
+        const cacheDuration = (_a5 = this.plugin.settings.authCacheDuration) != null ? _a5 : "1m";
+        console.log(`[cacheAuth] Caching auth for profile: ${this.profile.name}, duration: ${cacheDuration}`);
+        globalAuthCache.set(cacheKey, {
+          auth,
+          timestamp: Date.now(),
+          profileName: this.profile.name
+        });
+      }
+      /**
+       * Clear cached authentication for current profile
+       */
+      clearCachedAuth() {
+        const cacheKey = this.getAuthCacheKey();
+        console.log(`[clearCachedAuth] Clearing cache for profile: ${this.profile.name}`);
+        globalAuthCache.delete(cacheKey);
+      }
       async getAuth() {
         let auth = {
           username: null,
@@ -113261,6 +113482,10 @@ var init_abstract_wp_client = __esm({
         };
         try {
           if (this.needLogin()) {
+            const cachedAuth = this.getCachedAuth();
+            if (cachedAuth) {
+              return cachedAuth;
+            }
             if (this.profile.username && this.profile.password) {
               auth = {
                 username: this.profile.username,
@@ -113270,12 +113495,17 @@ var init_abstract_wp_client = __esm({
               if (authResult.code !== 0 /* OK */) {
                 throw new Error(this.plugin.i18n.t("error_invalidUser"));
               }
+              this.cacheAuth(auth);
             }
           }
         } catch (error2) {
           showError(error2);
+          this.clearCachedAuth();
           const result = await openLoginModal(this.plugin, this.profile, async (auth2) => {
             const authResult = await this.validateUser(auth2);
+            if (authResult.code === 0 /* OK */) {
+              this.cacheAuth(auth2);
+            }
             return authResult.code === 0 /* OK */;
           });
           auth = result.auth;
@@ -113374,10 +113604,6 @@ var init_abstract_wp_client = __esm({
               await this.plugin.app.fileManager.processFrontMatter(file, (fm) => {
                 const knownKeys = ["blogName", "postId", "postType", "categories", "slug", "featurePicture", "featuredImageId", "tags"];
                 const existingKeys = Object.keys(fm);
-                const duplicates = existingKeys.filter((key, index2) => existingKeys.indexOf(key) !== index2);
-                if (duplicates.length > 0) {
-                  new import_obsidian13.Notice(this.plugin.t("notice_duplicateFrontmatter", { fields: duplicates.join(", ") }));
-                }
                 const existingOtherFields = {};
                 for (const key of existingKeys) {
                   if (!knownKeys.includes(key) && key !== "excerpt" && key !== "content") {
@@ -113483,7 +113709,7 @@ var init_abstract_wp_client = __esm({
         }
       }
       async publishPost(defaultPostParams) {
-        var _a5, _b;
+        var _a5;
         try {
           if (!this.profile.endpoint || this.profile.endpoint.length === 0) {
             throw new Error(this.plugin.i18n.t("error_noEndpoint"));
@@ -113588,14 +113814,21 @@ var init_abstract_wp_client = __esm({
               selectedCategories = fmCatArray;
               console.log("[publishPost] Using numeric IDs from frontmatter:", selectedCategories);
             } else {
-              selectedCategories = (_a5 = this.profile.lastSelectedCategories) != null ? _a5 : [1];
-              console.log("[publishPost] No categories in frontmatter, using lastSelectedCategories:", selectedCategories);
+              if (this.profile.lastSelectedCategories && this.profile.lastSelectedCategories.length > 0) {
+                selectedCategories = this.profile.lastSelectedCategories;
+              } else {
+                const uncategorized = categories.find(
+                  (cat) => cat.name === "Uncategorized" || cat.name === "\u672A\u5206\u7C7B" || cat.name.toLowerCase() === "uncategorized"
+                );
+                selectedCategories = uncategorized ? [Number(uncategorized.id)] : [1];
+              }
+              console.log("[publishPost] No categories in frontmatter, using default:", selectedCategories);
             }
             const postTypes = await this.getPostTypes(auth);
             if (postTypes.length === 0) {
               postTypes.push("post" /* Post */);
             }
-            const selectedPostType = (_b = matterData.postType) != null ? _b : "post" /* Post */;
+            const selectedPostType = (_a5 = matterData.postType) != null ? _a5 : "post" /* Post */;
             result = await new Promise((resolve) => {
               console.log("[WpPublishModalV2] Creating modal instance...");
               const publishModal = new WpPublishModalV2(
@@ -113625,11 +113858,37 @@ var init_abstract_wp_client = __esm({
                   try {
                     if (featuredImage) {
                       console.log("[WpPublishModalV2] Processing featured image:", featuredImage.fileName);
-                      const uploadResult = await this.uploadMedia({
-                        mimeType: featuredImage.mimeType,
+                      let imageContent = featuredImage.content;
+                      let imageMimeType = featuredImage.mimeType;
+                      if (this.plugin.settings.enableImageCompression) {
+                        const maxSizeKB = this.plugin.settings.imageMaxSizeKB || 500;
+                        const minQuality = this.plugin.settings.imageMinQuality || 0.6;
+                        console.log("[WpPublishModalV2] Attempting image compression...");
+                        const compressedContent = await compressImage(
+                          featuredImage.content,
+                          featuredImage.mimeType,
+                          maxSizeKB,
+                          minQuality
+                        );
+                        if (compressedContent) {
+                          const originalSizeKB = (featuredImage.content.byteLength / 1024).toFixed(1);
+                          const compressedSizeKB = (compressedContent.byteLength / 1024).toFixed(1);
+                          new import_obsidian13.Notice(this.plugin.i18n.t("notice_imageCompressed", {
+                            originalSize: originalSizeKB,
+                            compressedSize: compressedSizeKB
+                          }));
+                          imageContent = compressedContent;
+                          imageMimeType = featuredImage.mimeType === "image/png" ? "image/jpeg" : featuredImage.mimeType;
+                          console.log(`[WpPublishModalV2] Image compressed: ${originalSizeKB}KB -> ${compressedSizeKB}KB`);
+                        } else {
+                          console.log("[WpPublishModalV2] Image does not need compression or compression failed");
+                        }
+                      }
+                      const uploadResult = await this.uploadMediaWithRetry({
+                        mimeType: imageMimeType,
                         fileName: featuredImage.fileName,
-                        content: featuredImage.content
-                      }, auth);
+                        content: imageContent
+                      }, auth, featuredImage.fileName);
                       if (uploadResult.code === 0 /* OK */) {
                         postParams2.featuredMedia = uploadResult.data.id;
                         featuredImageUrl = uploadResult.data.url;
@@ -113716,6 +113975,111 @@ var init_abstract_wp_client = __esm({
           }
         });
         return terms;
+      }
+      /**
+       * Check if an error is a transient error that should trigger a retry
+       * Transient errors include: 502, 503, 504, timeout, network issues
+       * @param error - The error to check
+       * @returns True if the error is transient and should be retried
+       */
+      isTransientError(error2) {
+        if (!error2) return false;
+        const errorMessage = error2.message || error2.toString() || "";
+        const errorCode = error2.code || error2.status || "";
+        const transientStatusCodes = ["502", "503", "504", "500"];
+        const hasTransientStatus = transientStatusCodes.some(
+          (code2) => errorMessage.includes(code2) || String(errorCode).includes(code2)
+        );
+        const transientErrorPatterns = [
+          "timeout",
+          "network",
+          "econnreset",
+          "econnrefused",
+          "ENOTFOUND",
+          "ETIMEDOUT",
+          "socket hang up",
+          "temporary",
+          "unavailable",
+          "rate limit",
+          "too many requests"
+        ];
+        const hasTransientPattern = transientErrorPatterns.some(
+          (pattern) => errorMessage.toLowerCase().includes(pattern.toLowerCase())
+        );
+        return hasTransientStatus || hasTransientPattern;
+      }
+      /**
+       * Upload media with automatic retry for transient errors (P0 feature)
+       * Implements smart error handling with up to 2 retries for transient server errors
+       * @param media - Media to upload
+       * @param certificate - Authentication credentials
+       * @param fileName - Original file name for error messages
+       * @returns Upload result with retry information
+       */
+      async uploadMediaWithRetry(media, certificate, fileName) {
+        let lastError;
+        let attempt2 = 0;
+        while (attempt2 <= FEATURED_IMAGE_UPLOAD_MAX_RETRIES) {
+          try {
+            console.log(`[uploadMediaWithRetry] Attempt ${attempt2 + 1}/${FEATURED_IMAGE_UPLOAD_MAX_RETRIES + 1} for ${fileName}`);
+            const result = await this.uploadMedia(media, certificate);
+            if (result.code === 0 /* OK */) {
+              if (attempt2 > 0) {
+                console.log(`[uploadMediaWithRetry] Upload succeeded after ${attempt2 + 1} attempts`);
+                new import_obsidian13.Notice(this.plugin.i18n.t("notice_featuredImageUploadRetrySuccess", {
+                  fileName,
+                  attempts: String(attempt2 + 1)
+                }), 5e3);
+              }
+              return result;
+            }
+            if (result.error && this.isTransientError(result.error)) {
+              lastError = result.error;
+              attempt2++;
+              if (attempt2 <= FEATURED_IMAGE_UPLOAD_MAX_RETRIES) {
+                console.log(`[uploadMediaWithRetry] Transient error detected, retrying in ${FEATURED_IMAGE_UPLOAD_RETRY_DELAY_MS}ms...`, result.error);
+                new import_obsidian13.Notice(this.plugin.i18n.t("notice_featuredImageUploadRetrying", {
+                  fileName,
+                  attempt: String(attempt2),
+                  maxRetries: String(FEATURED_IMAGE_UPLOAD_MAX_RETRIES)
+                }), 3e3);
+                await sleep2(FEATURED_IMAGE_UPLOAD_RETRY_DELAY_MS);
+                continue;
+              }
+            } else {
+              return result;
+            }
+          } catch (error2) {
+            lastError = error2;
+            if (this.isTransientError(error2)) {
+              attempt2++;
+              if (attempt2 <= FEATURED_IMAGE_UPLOAD_MAX_RETRIES) {
+                console.log(`[uploadMediaWithRetry] Transient exception detected, retrying in ${FEATURED_IMAGE_UPLOAD_RETRY_DELAY_MS}ms...`, error2);
+                new import_obsidian13.Notice(this.plugin.i18n.t("notice_featuredImageUploadRetrying", {
+                  fileName,
+                  attempt: String(attempt2),
+                  maxRetries: String(FEATURED_IMAGE_UPLOAD_MAX_RETRIES)
+                }), 3e3);
+                await sleep2(FEATURED_IMAGE_UPLOAD_RETRY_DELAY_MS);
+                continue;
+              }
+            } else {
+              throw error2;
+            }
+          }
+        }
+        console.error(`[uploadMediaWithRetry] Upload failed after ${attempt2} attempts`, lastError);
+        return {
+          code: 1 /* Error */,
+          error: {
+            code: 2 /* ServerInternalError */,
+            message: this.plugin.i18n.t("error_featuredImageUploadFailedAfterRetries", {
+              fileName,
+              attempts: String(attempt2),
+              error: (lastError == null ? void 0 : lastError.message) || (lastError == null ? void 0 : lastError.toString()) || "Unknown error"
+            })
+          }
+        };
       }
       readFromFrontMatter(noteTitle, matterData, params) {
         var _a5, _b, _c, _d;
@@ -114294,18 +114658,21 @@ var init_rest_client = __esm({
         };
         logger.debug(this.moduleName, "HTTP GET request", { endpoint, headers: opts.headers });
         const timeoutMs = (_a5 = options == null ? void 0 : options.timeout) != null ? _a5 : this.timeout;
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
         try {
-          const response = await (0, import_obsidian14.requestUrl)({
-            url: endpoint,
-            method: "GET",
-            headers: {
-              "content-type": "application/json",
-              "user-agent": "obsidian.md",
-              ...opts.headers
-            }
-          });
+          const response = await Promise.race([
+            (0, import_obsidian14.requestUrl)({
+              url: endpoint,
+              method: "GET",
+              headers: {
+                "content-type": "application/json",
+                "user-agent": "obsidian.md",
+                ...opts.headers
+              }
+            }),
+            new Promise(
+              (_, reject) => setTimeout(() => reject(new Error(`GET request timed out after ${timeoutMs}ms: ${endpoint}`)), timeoutMs)
+            )
+          ]);
           logger.debug(this.moduleName, "HTTP GET response received", {
             status: response.status,
             endpoint
@@ -114314,8 +114681,6 @@ var init_rest_client = __esm({
         } catch (error2) {
           logger.error(this.moduleName, "HTTP GET request failed", error2);
           throw error2;
-        } finally {
-          clearTimeout(timeoutId);
         }
       }
       async httpPost(path, body, options) {
@@ -114345,19 +114710,22 @@ var init_rest_client = __esm({
           contentType: predefinedHeaders["content-type"]
         });
         const timeoutMs = (_a5 = options == null ? void 0 : options.timeout) != null ? _a5 : this.timeout;
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
         try {
-          const response = await (0, import_obsidian14.requestUrl)({
-            url: endpoint,
-            method: "POST",
-            headers: {
-              "user-agent": "obsidian.md",
-              ...predefinedHeaders,
-              ...options.headers
-            },
-            body: requestBody
-          });
+          const response = await Promise.race([
+            (0, import_obsidian14.requestUrl)({
+              url: endpoint,
+              method: "POST",
+              headers: {
+                "user-agent": "obsidian.md",
+                ...predefinedHeaders,
+                ...options.headers
+              },
+              body: requestBody
+            }),
+            new Promise(
+              (_, reject) => setTimeout(() => reject(new Error(`POST request timed out after ${timeoutMs}ms: ${endpoint}`)), timeoutMs)
+            )
+          ]);
           logger.debug(this.moduleName, "HTTP POST response received", {
             status: response.status,
             endpoint
@@ -114366,8 +114734,6 @@ var init_rest_client = __esm({
         } catch (error2) {
           logger.error(this.moduleName, "HTTP POST request failed", error2);
           throw error2;
-        } finally {
-          clearTimeout(timeoutId);
         }
       }
     };
@@ -114400,6 +114766,7 @@ var init_wp_rest_client = __esm({
     init_wp_api();
     init_rest_client();
     init_lodash();
+    init_logger();
     init_types2();
     init_date_fns();
     WpRestClient = class extends AbstractWordPressClient {
@@ -114454,7 +114821,7 @@ var init_wp_rest_client = __esm({
             headers: this.context.getHeaders(certificate)
           }
         );
-        console.log("WpRestClient response", resp);
+        logger.debug("WpRestClient", "publish response", resp);
         try {
           const result = this.context.responseParser.toWordPressPublishResult(postParams, resp);
           return {
@@ -114546,7 +114913,7 @@ var init_wp_rest_client = __esm({
               headers: this.context.getHeaders(certificate)
             }
           );
-          console.log("WpRestClient newTag response", resp);
+          logger.debug("WpRestClient", "newTag response", resp);
           return this.context.responseParser.toTerm(resp);
         } else {
           return exists[0];
@@ -114561,7 +114928,7 @@ var init_wp_rest_client = __esm({
             headers: this.context.getHeaders(certificate)
           }
         );
-        console.log("WpRestClient createCategory response", resp);
+        logger.debug("WpRestClient", "createCategory response", resp);
         return this.context.responseParser.toTerm(resp);
       }
       async uploadMedia(media, certificate) {
@@ -114707,7 +115074,7 @@ var init_wp_rest_client = __esm({
                 categories: (_b = postParams.categories) != null ? _b : response.categories
               };
             }
-            throw new Error("xx");
+            throw new Error(`Unexpected publish response: missing post id. Response: ${JSON.stringify(response)}`);
           },
           toWordPressMediaUploadResult: (response) => {
             return {
@@ -114743,14 +115110,14 @@ var init_wp_rest_client = __esm({
       constructor() {
         super();
         this.name = "WpRestClientMiniOrangeContext";
-        console.log(`${this.name} loaded`);
+        logger.debug("WpRestClientMiniOrangeContext", "loaded");
       }
     };
     WpRestClientAppPasswordContext = class extends WpRestClientCommonContext {
       constructor() {
         super();
         this.name = "WpRestClientAppPasswordContext";
-        console.log(`${this.name} loaded`);
+        logger.debug("WpRestClientAppPasswordContext", "loaded");
       }
     };
     WpRestClientWpComOAuth2Context = class {
@@ -114779,7 +115146,7 @@ var init_wp_rest_client = __esm({
                 categories: (_b = postParams.categories) != null ? _b : Object.values(response.categories).map((cat) => cat.ID)
               };
             }
-            throw new Error("xx");
+            throw new Error(`Unexpected WP.com publish response: missing post ID. Response: ${JSON.stringify(response)}`);
           },
           toWordPressMediaUploadResult: (response) => {
             if (response.media.length > 0) {
@@ -114813,7 +115180,7 @@ var init_wp_rest_client = __esm({
             return [];
           }
         };
-        console.log(`${this.name} loaded`);
+        logger.debug("WpRestClientWpComOAuth2Context", "loaded");
       }
       formItemNameMapper(name, isArray2) {
         if (name === "file" && !isArray2) {
@@ -114978,6 +115345,9 @@ async function processFile(file, app) {
     matter: frontmatter != null ? frontmatter : {}
   };
 }
+function sleep2(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 var import_obsidian15;
 var init_utils5 = __esm({
   "src/utils.ts"() {
@@ -115018,11 +115388,11 @@ init_utils5();
 var import_obsidian16 = require("obsidian");
 init_wp_client();
 init_consts();
+init_logger();
 var OAuth2Client = class _OAuth2Client {
   constructor(options, plugin4) {
     this.options = options;
     this.plugin = plugin4;
-    console.log(options);
   }
   static getWpOAuth2Client(plugin4) {
     return new _OAuth2Client({
@@ -115067,7 +115437,7 @@ var OAuth2Client = class _OAuth2Client {
       },
       body: generateQueryString(body)
     }).then((response) => {
-      console.log("getToken response", response);
+      logger.debug("OAuth2Client", "getToken response received", { status: response.status });
       const resp = response.json;
       return {
         accessToken: resp.access_token,
@@ -115091,7 +115461,7 @@ var OAuth2Client = class _OAuth2Client {
           "User-Agent": "obsidian.md"
         }
       });
-      console.log("validateToken response", response);
+      logger.debug("OAuth2Client", "validateToken response received", { status: response.status });
       return {
         code: 0 /* OK */,
         data: "done",
@@ -115556,6 +115926,13 @@ var WordpressSettingTab = class extends import_obsidian19.PluginSettingTab {
         this.display();
       });
     });
+    new import_obsidian19.Setting(containerEl).setName(t("settings_authCacheDuration")).setDesc(t("settings_authCacheDurationDesc")).addDropdown((dropdown) => {
+      var _a6;
+      dropdown.addOption("1d" /* OneDay */, t("settings_authCacheDurationOneDay")).addOption("1w" /* OneWeek */, t("settings_authCacheDurationOneWeek")).addOption("1m" /* OneMonth */, t("settings_authCacheDurationOneMonth")).addOption("6m" /* SixMonths */, t("settings_authCacheDurationSixMonths")).addOption("forever" /* Forever */, t("settings_authCacheDurationForever")).setValue((_a6 = this.plugin.settings.authCacheDuration) != null ? _a6 : "1m" /* OneMonth */).onChange(async (value) => {
+        this.plugin.settings.authCacheDuration = value;
+        await this.plugin.saveSettings();
+      });
+    });
     containerEl.createEl("h2", { text: t("settings_aiConfig") });
     containerEl.createEl("h3", { text: t("settings_slugGeneration") });
     new import_obsidian19.Setting(containerEl).setName(t("settings_autoGenerateSlug")).setDesc(t("settings_autoGenerateSlugDesc")).addToggle(
@@ -115876,6 +116253,7 @@ __export(en_exports, {
   defaultPrompt_tagsEn: () => defaultPrompt_tagsEn,
   error_cannotParseResponse: () => error_cannotParseResponse,
   error_categoriesCreationFailed: () => error_categoriesCreationFailed,
+  error_featuredImageUploadFailedAfterRetries: () => error_featuredImageUploadFailedAfterRetries,
   error_invalidUrl: () => error_invalidUrl,
   error_invalidUser: () => error_invalidUser,
   error_invalidWpComToken: () => error_invalidWpComToken,
@@ -115923,10 +116301,13 @@ __export(en_exports, {
   notice_aiConfigValid: () => notice_aiConfigValid,
   notice_createCategoryFailed: () => notice_createCategoryFailed,
   notice_duplicateFrontmatter: () => notice_duplicateFrontmatter,
+  notice_featuredImageUploadRetrySuccess: () => notice_featuredImageUploadRetrySuccess,
+  notice_featuredImageUploadRetrying: () => notice_featuredImageUploadRetrying,
   notice_imageAIApiKeyRequired: () => notice_imageAIApiKeyRequired,
   notice_imageAIConfigInvalid: () => notice_imageAIConfigInvalid,
   notice_imageAIConfigRequired: () => notice_imageAIConfigRequired,
   notice_imageAIConfigValid: () => notice_imageAIConfigValid,
+  notice_imageCompressed: () => notice_imageCompressed,
   notice_imageLoadFailed: () => notice_imageLoadFailed,
   notice_imageTooLarge: () => notice_imageTooLarge,
   notice_invalidImageFormat: () => notice_invalidImageFormat,
@@ -115955,6 +116336,7 @@ __export(en_exports, {
   profilesManageModal_showDetails: () => profilesManageModal_showDetails,
   profilesManageModal_title: () => profilesManageModal_title,
   profiles_default: () => profiles_default,
+  publishModal_addCategory: () => publishModal_addCategory,
   publishModal_advancedNotice: () => publishModal_advancedNotice,
   publishModal_advancedTab: () => publishModal_advancedTab,
   publishModal_advancedTitle: () => publishModal_advancedTitle,
@@ -116021,6 +116403,7 @@ __export(en_exports, {
   publishModal_loadingRemoteImage: () => publishModal_loadingRemoteImage,
   publishModal_localImage: () => publishModal_localImage,
   publishModal_localImageButton: () => publishModal_localImageButton,
+  publishModal_newCategoryPlaceholder: () => publishModal_newCategoryPlaceholder,
   publishModal_noExcerpt: () => publishModal_noExcerpt,
   publishModal_noFeaturedImage: () => publishModal_noFeaturedImage,
   publishModal_noHistory: () => publishModal_noHistory,
@@ -116067,6 +116450,9 @@ __export(en_exports, {
   publishModal_save: () => publishModal_save,
   publishModal_saveAndUseButton: () => publishModal_saveAndUseButton,
   publishModal_saveButton: () => publishModal_saveButton,
+  publishModal_saveParams: () => publishModal_saveParams,
+  publishModal_saveParamsFailed: () => publishModal_saveParamsFailed,
+  publishModal_saveParamsSuccess: () => publishModal_saveParamsSuccess,
   publishModal_saveSettings: () => publishModal_saveSettings,
   publishModal_selectCategory: () => publishModal_selectCategory,
   publishModal_selectFeaturedImage: () => publishModal_selectFeaturedImage,
@@ -116152,6 +116538,13 @@ __export(en_exports, {
   settings_apiTypeRestWpComOAuth2Desc: () => settings_apiTypeRestWpComOAuth2Desc,
   settings_apiTypeXmlRpc: () => settings_apiTypeXmlRpc,
   settings_apiTypeXmlRpcDesc: () => settings_apiTypeXmlRpcDesc,
+  settings_authCacheDuration: () => settings_authCacheDuration,
+  settings_authCacheDurationDesc: () => settings_authCacheDurationDesc,
+  settings_authCacheDurationForever: () => settings_authCacheDurationForever,
+  settings_authCacheDurationOneDay: () => settings_authCacheDurationOneDay,
+  settings_authCacheDurationOneMonth: () => settings_authCacheDurationOneMonth,
+  settings_authCacheDurationOneWeek: () => settings_authCacheDurationOneWeek,
+  settings_authCacheDurationSixMonths: () => settings_authCacheDurationSixMonths,
   settings_autoGenerateSlug: () => settings_autoGenerateSlug,
   settings_autoGenerateSlugDesc: () => settings_autoGenerateSlugDesc,
   settings_commentConvertMode: () => settings_commentConvertMode,
@@ -116376,6 +116769,13 @@ var settings_languageDesc = "Select plugin interface language";
 var settings_languageAuto = "Auto (Follow System)";
 var settings_languageEn = "English";
 var settings_languageZhCn = "\u7B80\u4F53\u4E2D\u6587";
+var settings_authCacheDuration = "Auth Cache Duration";
+var settings_authCacheDurationDesc = "How long to cache WordPress authentication credentials. Shorter durations are more secure but require more frequent re-authentication.";
+var settings_authCacheDurationOneDay = "1 Day";
+var settings_authCacheDurationOneWeek = "1 Week";
+var settings_authCacheDurationOneMonth = "1 Month";
+var settings_authCacheDurationSixMonths = "6 Months";
+var settings_authCacheDurationForever = "Forever";
 var settings_aiConfig = "AI Configuration";
 var settings_slugGeneration = "Slug Generation Settings";
 var settings_autoGenerateSlug = "Auto-generate Slug";
@@ -116432,6 +116832,9 @@ var notice_imageAIApiKeyRequired = "Please enter an Image Generation AI API Key 
 var notice_invalidImageFormat = "Invalid image format. Please select a JPEG, PNG, GIF, or WebP image.";
 var notice_imageTooLarge = "Image file is too large. Maximum size is 10MB.";
 var notice_imageLoadFailed = "Failed to load image file.";
+var notice_imageCompressed = "Image compressed: <%= originalSize %>KB \u2192 <%= compressedSize %>KB";
+var notice_featuredImageUploadRetrying = "Featured image upload failed (transient error), retrying <%= attempt %>/<%= maxRetries %>...";
+var notice_featuredImageUploadRetrySuccess = "Featured image uploaded successfully after <%= attempts %> attempt(s): <%= fileName %>";
 var notice_aiConfigValid = "\u2713 AI configuration validated successfully";
 var notice_aiConfigInvalid = "\u2717 AI configuration validation failed: <%= error %>";
 var notice_imageAIConfigRequired = "Please configure Image Generation AI first";
@@ -116486,6 +116889,8 @@ var publishModal_slugTranslateFailed = "Translation failed: <%= error %>";
 var publishModal_categoryName = "Category";
 var publishModal_categoryDesc = "Select post category";
 var publishModal_selectCategory = "Select category...";
+var publishModal_addCategory = "Add";
+var publishModal_newCategoryPlaceholder = "New category name";
 var publishModal_statusName = "Status";
 var publishModal_statusDesc = "Select publish status";
 var publishModal_postDateTimeName = "Publish Date";
@@ -116556,6 +116961,7 @@ var notice_publishCancelled = "\u274C Publishing cancelled";
 var error_userCancelledPublish = "User cancelled publishing";
 var error_categoriesCreationFailed = "Failed to create categories: <%= names %>. Please create them manually in WordPress or choose existing categories.";
 var error_noCategoriesAvailable = "No categories available for publishing. Please select at least one category.";
+var error_featuredImageUploadFailedAfterRetries = "Featured image upload failed after <%= attempts %> attempt(s): <%= fileName %>. Error: <%= error %>";
 var frontmatter_defaultCategory = "Uncategorized";
 var publishModal_basicSettings = "Basic Settings";
 var publishModal_statusDraft = "Draft";
@@ -116575,6 +116981,9 @@ var publishModal_advancedTab = "\u{1F527} Advanced";
 var publishModal_previewTitle = "Post Preview";
 var publishModal_previewEditPlaceholder = "Edit Markdown content here...";
 var publishModal_save = "Save";
+var publishModal_saveParams = "Save Params";
+var publishModal_saveParamsSuccess = "\u2705 Parameters saved to frontmatter";
+var publishModal_saveParamsFailed = "\u274C Failed to save parameters: <%= error %>";
 var publishModal_cancel = "Cancel";
 var publishModal_previewFeaturedImage = "Featured Image";
 var publishModal_previewFeaturedImageUploaded = "Featured Image (Uploaded to WordPress)";
@@ -116784,6 +117193,13 @@ var en_default = {
   settings_languageAuto,
   settings_languageEn,
   settings_languageZhCn,
+  settings_authCacheDuration,
+  settings_authCacheDurationDesc,
+  settings_authCacheDurationOneDay,
+  settings_authCacheDurationOneWeek,
+  settings_authCacheDurationOneMonth,
+  settings_authCacheDurationSixMonths,
+  settings_authCacheDurationForever,
   settings_aiConfig,
   settings_slugGeneration,
   settings_autoGenerateSlug,
@@ -116840,6 +117256,9 @@ var en_default = {
   notice_invalidImageFormat,
   notice_imageTooLarge,
   notice_imageLoadFailed,
+  notice_imageCompressed,
+  notice_featuredImageUploadRetrying,
+  notice_featuredImageUploadRetrySuccess,
   notice_aiConfigValid,
   notice_aiConfigInvalid,
   notice_imageAIConfigRequired,
@@ -116894,6 +117313,8 @@ var en_default = {
   publishModal_categoryName,
   publishModal_categoryDesc,
   publishModal_selectCategory,
+  publishModal_addCategory,
+  publishModal_newCategoryPlaceholder,
   publishModal_statusName,
   publishModal_statusDesc,
   publishModal_postDateTimeName,
@@ -116964,6 +117385,7 @@ var en_default = {
   error_userCancelledPublish,
   error_categoriesCreationFailed,
   error_noCategoriesAvailable,
+  error_featuredImageUploadFailedAfterRetries,
   frontmatter_defaultCategory,
   publishModal_basicSettings,
   publishModal_statusDraft,
@@ -116983,6 +117405,9 @@ var en_default = {
   publishModal_previewTitle,
   publishModal_previewEditPlaceholder,
   publishModal_save,
+  publishModal_saveParams,
+  publishModal_saveParamsSuccess,
+  publishModal_saveParamsFailed,
   publishModal_cancel,
   publishModal_previewFeaturedImage,
   publishModal_previewFeaturedImageUploaded,
@@ -117105,6 +117530,7 @@ __export(zh_cn_exports, {
   defaultPrompt_tagsEn: () => defaultPrompt_tagsEn2,
   error_cannotParseResponse: () => error_cannotParseResponse2,
   error_categoriesCreationFailed: () => error_categoriesCreationFailed2,
+  error_featuredImageUploadFailedAfterRetries: () => error_featuredImageUploadFailedAfterRetries2,
   error_invalidUrl: () => error_invalidUrl2,
   error_invalidUser: () => error_invalidUser2,
   error_invalidWpComToken: () => error_invalidWpComToken2,
@@ -117152,10 +117578,13 @@ __export(zh_cn_exports, {
   notice_aiConfigValid: () => notice_aiConfigValid2,
   notice_createCategoryFailed: () => notice_createCategoryFailed2,
   notice_duplicateFrontmatter: () => notice_duplicateFrontmatter2,
+  notice_featuredImageUploadRetrySuccess: () => notice_featuredImageUploadRetrySuccess2,
+  notice_featuredImageUploadRetrying: () => notice_featuredImageUploadRetrying2,
   notice_imageAIApiKeyRequired: () => notice_imageAIApiKeyRequired2,
   notice_imageAIConfigInvalid: () => notice_imageAIConfigInvalid2,
   notice_imageAIConfigRequired: () => notice_imageAIConfigRequired2,
   notice_imageAIConfigValid: () => notice_imageAIConfigValid2,
+  notice_imageCompressed: () => notice_imageCompressed2,
   notice_imageLoadFailed: () => notice_imageLoadFailed2,
   notice_imageTooLarge: () => notice_imageTooLarge2,
   notice_invalidImageFormat: () => notice_invalidImageFormat2,
@@ -117184,6 +117613,7 @@ __export(zh_cn_exports, {
   profilesManageModal_showDetails: () => profilesManageModal_showDetails2,
   profilesManageModal_title: () => profilesManageModal_title2,
   profiles_default: () => profiles_default2,
+  publishModal_addCategory: () => publishModal_addCategory2,
   publishModal_advancedNotice: () => publishModal_advancedNotice2,
   publishModal_advancedTab: () => publishModal_advancedTab2,
   publishModal_advancedTitle: () => publishModal_advancedTitle2,
@@ -117250,6 +117680,7 @@ __export(zh_cn_exports, {
   publishModal_loadingRemoteImage: () => publishModal_loadingRemoteImage2,
   publishModal_localImage: () => publishModal_localImage2,
   publishModal_localImageButton: () => publishModal_localImageButton2,
+  publishModal_newCategoryPlaceholder: () => publishModal_newCategoryPlaceholder2,
   publishModal_noExcerpt: () => publishModal_noExcerpt2,
   publishModal_noFeaturedImage: () => publishModal_noFeaturedImage2,
   publishModal_noHistory: () => publishModal_noHistory2,
@@ -117296,6 +117727,9 @@ __export(zh_cn_exports, {
   publishModal_save: () => publishModal_save2,
   publishModal_saveAndUseButton: () => publishModal_saveAndUseButton2,
   publishModal_saveButton: () => publishModal_saveButton2,
+  publishModal_saveParams: () => publishModal_saveParams2,
+  publishModal_saveParamsFailed: () => publishModal_saveParamsFailed2,
+  publishModal_saveParamsSuccess: () => publishModal_saveParamsSuccess2,
   publishModal_saveSettings: () => publishModal_saveSettings2,
   publishModal_selectCategory: () => publishModal_selectCategory2,
   publishModal_selectFeaturedImage: () => publishModal_selectFeaturedImage2,
@@ -117381,6 +117815,13 @@ __export(zh_cn_exports, {
   settings_apiTypeRestWpComOAuth2Desc: () => settings_apiTypeRestWpComOAuth2Desc2,
   settings_apiTypeXmlRpc: () => settings_apiTypeXmlRpc2,
   settings_apiTypeXmlRpcDesc: () => settings_apiTypeXmlRpcDesc2,
+  settings_authCacheDuration: () => settings_authCacheDuration2,
+  settings_authCacheDurationDesc: () => settings_authCacheDurationDesc2,
+  settings_authCacheDurationForever: () => settings_authCacheDurationForever2,
+  settings_authCacheDurationOneDay: () => settings_authCacheDurationOneDay2,
+  settings_authCacheDurationOneMonth: () => settings_authCacheDurationOneMonth2,
+  settings_authCacheDurationOneWeek: () => settings_authCacheDurationOneWeek2,
+  settings_authCacheDurationSixMonths: () => settings_authCacheDurationSixMonths2,
   settings_autoGenerateSlug: () => settings_autoGenerateSlug2,
   settings_autoGenerateSlugDesc: () => settings_autoGenerateSlugDesc2,
   settings_commentConvertMode: () => settings_commentConvertMode2,
@@ -117605,6 +118046,13 @@ var settings_languageDesc2 = "\u9009\u62E9\u63D2\u4EF6\u754C\u9762\u8BED\u8A00";
 var settings_languageAuto2 = "\u81EA\u52A8\uFF08\u8DDF\u968F\u7CFB\u7EDF\uFF09";
 var settings_languageEn2 = "English";
 var settings_languageZhCn2 = "\u7B80\u4F53\u4E2D\u6587";
+var settings_authCacheDuration2 = "\u8BA4\u8BC1\u7F13\u5B58\u65F6\u957F";
+var settings_authCacheDurationDesc2 = "WordPress \u8BA4\u8BC1\u51ED\u636E\u7684\u7F13\u5B58\u65F6\u957F\u3002\u8F83\u77ED\u7684\u65F6\u957F\u66F4\u5B89\u5168\uFF0C\u4F46\u9700\u8981\u66F4\u9891\u7E41\u5730\u91CD\u65B0\u8BA4\u8BC1\u3002";
+var settings_authCacheDurationOneDay2 = "1 \u5929";
+var settings_authCacheDurationOneWeek2 = "1 \u5468";
+var settings_authCacheDurationOneMonth2 = "1 \u4E2A\u6708";
+var settings_authCacheDurationSixMonths2 = "6 \u4E2A\u6708";
+var settings_authCacheDurationForever2 = "\u6C38\u4E45";
 var settings_aiConfig2 = "AI \u914D\u7F6E";
 var settings_slugGeneration2 = "Slug \u751F\u6210\u8BBE\u7F6E";
 var settings_autoGenerateSlug2 = "\u81EA\u52A8\u751F\u6210 Slug";
@@ -117661,6 +118109,9 @@ var notice_imageAIApiKeyRequired2 = "\u8BF7\u5148\u5728\u63D2\u4EF6\u8BBE\u7F6E\
 var notice_invalidImageFormat2 = "\u65E0\u6548\u7684\u56FE\u7247\u683C\u5F0F\u3002\u8BF7\u9009\u62E9 JPEG\u3001PNG\u3001GIF \u6216 WebP \u56FE\u7247\u3002";
 var notice_imageTooLarge2 = "\u56FE\u7247\u6587\u4EF6\u8FC7\u5927\u3002\u6700\u5927\u652F\u6301 10MB\u3002";
 var notice_imageLoadFailed2 = "\u52A0\u8F7D\u56FE\u7247\u6587\u4EF6\u5931\u8D25\u3002";
+var notice_imageCompressed2 = "\u56FE\u7247\u5DF2\u538B\u7F29: <%= originalSize %>KB \u2192 <%= compressedSize %>KB";
+var notice_featuredImageUploadRetrying2 = "\u7279\u8272\u56FE\u7247\u4E0A\u4F20\u5931\u8D25\uFF08\u4E34\u65F6\u9519\u8BEF\uFF09\uFF0C\u6B63\u5728\u91CD\u8BD5 <%= attempt %>/<%= maxRetries %>...";
+var notice_featuredImageUploadRetrySuccess2 = "\u7279\u8272\u56FE\u7247\u4E0A\u4F20\u6210\u529F\uFF08\u5171\u5C1D\u8BD5 <%= attempts %> \u6B21\uFF09: <%= fileName %>";
 var notice_aiConfigValid2 = "\u2713 AI \u914D\u7F6E\u9A8C\u8BC1\u6210\u529F";
 var notice_aiConfigInvalid2 = "\u2717 AI \u914D\u7F6E\u9A8C\u8BC1\u5931\u8D25: <%= error %>";
 var notice_imageAIConfigRequired2 = "\u8BF7\u5148\u914D\u7F6E\u56FE\u7247\u751F\u6210 AI";
@@ -117715,6 +118166,8 @@ var publishModal_slugTranslateFailed2 = "\u7FFB\u8BD1\u5931\u8D25: <%= error %>"
 var publishModal_categoryName2 = "\u5206\u7C7B";
 var publishModal_categoryDesc2 = "\u9009\u62E9\u6587\u7AE0\u5206\u7C7B";
 var publishModal_selectCategory2 = "\u9009\u62E9\u5206\u7C7B...";
+var publishModal_addCategory2 = "\u589E\u52A0";
+var publishModal_newCategoryPlaceholder2 = "\u65B0\u5206\u7C7B\u540D\u79F0";
 var publishModal_statusName2 = "\u72B6\u6001";
 var publishModal_statusDesc2 = "\u9009\u62E9\u53D1\u5E03\u72B6\u6001";
 var publishModal_postDateTimeName2 = "\u53D1\u5E03\u65F6\u95F4";
@@ -117785,6 +118238,7 @@ var notice_publishCancelled2 = "\u274C \u53D1\u5E03\u5DF2\u53D6\u6D88";
 var error_userCancelledPublish2 = "\u7528\u6237\u53D6\u6D88\u53D1\u5E03";
 var error_categoriesCreationFailed2 = "\u65E0\u6CD5\u521B\u5EFA\u5206\u7C7B: <%= names %>\u3002\u8BF7\u5728 WordPress \u4E2D\u624B\u52A8\u521B\u5EFA\u8FD9\u4E9B\u5206\u7C7B\u6216\u9009\u62E9\u73B0\u6709\u5206\u7C7B\u3002";
 var error_noCategoriesAvailable2 = "\u6CA1\u6709\u53EF\u7528\u7684\u5206\u7C7B\u7528\u4E8E\u53D1\u5E03\u3002\u8BF7\u81F3\u5C11\u9009\u62E9\u4E00\u4E2A\u5206\u7C7B\u3002";
+var error_featuredImageUploadFailedAfterRetries2 = "\u7279\u8272\u56FE\u7247\u4E0A\u4F20\u5931\u8D25\uFF08\u5DF2\u5C1D\u8BD5 <%= attempts %> \u6B21\uFF09: <%= fileName %>\u3002\u9519\u8BEF: <%= error %>";
 var frontmatter_defaultCategory2 = "\u672A\u5206\u7C7B";
 var publishModal_basicSettings2 = "\u57FA\u672C\u8BBE\u7F6E";
 var publishModal_statusDraft2 = "\u8349\u7A3F";
@@ -117804,6 +118258,9 @@ var publishModal_advancedTab2 = "\u{1F527} \u9AD8\u7EA7\u8BBE\u7F6E";
 var publishModal_previewTitle2 = "\u6587\u7AE0\u9884\u89C8";
 var publishModal_previewEditPlaceholder2 = "\u5728\u6B64\u7F16\u8F91 Markdown \u5185\u5BB9...";
 var publishModal_save2 = "\u4FDD\u5B58";
+var publishModal_saveParams2 = "\u4FDD\u5B58";
+var publishModal_saveParamsSuccess2 = "\u2705 \u53C2\u6570\u5DF2\u4FDD\u5B58\u5230 frontmatter";
+var publishModal_saveParamsFailed2 = "\u274C \u4FDD\u5B58\u53C2\u6570\u5931\u8D25: <%= error %>";
 var publishModal_cancel2 = "\u53D6\u6D88";
 var publishModal_previewFeaturedImage2 = "\u7279\u8272\u56FE\u7247";
 var publishModal_previewFeaturedImageUploaded2 = "\u7279\u8272\u56FE\u7247\uFF08\u5DF2\u4E0A\u4F20\u5230 WordPress\uFF09";
@@ -118013,6 +118470,13 @@ var zh_cn_default = {
   settings_languageAuto: settings_languageAuto2,
   settings_languageEn: settings_languageEn2,
   settings_languageZhCn: settings_languageZhCn2,
+  settings_authCacheDuration: settings_authCacheDuration2,
+  settings_authCacheDurationDesc: settings_authCacheDurationDesc2,
+  settings_authCacheDurationOneDay: settings_authCacheDurationOneDay2,
+  settings_authCacheDurationOneWeek: settings_authCacheDurationOneWeek2,
+  settings_authCacheDurationOneMonth: settings_authCacheDurationOneMonth2,
+  settings_authCacheDurationSixMonths: settings_authCacheDurationSixMonths2,
+  settings_authCacheDurationForever: settings_authCacheDurationForever2,
   settings_aiConfig: settings_aiConfig2,
   settings_slugGeneration: settings_slugGeneration2,
   settings_autoGenerateSlug: settings_autoGenerateSlug2,
@@ -118069,6 +118533,9 @@ var zh_cn_default = {
   notice_invalidImageFormat: notice_invalidImageFormat2,
   notice_imageTooLarge: notice_imageTooLarge2,
   notice_imageLoadFailed: notice_imageLoadFailed2,
+  notice_imageCompressed: notice_imageCompressed2,
+  notice_featuredImageUploadRetrying: notice_featuredImageUploadRetrying2,
+  notice_featuredImageUploadRetrySuccess: notice_featuredImageUploadRetrySuccess2,
   notice_aiConfigValid: notice_aiConfigValid2,
   notice_aiConfigInvalid: notice_aiConfigInvalid2,
   notice_imageAIConfigRequired: notice_imageAIConfigRequired2,
@@ -118123,6 +118590,8 @@ var zh_cn_default = {
   publishModal_categoryName: publishModal_categoryName2,
   publishModal_categoryDesc: publishModal_categoryDesc2,
   publishModal_selectCategory: publishModal_selectCategory2,
+  publishModal_addCategory: publishModal_addCategory2,
+  publishModal_newCategoryPlaceholder: publishModal_newCategoryPlaceholder2,
   publishModal_statusName: publishModal_statusName2,
   publishModal_statusDesc: publishModal_statusDesc2,
   publishModal_postDateTimeName: publishModal_postDateTimeName2,
@@ -118193,6 +118662,7 @@ var zh_cn_default = {
   error_userCancelledPublish: error_userCancelledPublish2,
   error_categoriesCreationFailed: error_categoriesCreationFailed2,
   error_noCategoriesAvailable: error_noCategoriesAvailable2,
+  error_featuredImageUploadFailedAfterRetries: error_featuredImageUploadFailedAfterRetries2,
   frontmatter_defaultCategory: frontmatter_defaultCategory2,
   publishModal_basicSettings: publishModal_basicSettings2,
   publishModal_statusDraft: publishModal_statusDraft2,
@@ -118212,6 +118682,9 @@ var zh_cn_default = {
   publishModal_previewTitle: publishModal_previewTitle2,
   publishModal_previewEditPlaceholder: publishModal_previewEditPlaceholder2,
   publishModal_save: publishModal_save2,
+  publishModal_saveParams: publishModal_saveParams2,
+  publishModal_saveParamsSuccess: publishModal_saveParamsSuccess2,
+  publishModal_saveParamsFailed: publishModal_saveParamsFailed2,
   publishModal_cancel: publishModal_cancel2,
   publishModal_previewFeaturedImage: publishModal_previewFeaturedImage2,
   publishModal_previewFeaturedImageUploaded: publishModal_previewFeaturedImageUploaded2,
@@ -118391,7 +118864,7 @@ var FeaturePictureCacheManager = class {
     this.CACHE_DURATION = 7 * 24 * 60 * 60 * 1e3;
     // 7 days in ms
     this.CACHE_KEY = "feature-picture-cache";
-    this.loadCache();
+    this._ready = this.loadCache();
   }
   /**
    * Load cache from plugin data
@@ -118450,6 +118923,7 @@ var FeaturePictureCacheManager = class {
    * @param featuredImageId - Featured image ID
    */
   async set(postId, url, featuredImageId) {
+    await this._ready;
     const key = String(postId);
     const now = Date.now();
     this.cache[key] = {
@@ -118466,6 +118940,7 @@ var FeaturePictureCacheManager = class {
    * @param postId - Post ID
    */
   async clear(postId) {
+    await this._ready;
     const key = String(postId);
     if (this.cache[key]) {
       delete this.cache[key];
@@ -118478,6 +118953,7 @@ var FeaturePictureCacheManager = class {
    * Should be called on plugin load
    */
   async cleanExpired() {
+    await this._ready;
     const now = Date.now();
     const keys2 = Object.keys(this.cache);
     let cleanedCount = 0;
@@ -118496,6 +118972,7 @@ var FeaturePictureCacheManager = class {
    * Clear all cache
    */
   async clearAll() {
+    await this._ready;
     this.cache = {};
     log5.info("All cache cleared");
     await this.saveCache();

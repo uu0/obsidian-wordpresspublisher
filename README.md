@@ -2,9 +2,9 @@
 
 [English](README.md) | [简体中文](README_zh.md)
 
-**Version**: 2.1.0
+**Version**: 2.1.1
 **Author**: uu0
-**Last Updated**: 2026-03-18
+**Last Updated**: 2026-03-19
 
 ## About This Project
 
@@ -173,6 +173,61 @@ This project uses the following open-source projects:
 Thanks to all open-source community contributors!
 
 ## Changelog
+
+### 2.1.1 (2026-03-19)
+
+**Smart Error Handling & Auth Cache Configuration**
+
+This release adds intelligent retry logic for featured image uploads and configurable authentication cache duration, improving reliability and user experience.
+
+**New Features**
+
+- **Smart Error Handling for Featured Image Upload (P0)**
+  - Automatic retry for transient server errors (502, 503, 504, timeout, network issues)
+  - Maximum 2 retries with 2-second delay between attempts
+  - User-friendly notifications during retry process
+  - Detailed error logging for troubleshooting
+
+- **Auth Cache Duration Configuration (P1)**
+  - Configurable authentication cache duration: 1 day / 1 week / 1 month / 6 months / forever
+  - Reduces repeated login prompts for long sessions
+  - Global cache shared across all client instances
+  - Automatic cache invalidation on authentication failure
+
+**Bug Fixes**
+
+- **Category Dropdown Visibility**
+  - Fixed category dropdown and add button not displaying correctly
+  - Resolved CSS layout issue where `width: 100%` on `.wp-category-tags-container` pushed the add button out of view
+  - Category add button now always visible and functional
+
+- **Category Initialization**
+  - Fixed default category not being set correctly when no frontmatter categories exist
+  - Now properly finds "Uncategorized" by name (支持中文"未分类") instead of hardcoded ID
+  - Ensures consistent category selection across different WordPress configurations
+
+- **Mobile Footer Layout**
+  - Fixed footer button overflow on small screens
+  - Added complete footer button layout with save params button for mobile
+  - Improved responsive design for screens ≤ 480px
+
+- **Category Add Button Restoration**
+  - Fixed category add button not restoring after dropdown blur
+  - Added proper `onblur` event handling to restore button visibility
+  - Improved user experience when canceling category selection
+
+**Improvements**
+
+- **Save Button Rename**
+  - Renamed "Save Parameters" button to "Save" for consistency and clarity
+  - Updated both English and Chinese translations
+
+- **Category Selection UX**
+  - Category dropdown now always shows available categories
+  - Improved layout with separate containers for tags and add controls
+  - Better visual separation between selected categories and selection controls
+
+---
 
 ### 2.1.0 (2026-03-18)
 

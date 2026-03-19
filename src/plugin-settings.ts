@@ -3,6 +3,7 @@ import { WpProfile } from './wp-profile';
 import { CommentStatus, PostStatus } from './wp-api';
 import { isNil, isUndefined } from 'lodash-es';
 import { SafeAny } from './utils';
+import { logger } from './utils/logger';
 import { PassCrypto } from './pass-crypto';
 import { WP_DEFAULT_PROFILE_NAME } from './consts';
 import { AIServiceConfig } from './ai-service';
@@ -32,6 +33,14 @@ export const enum CommentConvertMode {
 export const enum TagFormat {
   YAML = 'yaml',
   Inline = 'inline'
+}
+
+export const enum AuthCacheDuration {
+  OneDay = '1d',
+  OneWeek = '1w',
+  OneMonth = '1m',
+  SixMonths = '6m',
+  Forever = 'forever'
 }
 
 export interface WordpressPluginSettings {
@@ -136,9 +145,30 @@ export interface WordpressPluginSettings {
   imageCropWidth: number;
 
   /**
+   * Enable image compression before upload.
+   */
+  enableImageCompression: boolean;
+
+  /**
+   * Maximum image file size in KB before compression is applied.
+   */
+  imageMaxSizeKB: number;
+
+  /**
+   * Minimum quality for image compression (0.1 - 1.0).
+   */
+  imageMinQuality: number;
+
+  /**
    * Tag format preference: YAML array or inline tags (#tag).
    */
   tagFormat: TagFormat;
+
+  /**
+   * Authentication cache duration for WordPress REST API.
+   * Options: 1 day, 1 week, 1 month, 6 months, forever.
+   */
+  authCacheDuration: AuthCacheDuration;
 }
 
 export const DEFAULT_SETTINGS: WordpressPluginSettings = {
@@ -157,14 +187,18 @@ export const DEFAULT_SETTINGS: WordpressPluginSettings = {
   slugGenerationMode: 'pinyin',
   imageCropRatio: '16:9',
   imageCropWidth: 1200,
+  enableImageCompression: true,
+  imageMaxSizeKB: 500,
+  imageMinQuality: 0.6,
   tagFormat: TagFormat.YAML,
+  authCacheDuration: AuthCacheDuration.OneMonth,
 }
 
 export async function upgradeSettings(
   existingSettings: SafeAny,
   to: SettingsVersion
 ): Promise<{ needUpgrade: boolean, settings: WordpressPluginSettings }> {
-  console.log(existingSettings, to);
+  logger.debug('upgradeSettings', 'upgrading settings', { from: existingSettings?.version, to });
   if (isUndefined(existingSettings.version)) {
     // V1
     if (to === SettingsVersion.V2) {

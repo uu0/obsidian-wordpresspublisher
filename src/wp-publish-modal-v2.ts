@@ -548,11 +548,21 @@ export class WpPublishModalV2 extends AbstractModal {
 
   private async loadOnlineImage(imagePath: string): Promise<void> {
     try {
-      const response = await fetch(imagePath);
-      const arrayBuffer = await response.arrayBuffer();
+      // Use Obsidian's requestUrl to bypass CORS restrictions
+      const response = await requestUrl({
+        url: imagePath,
+        method: 'GET'
+      });
+
+      const arrayBuffer = response.arrayBuffer;
+
+      // Detect MIME type from URL extension or response headers
+      const contentType = response.headers['content-type'];
+      const mimeType = this.getMimeTypeFromResponse(contentType, imagePath);
+
       this.autoFeaturedImage = {
         fileName: `featured-${Date.now()}.jpg`,
-        mimeType: 'image/jpeg',
+        mimeType,
         content: arrayBuffer,
         width: 1200
       };
@@ -684,6 +694,40 @@ export class WpPublishModalV2 extends AbstractModal {
     contentEl.empty();
     if (this.dateInputMask) {
       this.dateInputMask.destroy();
+    }
+  }
+
+  /**
+   * 保存当前参数到 frontmatter（不发布），保存后关闭弹窗
+   */
+  private async saveParamsToFrontmatter(params: WordPressPostParams): Promise<void> {
+    if (!this.notePath) return;
+    const file = this.plugin.app.vault.getAbstractFileByPath(this.notePath);
+    if (!file || !(file instanceof TFile)) return;
+
+    try {
+      await this.plugin.app.fileManager.processFrontMatter(file, (fm) => {
+        if (params.slug) fm.slug = params.slug;
+
+        // 将分类 ID 转换为名称保存
+        const categoryNames = params.categories
+          .map(catId => this.categories.items.find(t => Number(t.id) === catId))
+          .filter((term): term is Term => !!term && Number(term.id) > 0)
+          .map(term => term.name);
+        if (categoryNames.length > 0) fm.categories = categoryNames;
+
+        if (params.tags && params.tags.length > 0) {
+          fm.tags = TagFormatter.formatTags(params.tags, this.plugin.settings.tagFormat);
+        }
+
+        if (params.excerpt) fm.excerpt = params.excerpt;
+      });
+
+      new Notice(this.t('publishModal_settingsSaved') || '设置已保存');
+      this.close();
+    } catch (error) {
+      log.error('Failed to save params to frontmatter:', error);
+      new Notice('保存失败: ' + (error instanceof Error ? error.message : String(error)));
     }
   }
 
@@ -1837,58 +1881,88 @@ export class WpPublishModalV2 extends AbstractModal {
       select.addEventListener('change', () => { (params as SafeAny).contentFormat = select.value; });
     });
 
-    // 分类（仅 Post 类型）
-    const validCategories = this.categories.items.filter(it => it.name && it.name.trim());
-    if (params.postType === PostTypeConst.Post && validCategories.length > 0) {
-      body.createDiv('wp-v3-divider');
-      this.renderV3Field(body, this.t('publishModal_categoryName'), 'publishModal_categoryInfo', (fieldEl) => {
-        const tagsWrap = fieldEl.createDiv();
-        tagsWrap.style.display = 'flex';
-        tagsWrap.style.flexWrap = 'wrap';
-        tagsWrap.style.gap = '4px';
+    // 分类（始终显示）
+    const getValidCategoriesV3 = () => this.categories.items.filter(it => it.name && it.name.trim());
+    body.createDiv('wp-v3-divider');
+    this.renderV3Field(body, this.t('publishModal_categoryName'), 'publishModal_categoryInfo', (fieldEl) => {
+      const tagsWrap = fieldEl.createDiv();
+      tagsWrap.style.display = 'flex';
+      tagsWrap.style.flexWrap = 'wrap';
+      tagsWrap.style.gap = '4px';
 
-        const renderCats = () => {
-          tagsWrap.empty();
-          params.categories.forEach(catId => {
-            const cat = validCategories.find(c => Number(c.id) === catId);
-            if (!cat) return;
-            const tag = tagsWrap.createEl('span', { cls: 'wp-v3-tag-item' });
-            tag.style.backgroundColor = 'var(--interactive-accent)';
-            tag.style.fontSize = '11px';
-            tag.createSpan({ text: cat.name });
-            // × 在右上角（同内容标签）
-            const removeBtn = tag.createEl('button', { cls: 'wp-v3-tag-delete-btn', text: '×' });
-            removeBtn.addEventListener('click', (e) => {
-              e.stopPropagation();
-              params.categories = params.categories.filter(id => id !== catId);
-              renderCats();
-            });
+      // 默认选中"未分类"
+      if (params.categories.length === 0) {
+        const uncategorized = getValidCategoriesV3().find(it =>
+          ['Uncategorized', '未分类', this.plugin.t('publishModal_uncategorized')].includes(it.name)
+        );
+        if (uncategorized) params.categories = [Number(uncategorized.id)];
+      }
+
+      const renderCats = () => {
+        tagsWrap.empty();
+        const validCategories = getValidCategoriesV3();
+
+        // 已选分类标签
+        params.categories.forEach(catId => {
+          const cat = validCategories.find(c => Number(c.id) === catId);
+          if (!cat) return;
+          const tag = tagsWrap.createEl('span', { cls: 'wp-v3-tag-item' });
+          tag.style.backgroundColor = 'var(--interactive-accent)';
+          tag.style.fontSize = '11px';
+          tag.createSpan({ text: cat.name });
+          const removeBtn = tag.createEl('button', { cls: 'wp-v3-tag-delete-btn', text: '×' });
+          removeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            params.categories = params.categories.filter(id => id !== catId);
+            renderCats();
           });
+        });
 
-          const available = validCategories.filter(cat => !params.categories.includes(Number(cat.id)));
-          if (available.length > 0) {
-            const select = tagsWrap.createEl('select', { cls: 'wp-v3-select' });
-            select.style.width = 'auto';
-            select.style.fontSize = '11px';
-            select.style.padding = '2px 6px';
-            select.createEl('option', { value: '', text: '+' });
-            available.forEach(cat => select.createEl('option', { value: String(cat.id), text: cat.name }));
-            select.addEventListener('change', () => {
-              if (select.value) { params.categories.push(Number(select.value)); renderCats(); }
-            });
-          }
-        };
+        // 操作按钮行
+        const btnRow = tagsWrap.createEl('span', { cls: 'wp-v3-cat-btn-row' });
 
-        if (params.categories.length === 0) {
-          const uncategorized = validCategories.find(it =>
-            ['Uncategorized', '未分类', this.plugin.t('publishModal_uncategorized')].includes(it.name)
-          );
-          if (uncategorized) params.categories = [Number(uncategorized.id)];
-        }
+        // 下拉框 — 从已有分类中选（始终显示）
+        const available = validCategories.filter(cat => !params.categories.includes(Number(cat.id)));
+        const select = btnRow.createEl('select', { cls: 'wp-v3-select' });
+        select.style.width = 'auto';
+        select.style.fontSize = '11px';
+        select.createEl('option', { value: '', text: this.plugin.t('publishModal_selectCategory') || '选择分类...' });
+        available.forEach(cat => select.createEl('option', { value: String(cat.id), text: cat.name }));
+        select.addEventListener('change', () => {
+          if (select.value) { params.categories.push(Number(select.value)); renderCats(); }
+        });
 
-        renderCats();
-      });
-    }
+        // 「增加」按钮 — 创建新分类（发布时在远端创建）
+        const addBtn = btnRow.createEl('button', { cls: 'wp-v3-cat-add-btn', text: this.plugin.t('publishModal_addCategory') || '增加' });
+        addBtn.addEventListener('click', () => {
+          addBtn.style.display = 'none';
+          const input = btnRow.createEl('input', { cls: 'wp-v3-input', type: 'text' });
+          input.style.width = '80px';
+          input.style.fontSize = '11px';
+          input.placeholder = this.plugin.t('publishModal_newCategoryPlaceholder') || '新分类名称';
+          const commit = () => {
+            const name = input.value.trim();
+            if (name) {
+              const tempId = -(this.categories.items.length + 100 + params.categories.length);
+              this.categories.items.push({ id: String(tempId), name, slug: name.toLowerCase().replace(/\s+/g, '-'), taxonomy: 'category', description: '', count: 0 });
+              params.categories.push(tempId);
+            }
+            input.remove();
+            addBtn.style.display = '';
+            renderCats();
+          };
+          let v3CatCommitted = false;
+          input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { v3CatCommitted = true; commit(); }
+            if (e.key === 'Escape') { v3CatCommitted = true; input.remove(); addBtn.style.display = ''; }
+          });
+          input.addEventListener('blur', () => { if (!v3CatCommitted) commit(); });
+          input.focus();
+        });
+      };
+
+      renderCats();
+    });
 
     // 发布为新文章（仅当已有关联文章）
     if (this.matterData.postId) {
@@ -1979,8 +2053,15 @@ export class WpPublishModalV2 extends AbstractModal {
       if (contentSection?.__enterContentEdit) contentSection.__enterContentEdit();
     };
 
+    // 💾 保存按钮（将参数保存到 frontmatter，不发布）
+    const saveBtn = footer.createEl('button', {
+      text: this.t('publishModal_save') || '保存',
+      cls: 'wp-v3-save-footer-btn'
+    }) as HTMLButtonElement;
+    saveBtn.onclick = () => this.saveParamsToFrontmatter(params);
+
     const cancelBtn = footer.createEl('button', {
-      text: '❌ ' + (this.t('publishModal_cancel') || '取消'),
+      text: this.t('publishModal_cancel') || '取消',
       cls: 'wp-v3-cancel-footer-btn'
     });
     cancelBtn.onclick = () => this.close();
@@ -2649,8 +2730,9 @@ export class WpPublishModalV2 extends AbstractModal {
 
       new Notice(this.t('publishModal_aiGeneratingImage'));
       const imageUrl = await this.aiService.generateImage(imageDescriptionPrompt);
-      const response = await fetch(imageUrl);
-      const arrayBuffer = await response.arrayBuffer();
+      // Use Obsidian's requestUrl to bypass CORS
+      const response = await requestUrl({ url: imageUrl, method: 'GET' });
+      const arrayBuffer = response.arrayBuffer;
 
       const fileName = `ai-generated-${Date.now()}.png`;
       this.featuredImage = {
@@ -2963,11 +3045,11 @@ export class WpPublishModalV2 extends AbstractModal {
     // 添加 Slug 信息按钮
     this.addInfoButton(slugSetting, 'publishModal_slugInfo');
 
-    // 分类（仅Post类型，占满整行）
-    // 先过滤掉空值的分类项
-    const validCategories = this.categories.items.filter(it => it.name && it.name.trim());
+    // 分类（始终显示，占满整行）
+    // 每次渲染时重新过滤，确保新增分类可以被感知
+    const getValidCategories = () => this.categories.items.filter(it => it.name && it.name.trim());
 
-    if (params.postType === PostTypeConst.Post && validCategories.length > 0) {
+    {
       const categoryWrapper = gridContainer.createDiv('wp-grid-full');
       // 创建分类设置标题（不使用 Setting 组件，避免移动端布局问题）
       const categoryHeader = categoryWrapper.createDiv('wp-category-header');
@@ -2991,106 +3073,132 @@ export class WpPublishModalV2 extends AbstractModal {
 
       // 可用分类列表（排除已选中的）
       const getAvailableCategories = () => {
-        return validCategories.filter(cat =>
+        return getValidCategories().filter(cat =>
           !params.categories.includes(Number(cat.id))
         );
       };
 
       // 渲染已选分类标签
       const renderCategoryTags = () => {
-        tagsContainer.empty();
+        // 只清除标签元素，保留操作按钮行（由 renderActionButtons 管理）
+        Array.from(tagsContainer.children).forEach(child => {
+          if (!child.classList.contains('wp-category-action-row')) {
+            tagsContainer.removeChild(child);
+          }
+        });
 
-        // 显示已选分类
+        // 将标签插入到按钮行前面
+        const actionRow = tagsContainer.querySelector('.wp-category-action-row');
         params.categories.forEach(catId => {
-          const cat = validCategories.find(c => Number(c.id) === catId);
+          const cat = getValidCategories().find(c => Number(c.id) === catId);
           if (cat) {
-            const tag = tagsContainer.createEl('span', {
-              cls: 'wp-category-tag',
-              text: cat.name
-            });
+            const tag = document.createElement('span');
+            tag.className = 'wp-category-tag';
+            tag.textContent = cat.name;
 
             // 删除按钮
-            const removeBtn = tag.createEl('span', {
-              cls: 'wp-category-tag-remove',
-              text: '×'
-            });
+            const removeBtn = document.createElement('span');
+            removeBtn.className = 'wp-category-tag-remove';
+            removeBtn.textContent = '×';
             removeBtn.onclick = (e) => {
               e.stopPropagation();
               params.categories = params.categories.filter(id => id !== catId);
               renderCategoryTags();
-              renderAddDropdown();
+              renderActionButtons();
             };
+            tag.appendChild(removeBtn);
+
+            if (actionRow) {
+              tagsContainer.insertBefore(tag, actionRow);
+            } else {
+              tagsContainer.appendChild(tag);
+            }
           }
         });
       };
 
-      // 渲染添加下拉框
-      const renderAddDropdown = () => {
-        // 移除旧的添加控件
-        const oldAddControl = tagsContainer.querySelector('.wp-category-add-control');
-        if (oldAddControl) oldAddControl.remove();
+      // 渲染操作按钮行（「选择」+ 「增加」）
+      const renderActionButtons = () => {
+        // 移除旧按钮行
+        const oldRow = tagsContainer.querySelector('.wp-category-action-row');
+        if (oldRow) oldRow.remove();
 
+        const actionRow = document.createElement('div');
+        actionRow.className = 'wp-category-action-row';
+
+        // 下拉框 — 从已有分类中选（始终显示）
         const available = getAvailableCategories();
-        if (available.length > 0) {
-          const addControl = tagsContainer.createEl('div', {
-            cls: 'wp-category-add-control'
-          });
+        const select = document.createElement('select');
+        select.className = 'wp-category-dropdown';
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = this.plugin.t('publishModal_selectCategory') || '选择分类...';
+        select.appendChild(placeholder);
+        available.forEach(cat => {
+          const opt = document.createElement('option');
+          opt.value = String(cat.id);
+          opt.textContent = cat.name;
+          select.appendChild(opt);
+        });
+        select.onchange = () => {
+          if (select.value) {
+            params.categories.push(Number(select.value));
+            renderCategoryTags();
+            renderActionButtons();
+          }
+        };
+        actionRow.appendChild(select);
 
-          const addBtn = addControl.createEl('button', {
-            cls: 'wp-category-add-btn',
-            text: '+'
-          });
-
-          addBtn.onclick = () => {
-            // 创建下拉选择
-            const select = addControl.createEl('select', {
-              cls: 'wp-category-dropdown'
-            });
-
-            // 添加占位选项
-            select.createEl('option', {
-              value: '',
-              text: this.t('publishModal_selectCategory') || '选择分类...'
-            });
-
-            available.forEach(cat => {
-              select.createEl('option', {
-                value: String(cat.id),
-                text: cat.name
-              });
-            });
-
-            select.onchange = () => {
-              if (select.value) {
-                params.categories.push(Number(select.value));
-                renderCategoryTags();
-                renderAddDropdown();
-              }
-            };
-
-            select.focus();
-            addBtn.style.display = 'none';
+        // 「增加」按钮 — 创建新分类（发布时在远端创建）
+        const addBtn = document.createElement('button');
+        addBtn.className = 'wp-category-add-btn';
+        addBtn.textContent = this.plugin.t('publishModal_addCategory') || '增加';
+        addBtn.onclick = () => {
+          addBtn.style.display = 'none';
+          const input = document.createElement('input');
+          input.className = 'wp-category-new-input';
+          input.placeholder = this.plugin.t('publishModal_newCategoryPlaceholder') || '新分类名称';
+          const commit = () => {
+            const name = input.value.trim();
+            if (name) {
+              const tempId = -(this.categories.items.length + 100 + params.categories.length);
+              this.categories.items.push({ id: String(tempId), name, slug: name.toLowerCase().replace(/\s+/g, '-'), taxonomy: 'category', description: '', count: 0 });
+              params.categories.push(tempId);
+              renderCategoryTags();
+              renderActionButtons();
+            }
+            input.remove();
+            addBtn.style.display = '';
           };
-        }
+          let gridCatCommitted = false;
+          input.onkeydown = (e) => {
+            if (e.key === 'Enter') { gridCatCommitted = true; commit(); }
+            if (e.key === 'Escape') { gridCatCommitted = true; input.remove(); addBtn.style.display = ''; }
+          };
+          input.onblur = () => { if (!gridCatCommitted) commit(); };
+          actionRow.insertBefore(input, addBtn);
+          input.focus();
+        };
+        actionRow.appendChild(addBtn);
+
+        tagsContainer.appendChild(actionRow);
       };
 
-      // 初始渲染
-      renderCategoryTags();
-      renderAddDropdown();
-
-      // 如果没有选择分类，默认选中"未分类"
+      // 默认选中"未分类"
       if (params.categories.length === 0) {
-        const uncategorized = validCategories.find(it =>
+        const uncategorized = getValidCategories().find(it =>
           it.name === this.plugin.t('publishModal_uncategorized') ||
           it.name === 'Uncategorized' ||
           it.name === '未分类'
         );
         if (uncategorized) {
           params.categories = [Number(uncategorized.id)];
-          renderCategoryTags();
-          renderAddDropdown();
         }
       }
+
+      // 初始渲染
+      renderCategoryTags();
+      renderActionButtons();
     }
 
     // 发布状态（左列）

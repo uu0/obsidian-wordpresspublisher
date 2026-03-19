@@ -10,9 +10,10 @@ import {
   WordPressPublishResult
 } from './wp-client';
 import { WpPublishModalV2 } from './wp-publish-modal-v2';
+import { compressImage } from './featured-image-modal';
 import { PostType, PostTypeConst, Term } from './wp-api';
-import { ERROR_NOTICE_TIMEOUT, WP_DEFAULT_PROFILE_NAME } from './consts';
-import { isPromiseFulfilledResult, isValidUrl, openWithBrowser, processFile, SafeAny, showError, } from './utils';
+import { ERROR_NOTICE_TIMEOUT, WP_DEFAULT_PROFILE_NAME, FEATURED_IMAGE_UPLOAD_MAX_RETRIES, FEATURED_IMAGE_UPLOAD_RETRY_DELAY_MS, AUTH_CACHE_DURATION_MS } from './consts';
+import { isPromiseFulfilledResult, isValidUrl, openWithBrowser, processFile, SafeAny, showError, sleep } from './utils';
 import { WpProfile } from './wp-profile';
 import { AppState } from './app-state';
 import { ConfirmCode, openConfirmModal } from './confirm-modal';
@@ -24,6 +25,16 @@ import { isFunction } from 'lodash-es';
 import { FrontmatterManager, RemotePostData } from './frontmatter-manager';
 import { openConflictModal } from './frontmatter-conflict-modal';
 import { TagFormatter } from './tag-formatter';
+import { AuthCacheDuration } from './plugin-settings';
+
+interface AuthCacheEntry {
+  auth: WordPressAuthParams;
+  timestamp: number;
+  profileName: string;
+}
+
+// Static cache for authentication across all client instances
+const globalAuthCache = new Map<string, AuthCacheEntry>();
 
 export abstract class AbstractWordPressClient implements WordPressClient {
 
@@ -166,13 +177,79 @@ export abstract class AbstractWordPressClient implements WordPressClient {
     });
   }
 
+  /**
+   * Get the cache key for the current profile
+   */
+  private getAuthCacheKey(): string {
+    return `${this.profile.name}_${this.profile.endpoint}`;
+  }
+
+  /**
+   * Check if the cached authentication is still valid based on user's cache duration setting
+   */
+  private isAuthCacheValid(cacheEntry: AuthCacheEntry): boolean {
+    const cacheDuration = this.plugin.settings.authCacheDuration ?? '1m';
+    const maxAge = AUTH_CACHE_DURATION_MS[cacheDuration] ?? AUTH_CACHE_DURATION_MS['1m'];
+    const age = Date.now() - cacheEntry.timestamp;
+    return age < maxAge;
+  }
+
+  /**
+   * Get cached authentication if available and valid
+   */
+  private getCachedAuth(): WordPressAuthParams | null {
+    const cacheKey = this.getAuthCacheKey();
+    const cacheEntry = globalAuthCache.get(cacheKey);
+
+    if (cacheEntry && cacheEntry.profileName === this.profile.name) {
+      if (this.isAuthCacheValid(cacheEntry)) {
+        console.log(`[getCachedAuth] Using cached auth for profile: ${this.profile.name}`);
+        return cacheEntry.auth;
+      } else {
+        console.log(`[getCachedAuth] Cache expired for profile: ${this.profile.name}`);
+        globalAuthCache.delete(cacheKey);
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Cache authentication for future use
+   */
+  private cacheAuth(auth: WordPressAuthParams): void {
+    const cacheKey = this.getAuthCacheKey();
+    const cacheDuration = this.plugin.settings.authCacheDuration ?? '1m';
+    console.log(`[cacheAuth] Caching auth for profile: ${this.profile.name}, duration: ${cacheDuration}`);
+    globalAuthCache.set(cacheKey, {
+      auth,
+      timestamp: Date.now(),
+      profileName: this.profile.name
+    });
+  }
+
+  /**
+   * Clear cached authentication for current profile
+   */
+  private clearCachedAuth(): void {
+    const cacheKey = this.getAuthCacheKey();
+    console.log(`[clearCachedAuth] Clearing cache for profile: ${this.profile.name}`);
+    globalAuthCache.delete(cacheKey);
+  }
+
   private async getAuth(): Promise<WordPressAuthParams> {
     let auth: WordPressAuthParams = {
       username: null,
       password: null
     };
+
     try {
       if (this.needLogin()) {
+        // First, check if we have a valid cached auth (P1 feature)
+        const cachedAuth = this.getCachedAuth();
+        if (cachedAuth) {
+          return cachedAuth;
+        }
+
         // Check if there's saved username and password
         if (this.profile.username && this.profile.password) {
           auth = {
@@ -183,12 +260,20 @@ export abstract class AbstractWordPressClient implements WordPressClient {
           if (authResult.code !== WordPressClientReturnCode.OK) {
             throw new Error(this.plugin.i18n.t('error_invalidUser'));
           }
+          // Cache the successful auth (P1 feature)
+          this.cacheAuth(auth);
         }
       }
     } catch (error) {
       showError(error);
+      // Clear cache on auth failure
+      this.clearCachedAuth();
       const result = await openLoginModal(this.plugin, this.profile, async (auth) => {
         const authResult = await this.validateUser(auth);
+        if (authResult.code === WordPressClientReturnCode.OK) {
+          // Cache the successful auth from login modal (P1 feature)
+          this.cacheAuth(auth);
+        }
         return authResult.code === WordPressClientReturnCode.OK;
       });
       auth = result.auth;
@@ -308,14 +393,8 @@ export abstract class AbstractWordPressClient implements WordPressClient {
         const file = this.plugin.app.workspace.getActiveFile();
         if (file) {
           await this.plugin.app.fileManager.processFrontMatter(file, fm => {
-            // Check for duplicate keys before modification
             const knownKeys = ['blogName', 'postId', 'postType', 'categories', 'slug', 'featurePicture', 'featuredImageId', 'tags'];
             const existingKeys = Object.keys(fm);
-            const duplicates = existingKeys.filter((key, index) => existingKeys.indexOf(key) !== index);
-            if (duplicates.length > 0) {
-              new Notice(this.plugin.t('notice_duplicateFrontmatter', { fields: duplicates.join(', ') }));
-            }
-
             // Preserve existing non-plugin fields
             const existingOtherFields: Record<string, any> = {};
             for (const key of existingKeys) {
@@ -597,9 +676,19 @@ export abstract class AbstractWordPressClient implements WordPressClient {
           selectedCategories = fmCatArray as number[];
           console.log('[publishPost] Using numeric IDs from frontmatter:', selectedCategories);
         } else {
-          // No categories in frontmatter, use last selected or default
-          selectedCategories = this.profile.lastSelectedCategories ?? [1];
-          console.log('[publishPost] No categories in frontmatter, using lastSelectedCategories:', selectedCategories);
+          // No categories in frontmatter, use last selected or find "Uncategorized"
+          if (this.profile.lastSelectedCategories && this.profile.lastSelectedCategories.length > 0) {
+            selectedCategories = this.profile.lastSelectedCategories;
+          } else {
+            // Find "Uncategorized" category by name
+            const uncategorized = categories.find(cat =>
+              cat.name === 'Uncategorized' ||
+              cat.name === '未分类' ||
+              cat.name.toLowerCase() === 'uncategorized'
+            );
+            selectedCategories = uncategorized ? [Number(uncategorized.id)] : [1];
+          }
+          console.log('[publishPost] No categories in frontmatter, using default:', selectedCategories);
         }
         const postTypes = await this.getPostTypes(auth);
         if (postTypes.length === 0) {
@@ -645,11 +734,45 @@ export abstract class AbstractWordPressClient implements WordPressClient {
                 // Handle featured image
                 if (featuredImage) {
                   console.log('[WpPublishModalV2] Processing featured image:', featuredImage.fileName);
-                  const uploadResult = await this.uploadMedia({
-                    mimeType: featuredImage.mimeType,
+
+                  // Apply image compression if enabled
+                  let imageContent = featuredImage.content;
+                  let imageMimeType = featuredImage.mimeType;
+
+                  if (this.plugin.settings.enableImageCompression) {
+                    const maxSizeKB = this.plugin.settings.imageMaxSizeKB || 500;
+                    const minQuality = this.plugin.settings.imageMinQuality || 0.6;
+
+                    console.log('[WpPublishModalV2] Attempting image compression...');
+                    const compressedContent = await compressImage(
+                      featuredImage.content,
+                      featuredImage.mimeType,
+                      maxSizeKB,
+                      minQuality
+                    );
+
+                    if (compressedContent) {
+                      const originalSizeKB = (featuredImage.content.byteLength / 1024).toFixed(1);
+                      const compressedSizeKB = (compressedContent.byteLength / 1024).toFixed(1);
+                      new Notice(this.plugin.i18n.t('notice_imageCompressed', {
+                        originalSize: originalSizeKB,
+                        compressedSize: compressedSizeKB
+                      }));
+                      imageContent = compressedContent;
+                      // PNG is converted to JPEG during compression
+                      imageMimeType = featuredImage.mimeType === 'image/png' ? 'image/jpeg' : featuredImage.mimeType;
+                      console.log(`[WpPublishModalV2] Image compressed: ${originalSizeKB}KB -> ${compressedSizeKB}KB`);
+                    } else {
+                      console.log('[WpPublishModalV2] Image does not need compression or compression failed');
+                    }
+                  }
+
+                  // Upload with retry logic for transient errors (P0 feature)
+                  const uploadResult = await this.uploadMediaWithRetry({
+                    mimeType: imageMimeType,
                     fileName: featuredImage.fileName,
-                    content: featuredImage.content
-                  }, auth);
+                    content: imageContent
+                  }, auth, featuredImage.fileName);
 
                   if (uploadResult.code === WordPressClientReturnCode.OK) {
                     // Get the media ID to use as featured image
@@ -746,6 +869,138 @@ export abstract class AbstractWordPressClient implements WordPressClient {
         }
       });
     return terms;
+  }
+
+  /**
+   * Check if an error is a transient error that should trigger a retry
+   * Transient errors include: 502, 503, 504, timeout, network issues
+   * @param error - The error to check
+   * @returns True if the error is transient and should be retried
+   */
+  private isTransientError(error: SafeAny): boolean {
+    if (!error) return false;
+
+    const errorMessage = error.message || error.toString() || '';
+    const errorCode = error.code || error.status || '';
+
+    // Check for HTTP status codes that indicate transient server errors
+    const transientStatusCodes = ['502', '503', '504', '500'];
+    const hasTransientStatus = transientStatusCodes.some(code =>
+      errorMessage.includes(code) || String(errorCode).includes(code)
+    );
+
+    // Check for network/timeout related errors
+    const transientErrorPatterns = [
+      'timeout',
+      'network',
+      'econnreset',
+      'econnrefused',
+      'ENOTFOUND',
+      'ETIMEDOUT',
+      'socket hang up',
+      'temporary',
+      'unavailable',
+      'rate limit',
+      'too many requests'
+    ];
+    const hasTransientPattern = transientErrorPatterns.some(pattern =>
+      errorMessage.toLowerCase().includes(pattern.toLowerCase())
+    );
+
+    return hasTransientStatus || hasTransientPattern;
+  }
+
+  /**
+   * Upload media with automatic retry for transient errors (P0 feature)
+   * Implements smart error handling with up to 2 retries for transient server errors
+   * @param media - Media to upload
+   * @param certificate - Authentication credentials
+   * @param fileName - Original file name for error messages
+   * @returns Upload result with retry information
+   */
+  private async uploadMediaWithRetry(
+    media: Media,
+    certificate: WordPressAuthParams,
+    fileName: string
+  ): Promise<WordPressClientResult<WordPressMediaUploadResult>> {
+    let lastError: SafeAny;
+    let attempt = 0;
+
+    while (attempt <= FEATURED_IMAGE_UPLOAD_MAX_RETRIES) {
+      try {
+        console.log(`[uploadMediaWithRetry] Attempt ${attempt + 1}/${FEATURED_IMAGE_UPLOAD_MAX_RETRIES + 1} for ${fileName}`);
+
+        const result = await this.uploadMedia(media, certificate);
+
+        if (result.code === WordPressClientReturnCode.OK) {
+          if (attempt > 0) {
+            console.log(`[uploadMediaWithRetry] Upload succeeded after ${attempt + 1} attempts`);
+            new Notice(this.plugin.i18n.t('notice_featuredImageUploadRetrySuccess', {
+              fileName,
+              attempts: String(attempt + 1)
+            }), 5000);
+          }
+          return result;
+        }
+
+        // Check if this is a transient error that should be retried
+        if (result.error && this.isTransientError(result.error)) {
+          lastError = result.error;
+          attempt++;
+
+          if (attempt <= FEATURED_IMAGE_UPLOAD_MAX_RETRIES) {
+            console.log(`[uploadMediaWithRetry] Transient error detected, retrying in ${FEATURED_IMAGE_UPLOAD_RETRY_DELAY_MS}ms...`, result.error);
+            new Notice(this.plugin.i18n.t('notice_featuredImageUploadRetrying', {
+              fileName,
+              attempt: String(attempt),
+              maxRetries: String(FEATURED_IMAGE_UPLOAD_MAX_RETRIES)
+            }), 3000);
+            await sleep(FEATURED_IMAGE_UPLOAD_RETRY_DELAY_MS);
+            continue;
+          }
+        } else {
+          // Non-transient error, return immediately
+          return result;
+        }
+      } catch (error) {
+        lastError = error;
+
+        // Check if this is a transient error that should be retried
+        if (this.isTransientError(error)) {
+          attempt++;
+
+          if (attempt <= FEATURED_IMAGE_UPLOAD_MAX_RETRIES) {
+            console.log(`[uploadMediaWithRetry] Transient exception detected, retrying in ${FEATURED_IMAGE_UPLOAD_RETRY_DELAY_MS}ms...`, error);
+            new Notice(this.plugin.i18n.t('notice_featuredImageUploadRetrying', {
+              fileName,
+              attempt: String(attempt),
+              maxRetries: String(FEATURED_IMAGE_UPLOAD_MAX_RETRIES)
+            }), 3000);
+            await sleep(FEATURED_IMAGE_UPLOAD_RETRY_DELAY_MS);
+            continue;
+          }
+        } else {
+          // Non-transient error, throw immediately
+          throw error;
+        }
+      }
+    }
+
+    // All retries exhausted
+    console.error(`[uploadMediaWithRetry] Upload failed after ${attempt} attempts`, lastError);
+
+    // Return error result with retry exhausted information
+    return {
+      code: WordPressClientReturnCode.Error,
+      error: {
+        code: WordPressClientReturnCode.ServerInternalError,
+        message: this.plugin.i18n.t('error_featuredImageUploadFailedAfterRetries', {
+          fileName,
+          attempts: String(attempt),
+          error: lastError?.message || lastError?.toString() || 'Unknown error'
+        })
+      }
+    };
   }
 
   private readFromFrontMatter(

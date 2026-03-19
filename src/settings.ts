@@ -3,7 +3,7 @@ import WordpressPlugin from './main';
 import { CommentStatus, PostStatus } from './wp-api';
 import { TranslateKey } from './i18n';
 import { WpProfileManageModal } from './wp-profile-manage-modal';
-import { CommentConvertMode, MathJaxOutputType, TagFormat } from './plugin-settings';
+import { AuthCacheDuration, CommentConvertMode, MathJaxOutputType, TagFormat } from './plugin-settings';
 import { WpProfile } from './wp-profile';
 import { setupMarkdownParser } from './utils';
 import { AppState } from './app-state';
@@ -226,6 +226,24 @@ export class WordpressSettingTab extends PluginSettingTab {
             await this.plugin.saveSettings();
             // 重新渲染设置界面以应用新语言
             this.display();
+          });
+      });
+
+    // 认证缓存持续时间设置 (P1 feature)
+    new Setting(containerEl)
+      .setName(t('settings_authCacheDuration'))
+      .setDesc(t('settings_authCacheDurationDesc'))
+      .addDropdown((dropdown) => {
+        dropdown
+          .addOption(AuthCacheDuration.OneDay, t('settings_authCacheDurationOneDay'))
+          .addOption(AuthCacheDuration.OneWeek, t('settings_authCacheDurationOneWeek'))
+          .addOption(AuthCacheDuration.OneMonth, t('settings_authCacheDurationOneMonth'))
+          .addOption(AuthCacheDuration.SixMonths, t('settings_authCacheDurationSixMonths'))
+          .addOption(AuthCacheDuration.Forever, t('settings_authCacheDurationForever'))
+          .setValue(this.plugin.settings.authCacheDuration ?? AuthCacheDuration.OneMonth)
+          .onChange(async (value) => {
+            this.plugin.settings.authCacheDuration = value as AuthCacheDuration;
+            await this.plugin.saveSettings();
           });
       });
 

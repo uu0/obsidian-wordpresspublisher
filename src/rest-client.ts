@@ -52,19 +52,22 @@ export class RestClient {
     logger.debug(this.moduleName, 'HTTP GET request', { endpoint, headers: opts.headers });
 
     const timeoutMs = options?.timeout ?? this.timeout;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
-      const response = await requestUrl({
-        url: endpoint,
-        method: 'GET',
-        headers: {
-          'content-type': 'application/json',
-          'user-agent': 'obsidian.md',
-          ...opts.headers
-        }
-      });
+      const response = await Promise.race([
+        requestUrl({
+          url: endpoint,
+          method: 'GET',
+          headers: {
+            'content-type': 'application/json',
+            'user-agent': 'obsidian.md',
+            ...opts.headers
+          }
+        }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error(`GET request timed out after ${timeoutMs}ms: ${endpoint}`)), timeoutMs)
+        )
+      ]);
 
       logger.debug(this.moduleName, 'HTTP GET response received', {
         status: response.status,
@@ -75,8 +78,6 @@ export class RestClient {
     } catch (error) {
       logger.error(this.moduleName, 'HTTP GET request failed', error);
       throw error;
-    } finally {
-      clearTimeout(timeoutId);
     }
   }
 
@@ -116,20 +117,23 @@ export class RestClient {
     });
 
     const timeoutMs = options?.timeout ?? this.timeout;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
-      const response = await requestUrl({
-        url: endpoint,
-        method: 'POST',
-        headers: {
-          'user-agent': 'obsidian.md',
-          ...predefinedHeaders,
-          ...options.headers
-        },
-        body: requestBody
-      });
+      const response = await Promise.race([
+        requestUrl({
+          url: endpoint,
+          method: 'POST',
+          headers: {
+            'user-agent': 'obsidian.md',
+            ...predefinedHeaders,
+            ...options.headers
+          },
+          body: requestBody
+        }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error(`POST request timed out after ${timeoutMs}ms: ${endpoint}`)), timeoutMs)
+        )
+      ]);
 
       logger.debug(this.moduleName, 'HTTP POST response received', {
         status: response.status,
@@ -140,8 +144,6 @@ export class RestClient {
     } catch (error) {
       logger.error(this.moduleName, 'HTTP POST request failed', error);
       throw error;
-    } finally {
-      clearTimeout(timeoutId);
     }
   }
 
