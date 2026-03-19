@@ -548,11 +548,21 @@ export class WpPublishModalV2 extends AbstractModal {
 
   private async loadOnlineImage(imagePath: string): Promise<void> {
     try {
-      const response = await fetch(imagePath);
-      const arrayBuffer = await response.arrayBuffer();
+      // Use Obsidian's requestUrl to bypass CORS restrictions
+      const response = await requestUrl({
+        url: imagePath,
+        method: 'GET'
+      });
+
+      const arrayBuffer = response.arrayBuffer;
+
+      // Detect MIME type from URL extension or response headers
+      const contentType = response.headers['content-type'];
+      const mimeType = this.getMimeTypeFromResponse(contentType, imagePath);
+
       this.autoFeaturedImage = {
         fileName: `featured-${Date.now()}.jpg`,
-        mimeType: 'image/jpeg',
+        mimeType,
         content: arrayBuffer,
         width: 1200
       };
@@ -2720,8 +2730,9 @@ export class WpPublishModalV2 extends AbstractModal {
 
       new Notice(this.t('publishModal_aiGeneratingImage'));
       const imageUrl = await this.aiService.generateImage(imageDescriptionPrompt);
-      const response = await fetch(imageUrl);
-      const arrayBuffer = await response.arrayBuffer();
+      // Use Obsidian's requestUrl to bypass CORS
+      const response = await requestUrl({ url: imageUrl, method: 'GET' });
+      const arrayBuffer = response.arrayBuffer;
 
       const fileName = `ai-generated-${Date.now()}.png`;
       this.featuredImage = {

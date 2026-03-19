@@ -189,6 +189,7 @@
   "notice_invalidImageFormat": "Invalid image format. Please select a JPEG, PNG, GIF, or WebP image.",
   "notice_imageTooLarge": "Image file is too large. Maximum size is 10MB.",
   "notice_imageLoadFailed": "Failed to load image file.",
+  "notice_imageCompressed": "Image compressed: <%= originalSize %>KB → <%= compressedSize %>KB",
   "notice_aiConfigValid": "✓ AI configuration validated successfully",
   "notice_aiConfigInvalid": "✗ AI configuration validation failed: <%= error %>",
   "notice_imageAIConfigRequired": "Please configure Image Generation AI first",

@@ -189,6 +189,7 @@
   "notice_invalidImageFormat": "无效的图片格式。请选择 JPEG、PNG、GIF 或 WebP 图片。",
   "notice_imageTooLarge": "图片文件过大。最大支持 10MB。",
   "notice_imageLoadFailed": "加载图片文件失败。",
+  "notice_imageCompressed": "图片已压缩: <%= originalSize %>KB → <%= compressedSize %>KB",
   "notice_aiConfigValid": "✓ AI 配置验证成功",
   "notice_aiConfigInvalid": "✗ AI 配置验证失败: <%= error %>",
   "notice_imageAIConfigRequired": "请先配置图片生成 AI",

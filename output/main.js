@@ -65501,6 +65501,9 @@ var init_plugin_settings = __esm({
       slugGenerationMode: "pinyin",
       imageCropRatio: "16:9",
       imageCropWidth: 1200,
+      enableImageCompression: true,
+      imageMaxSizeKB: 500,
+      imageMinQuality: 0.6,
       tagFormat: "yaml" /* YAML */
     };
   }
@@ -100928,6 +100931,53 @@ async function resizeFeaturedImage(arrayBuffer, mimeType, targetWidth, aspectRat
     return null;
   }
 }
+async function compressImage(arrayBuffer, mimeType, maxSizeKB = 500, minQuality = 0.6) {
+  try {
+    const maxSizeBytes = maxSizeKB * 1024;
+    if (arrayBuffer.byteLength <= maxSizeBytes) {
+      return null;
+    }
+    log2.info(`Compressing image: ${(arrayBuffer.byteLength / 1024).toFixed(1)}KB -> target: ${maxSizeKB}KB`);
+    const blob = new Blob([arrayBuffer], { type: mimeType });
+    const bitmap = await createImageBitmap(blob);
+    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      bitmap.close();
+      return null;
+    }
+    ctx.drawImage(bitmap, 0, 0);
+    bitmap.close();
+    let low = minQuality;
+    let high = 0.92;
+    let bestBlob = null;
+    const outputType = mimeType === "image/png" ? "image/jpeg" : mimeType;
+    while (low <= high) {
+      const mid = (low + high) / 2;
+      const blob2 = await canvas.convertToBlob({
+        type: outputType,
+        quality: mid
+      });
+      if (blob2.size <= maxSizeBytes) {
+        bestBlob = blob2;
+        high = mid - 0.05;
+      } else {
+        low = mid + 0.05;
+      }
+    }
+    if (bestBlob) {
+      const compressedSize = bestBlob.size / 1024;
+      const originalSize = arrayBuffer.byteLength / 1024;
+      log2.info(`Image compressed successfully: ${originalSize.toFixed(1)}KB -> ${compressedSize.toFixed(1)}KB`);
+      return await bestBlob.arrayBuffer();
+    }
+    log2.warn("Failed to compress image to target size");
+    return null;
+  } catch (error2) {
+    log2.error("Image compression failed", error2);
+    return null;
+  }
+}
 var import_obsidian6, log2, UnsplashPickerModal, VaultImagePickerModal;
 var init_featured_image_modal = __esm({
   "src/featured-image-modal.ts"() {
@@ -107579,11 +107629,16 @@ var init_wp_publish_modal_v2 = __esm({
       }
       async loadOnlineImage(imagePath) {
         try {
-          const response = await fetch(imagePath);
-          const arrayBuffer = await response.arrayBuffer();
+          const response = await (0, import_obsidian9.requestUrl)({
+            url: imagePath,
+            method: "GET"
+          });
+          const arrayBuffer = response.arrayBuffer;
+          const contentType = response.headers["content-type"];
+          const mimeType = this.getMimeTypeFromResponse(contentType, imagePath);
           this.autoFeaturedImage = {
             fileName: `featured-${Date.now()}.jpg`,
-            mimeType: "image/jpeg",
+            mimeType,
             content: arrayBuffer,
             width: 1200
           };
@@ -109375,8 +109430,8 @@ var init_wp_publish_modal_v2 = __esm({
           const imageDescriptionPrompt = localizedPrompt.replace("{title}", params.title || "").replace("{content}", imagePromptContent);
           new import_obsidian9.Notice(this.t("publishModal_aiGeneratingImage"));
           const imageUrl = await this.aiService.generateImage(imageDescriptionPrompt);
-          const response = await fetch(imageUrl);
-          const arrayBuffer = await response.arrayBuffer();
+          const response = await (0, import_obsidian9.requestUrl)({ url: imageUrl, method: "GET" });
+          const arrayBuffer = response.arrayBuffer;
           const fileName = `ai-generated-${Date.now()}.png`;
           this.featuredImage = {
             fileName,
@@ -113265,6 +113320,7 @@ var init_abstract_wp_client = __esm({
     import_obsidian13 = require("obsidian");
     init_wp_client();
     init_wp_publish_modal_v2();
+    init_featured_image_modal();
     init_wp_api();
     init_consts();
     init_utils5();
@@ -113573,7 +113629,7 @@ var init_abstract_wp_client = __esm({
         }
       }
       async publishPost(defaultPostParams) {
-        var _a5, _b;
+        var _a5;
         try {
           if (!this.profile.endpoint || this.profile.endpoint.length === 0) {
             throw new Error(this.plugin.i18n.t("error_noEndpoint"));
@@ -113678,14 +113734,21 @@ var init_abstract_wp_client = __esm({
               selectedCategories = fmCatArray;
               console.log("[publishPost] Using numeric IDs from frontmatter:", selectedCategories);
             } else {
-              selectedCategories = (_a5 = this.profile.lastSelectedCategories) != null ? _a5 : [1];
-              console.log("[publishPost] No categories in frontmatter, using lastSelectedCategories:", selectedCategories);
+              if (this.profile.lastSelectedCategories && this.profile.lastSelectedCategories.length > 0) {
+                selectedCategories = this.profile.lastSelectedCategories;
+              } else {
+                const uncategorized = categories.find(
+                  (cat) => cat.name === "Uncategorized" || cat.name === "\u672A\u5206\u7C7B" || cat.name.toLowerCase() === "uncategorized"
+                );
+                selectedCategories = uncategorized ? [Number(uncategorized.id)] : [1];
+              }
+              console.log("[publishPost] No categories in frontmatter, using default:", selectedCategories);
             }
             const postTypes = await this.getPostTypes(auth);
             if (postTypes.length === 0) {
               postTypes.push("post" /* Post */);
             }
-            const selectedPostType = (_b = matterData.postType) != null ? _b : "post" /* Post */;
+            const selectedPostType = (_a5 = matterData.postType) != null ? _a5 : "post" /* Post */;
             result = await new Promise((resolve) => {
               console.log("[WpPublishModalV2] Creating modal instance...");
               const publishModal = new WpPublishModalV2(
@@ -113715,10 +113778,36 @@ var init_abstract_wp_client = __esm({
                   try {
                     if (featuredImage) {
                       console.log("[WpPublishModalV2] Processing featured image:", featuredImage.fileName);
+                      let imageContent = featuredImage.content;
+                      let imageMimeType = featuredImage.mimeType;
+                      if (this.plugin.settings.enableImageCompression) {
+                        const maxSizeKB = this.plugin.settings.imageMaxSizeKB || 500;
+                        const minQuality = this.plugin.settings.imageMinQuality || 0.6;
+                        console.log("[WpPublishModalV2] Attempting image compression...");
+                        const compressedContent = await compressImage(
+                          featuredImage.content,
+                          featuredImage.mimeType,
+                          maxSizeKB,
+                          minQuality
+                        );
+                        if (compressedContent) {
+                          const originalSizeKB = (featuredImage.content.byteLength / 1024).toFixed(1);
+                          const compressedSizeKB = (compressedContent.byteLength / 1024).toFixed(1);
+                          new import_obsidian13.Notice(this.plugin.i18n.t("notice_imageCompressed", {
+                            originalSize: originalSizeKB,
+                            compressedSize: compressedSizeKB
+                          }));
+                          imageContent = compressedContent;
+                          imageMimeType = featuredImage.mimeType === "image/png" ? "image/jpeg" : featuredImage.mimeType;
+                          console.log(`[WpPublishModalV2] Image compressed: ${originalSizeKB}KB -> ${compressedSizeKB}KB`);
+                        } else {
+                          console.log("[WpPublishModalV2] Image does not need compression or compression failed");
+                        }
+                      }
                       const uploadResult = await this.uploadMedia({
-                        mimeType: featuredImage.mimeType,
+                        mimeType: imageMimeType,
                         fileName: featuredImage.fileName,
-                        content: featuredImage.content
+                        content: imageContent
                       }, auth);
                       if (uploadResult.code === 0 /* OK */) {
                         postParams2.featuredMedia = uploadResult.data.id;
@@ -116020,6 +116109,7 @@ __export(en_exports, {
   notice_imageAIConfigInvalid: () => notice_imageAIConfigInvalid,
   notice_imageAIConfigRequired: () => notice_imageAIConfigRequired,
   notice_imageAIConfigValid: () => notice_imageAIConfigValid,
+  notice_imageCompressed: () => notice_imageCompressed,
   notice_imageLoadFailed: () => notice_imageLoadFailed,
   notice_imageTooLarge: () => notice_imageTooLarge,
   notice_invalidImageFormat: () => notice_invalidImageFormat,
@@ -116162,6 +116252,9 @@ __export(en_exports, {
   publishModal_save: () => publishModal_save,
   publishModal_saveAndUseButton: () => publishModal_saveAndUseButton,
   publishModal_saveButton: () => publishModal_saveButton,
+  publishModal_saveParams: () => publishModal_saveParams,
+  publishModal_saveParamsFailed: () => publishModal_saveParamsFailed,
+  publishModal_saveParamsSuccess: () => publishModal_saveParamsSuccess,
   publishModal_saveSettings: () => publishModal_saveSettings,
   publishModal_selectCategory: () => publishModal_selectCategory,
   publishModal_selectFeaturedImage: () => publishModal_selectFeaturedImage,
@@ -116527,6 +116620,7 @@ var notice_imageAIApiKeyRequired = "Please enter an Image Generation AI API Key 
 var notice_invalidImageFormat = "Invalid image format. Please select a JPEG, PNG, GIF, or WebP image.";
 var notice_imageTooLarge = "Image file is too large. Maximum size is 10MB.";
 var notice_imageLoadFailed = "Failed to load image file.";
+var notice_imageCompressed = "Image compressed: <%= originalSize %>KB \u2192 <%= compressedSize %>KB";
 var notice_aiConfigValid = "\u2713 AI configuration validated successfully";
 var notice_aiConfigInvalid = "\u2717 AI configuration validation failed: <%= error %>";
 var notice_imageAIConfigRequired = "Please configure Image Generation AI first";
@@ -116672,6 +116766,9 @@ var publishModal_advancedTab = "\u{1F527} Advanced";
 var publishModal_previewTitle = "Post Preview";
 var publishModal_previewEditPlaceholder = "Edit Markdown content here...";
 var publishModal_save = "Save";
+var publishModal_saveParams = "Save Params";
+var publishModal_saveParamsSuccess = "\u2705 Parameters saved to frontmatter";
+var publishModal_saveParamsFailed = "\u274C Failed to save parameters: <%= error %>";
 var publishModal_cancel = "Cancel";
 var publishModal_previewFeaturedImage = "Featured Image";
 var publishModal_previewFeaturedImageUploaded = "Featured Image (Uploaded to WordPress)";
@@ -116937,6 +117034,7 @@ var en_default = {
   notice_invalidImageFormat,
   notice_imageTooLarge,
   notice_imageLoadFailed,
+  notice_imageCompressed,
   notice_aiConfigValid,
   notice_aiConfigInvalid,
   notice_imageAIConfigRequired,
@@ -117082,6 +117180,9 @@ var en_default = {
   publishModal_previewTitle,
   publishModal_previewEditPlaceholder,
   publishModal_save,
+  publishModal_saveParams,
+  publishModal_saveParamsSuccess,
+  publishModal_saveParamsFailed,
   publishModal_cancel,
   publishModal_previewFeaturedImage,
   publishModal_previewFeaturedImageUploaded,
@@ -117255,6 +117356,7 @@ __export(zh_cn_exports, {
   notice_imageAIConfigInvalid: () => notice_imageAIConfigInvalid2,
   notice_imageAIConfigRequired: () => notice_imageAIConfigRequired2,
   notice_imageAIConfigValid: () => notice_imageAIConfigValid2,
+  notice_imageCompressed: () => notice_imageCompressed2,
   notice_imageLoadFailed: () => notice_imageLoadFailed2,
   notice_imageTooLarge: () => notice_imageTooLarge2,
   notice_invalidImageFormat: () => notice_invalidImageFormat2,
@@ -117397,6 +117499,9 @@ __export(zh_cn_exports, {
   publishModal_save: () => publishModal_save2,
   publishModal_saveAndUseButton: () => publishModal_saveAndUseButton2,
   publishModal_saveButton: () => publishModal_saveButton2,
+  publishModal_saveParams: () => publishModal_saveParams2,
+  publishModal_saveParamsFailed: () => publishModal_saveParamsFailed2,
+  publishModal_saveParamsSuccess: () => publishModal_saveParamsSuccess2,
   publishModal_saveSettings: () => publishModal_saveSettings2,
   publishModal_selectCategory: () => publishModal_selectCategory2,
   publishModal_selectFeaturedImage: () => publishModal_selectFeaturedImage2,
@@ -117762,6 +117867,7 @@ var notice_imageAIApiKeyRequired2 = "\u8BF7\u5148\u5728\u63D2\u4EF6\u8BBE\u7F6E\
 var notice_invalidImageFormat2 = "\u65E0\u6548\u7684\u56FE\u7247\u683C\u5F0F\u3002\u8BF7\u9009\u62E9 JPEG\u3001PNG\u3001GIF \u6216 WebP \u56FE\u7247\u3002";
 var notice_imageTooLarge2 = "\u56FE\u7247\u6587\u4EF6\u8FC7\u5927\u3002\u6700\u5927\u652F\u6301 10MB\u3002";
 var notice_imageLoadFailed2 = "\u52A0\u8F7D\u56FE\u7247\u6587\u4EF6\u5931\u8D25\u3002";
+var notice_imageCompressed2 = "\u56FE\u7247\u5DF2\u538B\u7F29: <%= originalSize %>KB \u2192 <%= compressedSize %>KB";
 var notice_aiConfigValid2 = "\u2713 AI \u914D\u7F6E\u9A8C\u8BC1\u6210\u529F";
 var notice_aiConfigInvalid2 = "\u2717 AI \u914D\u7F6E\u9A8C\u8BC1\u5931\u8D25: <%= error %>";
 var notice_imageAIConfigRequired2 = "\u8BF7\u5148\u914D\u7F6E\u56FE\u7247\u751F\u6210 AI";
@@ -117907,6 +118013,9 @@ var publishModal_advancedTab2 = "\u{1F527} \u9AD8\u7EA7\u8BBE\u7F6E";
 var publishModal_previewTitle2 = "\u6587\u7AE0\u9884\u89C8";
 var publishModal_previewEditPlaceholder2 = "\u5728\u6B64\u7F16\u8F91 Markdown \u5185\u5BB9...";
 var publishModal_save2 = "\u4FDD\u5B58";
+var publishModal_saveParams2 = "\u4FDD\u5B58";
+var publishModal_saveParamsSuccess2 = "\u2705 \u53C2\u6570\u5DF2\u4FDD\u5B58\u5230 frontmatter";
+var publishModal_saveParamsFailed2 = "\u274C \u4FDD\u5B58\u53C2\u6570\u5931\u8D25: <%= error %>";
 var publishModal_cancel2 = "\u53D6\u6D88";
 var publishModal_previewFeaturedImage2 = "\u7279\u8272\u56FE\u7247";
 var publishModal_previewFeaturedImageUploaded2 = "\u7279\u8272\u56FE\u7247\uFF08\u5DF2\u4E0A\u4F20\u5230 WordPress\uFF09";
@@ -118172,6 +118281,7 @@ var zh_cn_default = {
   notice_invalidImageFormat: notice_invalidImageFormat2,
   notice_imageTooLarge: notice_imageTooLarge2,
   notice_imageLoadFailed: notice_imageLoadFailed2,
+  notice_imageCompressed: notice_imageCompressed2,
   notice_aiConfigValid: notice_aiConfigValid2,
   notice_aiConfigInvalid: notice_aiConfigInvalid2,
   notice_imageAIConfigRequired: notice_imageAIConfigRequired2,
@@ -118317,6 +118427,9 @@ var zh_cn_default = {
   publishModal_previewTitle: publishModal_previewTitle2,
   publishModal_previewEditPlaceholder: publishModal_previewEditPlaceholder2,
   publishModal_save: publishModal_save2,
+  publishModal_saveParams: publishModal_saveParams2,
+  publishModal_saveParamsSuccess: publishModal_saveParamsSuccess2,
+  publishModal_saveParamsFailed: publishModal_saveParamsFailed2,
   publishModal_cancel: publishModal_cancel2,
   publishModal_previewFeaturedImage: publishModal_previewFeaturedImage2,
   publishModal_previewFeaturedImageUploaded: publishModal_previewFeaturedImageUploaded2,

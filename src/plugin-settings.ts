@@ -137,6 +137,21 @@ export interface WordpressPluginSettings {
   imageCropWidth: number;
 
   /**
+   * Enable image compression before upload.
+   */
+  enableImageCompression: boolean;
+
+  /**
+   * Maximum image file size in KB before compression is applied.
+   */
+  imageMaxSizeKB: number;
+
+  /**
+   * Minimum quality for image compression (0.1 - 1.0).
+   */
+  imageMinQuality: number;
+
+  /**
    * Tag format preference: YAML array or inline tags (#tag).
    */
   tagFormat: TagFormat;
@@ -158,6 +173,9 @@ export const DEFAULT_SETTINGS: WordpressPluginSettings = {
   slugGenerationMode: 'pinyin',
   imageCropRatio: '16:9',
   imageCropWidth: 1200,
+  enableImageCompression: true,
+  imageMaxSizeKB: 500,
+  imageMinQuality: 0.6,
   tagFormat: TagFormat.YAML,
 }
 

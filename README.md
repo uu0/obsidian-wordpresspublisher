@@ -172,6 +172,47 @@ Thanks to all open-source community contributors!
 
 ## Changelog
 
+### 2.1.1 (2026-03-19)
+
+**Category Management UI Improvements**
+
+This release focuses on fixing category selection UI issues and improving mobile layout responsiveness.
+
+**Bug Fixes**
+
+- **Category Dropdown Visibility**
+  - Fixed category dropdown and add button not displaying correctly
+  - Resolved CSS layout issue where `width: 100%` on `.wp-category-tags-container` pushed the add button out of view
+  - Category add button now always visible and functional
+
+- **Category Initialization**
+  - Fixed default category not being set correctly when no frontmatter categories exist
+  - Now properly finds "Uncategorized" by name (支持中文"未分类") instead of hardcoded ID
+  - Ensures consistent category selection across different WordPress configurations
+
+- **Mobile Footer Layout**
+  - Fixed footer button overflow on small screens
+  - Added complete footer button layout with save params button for mobile
+  - Improved responsive design for screens ≤ 480px
+
+- **Category Add Button Restoration**
+  - Fixed category add button not restoring after dropdown blur
+  - Added proper `onblur` event handling to restore button visibility
+  - Improved user experience when canceling category selection
+
+**Improvements**
+
+- **Save Button Rename**
+  - Renamed "Save Parameters" button to "Save" for consistency and clarity
+  - Updated both English and Chinese translations
+
+- **Category Selection UX**
+  - Category dropdown now always shows available categories
+  - Improved layout with separate containers for tags and add controls
+  - Better visual separation between selected categories and selection controls
+
+---
+
 ### 2.1.0 (2026-03-18)
 
 **Image Processing & Upload Improvements**

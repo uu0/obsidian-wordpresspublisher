@@ -164,6 +164,106 @@ Thanks to all open source community contributors!
 
 ## Changelog
 
+### 2.1.1 (2026-03-19)
+
+**Category Management UI Improvements**
+
+This release focuses on fixing category selection UI issues and improving mobile layout responsiveness.
+
+**Bug Fixes**
+
+- **Category Dropdown Visibility**
+  - Fixed category dropdown and add button not displaying correctly
+  - Resolved CSS layout issue where `width: 100%` on `.wp-category-tags-container` pushed the add button out of view
+  - Category add button now always visible and functional
+
+- **Category Initialization**
+  - Fixed default category not being set correctly when no frontmatter categories exist
+  - Now properly finds "Uncategorized" by name (支持中文"未分类") instead of hardcoded ID
+  - Ensures consistent category selection across different WordPress configurations
+
+- **Mobile Footer Layout**
+  - Fixed footer button overflow on small screens
+  - Added complete footer button layout with save params button for mobile
+  - Improved responsive design for screens ≤ 480px
+
+- **Category Add Button Restoration**
+  - Fixed category add button not restoring after dropdown blur
+  - Added proper `onblur` event handling to restore button visibility
+  - Improved user experience when canceling category selection
+
+**Improvements**
+
+- **Save Button Rename**
+  - Renamed "Save Parameters" button to "Save" for simplicity
+  - Improved overall user experience for category selection and management
+
+---
+
+### 2.1.0 (2026-03-18)
+
+**Image Processing & Upload Improvements**
+
+This release focuses on image handling reliability, featuring automatic compression, consistent cropping across all image sources, and robust error handling with retry logic.
+
+**New Features**
+
+- **Automatic Image Compression**
+  - Compresses images exceeding configurable size threshold before upload
+  - Binary search algorithm finds optimal quality while staying under size limit
+  - PNG automatically converts to JPEG for better compression
+  - Configurable settings: `enableImageCompression`, `imageMaxSizeKB` (default 500KB), `imageMinQuality` (default 0.6)
+  - Shows compression result notice: "图片已压缩: 2500KB → 380KB"
+
+- **Image Cropping for All Sources**
+  - Previously: cropping only applied to local file uploads and Unsplash
+  - Now: cropping applies to **all** image sources including vault selection and AI-generated images
+  - Consistent aspect ratio and width across all featured images
+
+- **Smart Error Handling for Featured Image Upload**
+  - Automatic retry for transient server errors (502, 503, 504, timeout, network issues)
+  - Maximum 2 retries with 2-second delay between attempts
+  - Fallback to existing featured image ID if available when upload fails
+  - Prominent 10-second error notice with clear indication of failure
+
+- **Auth Cache Duration Configuration**
+  - Configurable authentication cache duration: 1 day / 1 week / 1 month / 6 months / forever
+  - Reduces repeated login prompts for long sessions
+
+**Bug Fixes**
+
+- **Frontmatter Field Preservation**
+  - Fixed `existingOtherFields` being collected but never restored to frontmatter
+  - User-added frontmatter fields (author, date, custom fields, etc.) are now preserved during publish
+  - Fixed excerpt being cleared when empty - now only updates if non-empty value provided
+
+- **Frontmatter Sync with Remote Values**
+  - WordPress may modify slug on save (e.g., add suffix for conflicts)
+  - Plugin now syncs remote `slug`, `tags`, and other fields back to frontmatter after publish
+  - Tags converted from IDs to names using cached tag list
+
+- **Featured Image State Management**
+  - Fixed `cachedFeaturedImageId` not being cleared when user removes image
+  - Prevents stale cached IDs from being used when publishing without an image
+
+- **Category Display**
+  - Fixed category not showing due to incorrect nullish coalescing operator
+  - Changed `??` to `||` for postType default value handling
+
+- **CORS Error Fix**
+  - Loading online images now uses Obsidian's `requestUrl` instead of `fetch`
+  - Resolves CORS errors when loading remote featured images
+
+**Improvements**
+
+- Added detailed debug logging for featured image upload flow
+- Added loading spinner animation during async operations
+- Improved category conflict detection with user-friendly notices
+- Better async error handling throughout the codebase
+- Type safety improvements with proper TypeScript typing
+
+---
+
 ### 1.2.1 (2026-03-14)
 
 **Bug Fixes**

@@ -10,6 +10,7 @@ import {
   WordPressPublishResult
 } from './wp-client';
 import { WpPublishModalV2 } from './wp-publish-modal-v2';
+import { compressImage } from './featured-image-modal';
 import { PostType, PostTypeConst, Term } from './wp-api';
 import { ERROR_NOTICE_TIMEOUT, WP_DEFAULT_PROFILE_NAME } from './consts';
 import { isPromiseFulfilledResult, isValidUrl, openWithBrowser, processFile, SafeAny, showError, } from './utils';
@@ -649,10 +650,43 @@ export abstract class AbstractWordPressClient implements WordPressClient {
                 // Handle featured image
                 if (featuredImage) {
                   console.log('[WpPublishModalV2] Processing featured image:', featuredImage.fileName);
+
+                  // Apply image compression if enabled
+                  let imageContent = featuredImage.content;
+                  let imageMimeType = featuredImage.mimeType;
+
+                  if (this.plugin.settings.enableImageCompression) {
+                    const maxSizeKB = this.plugin.settings.imageMaxSizeKB || 500;
+                    const minQuality = this.plugin.settings.imageMinQuality || 0.6;
+
+                    console.log('[WpPublishModalV2] Attempting image compression...');
+                    const compressedContent = await compressImage(
+                      featuredImage.content,
+                      featuredImage.mimeType,
+                      maxSizeKB,
+                      minQuality
+                    );
+
+                    if (compressedContent) {
+                      const originalSizeKB = (featuredImage.content.byteLength / 1024).toFixed(1);
+                      const compressedSizeKB = (compressedContent.byteLength / 1024).toFixed(1);
+                      new Notice(this.plugin.i18n.t('notice_imageCompressed', {
+                        originalSize: originalSizeKB,
+                        compressedSize: compressedSizeKB
+                      }));
+                      imageContent = compressedContent;
+                      // PNG is converted to JPEG during compression
+                      imageMimeType = featuredImage.mimeType === 'image/png' ? 'image/jpeg' : featuredImage.mimeType;
+                      console.log(`[WpPublishModalV2] Image compressed: ${originalSizeKB}KB -> ${compressedSizeKB}KB`);
+                    } else {
+                      console.log('[WpPublishModalV2] Image does not need compression or compression failed');
+                    }
+                  }
+
                   const uploadResult = await this.uploadMedia({
-                    mimeType: featuredImage.mimeType,
+                    mimeType: imageMimeType,
                     fileName: featuredImage.fileName,
-                    content: featuredImage.content
+                    content: imageContent
                   }, auth);
 
                   if (uploadResult.code === WordPressClientReturnCode.OK) {
