@@ -688,6 +688,40 @@ export class WpPublishModalV2 extends AbstractModal {
   }
 
   /**
+   * 保存当前参数到 frontmatter（不发布），保存后关闭弹窗
+   */
+  private async saveParamsToFrontmatter(params: WordPressPostParams): Promise<void> {
+    if (!this.notePath) return;
+    const file = this.plugin.app.vault.getAbstractFileByPath(this.notePath);
+    if (!file || !(file instanceof TFile)) return;
+
+    try {
+      await this.plugin.app.fileManager.processFrontMatter(file, (fm) => {
+        if (params.slug) fm.slug = params.slug;
+
+        // 将分类 ID 转换为名称保存
+        const categoryNames = params.categories
+          .map(catId => this.categories.items.find(t => Number(t.id) === catId))
+          .filter((term): term is Term => !!term && Number(term.id) > 0)
+          .map(term => term.name);
+        if (categoryNames.length > 0) fm.categories = categoryNames;
+
+        if (params.tags && params.tags.length > 0) {
+          fm.tags = TagFormatter.formatTags(params.tags, this.plugin.settings.tagFormat);
+        }
+
+        if (params.excerpt) fm.excerpt = params.excerpt;
+      });
+
+      new Notice(this.t('publishModal_settingsSaved') || '设置已保存');
+      this.close();
+    } catch (error) {
+      log.error('Failed to save params to frontmatter:', error);
+      new Notice('保存失败: ' + (error instanceof Error ? error.message : String(error)));
+    }
+  }
+
+  /**
    * 保存生成的内容（标签、摘要等）到 frontmatter
    * 当用户生成内容后关闭窗口时，确保内容不会丢失
    */
@@ -2008,8 +2042,15 @@ export class WpPublishModalV2 extends AbstractModal {
       if (contentSection?.__enterContentEdit) contentSection.__enterContentEdit();
     };
 
+    // 💾 保存按钮（将参数保存到 frontmatter，不发布）
+    const saveBtn = footer.createEl('button', {
+      text: this.t('publishModal_save') || '保存',
+      cls: 'wp-v3-save-footer-btn'
+    }) as HTMLButtonElement;
+    saveBtn.onclick = () => this.saveParamsToFrontmatter(params);
+
     const cancelBtn = footer.createEl('button', {
-      text: '❌ ' + (this.t('publishModal_cancel') || '取消'),
+      text: this.t('publishModal_cancel') || '取消',
       cls: 'wp-v3-cancel-footer-btn'
     });
     cancelBtn.onclick = () => this.close();

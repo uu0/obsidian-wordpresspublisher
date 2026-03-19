@@ -1182,7 +1182,8 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 8px;
   padding: 10px 20px;
   border-top: 1px solid var(--background-modifier-border);
   background: var(--background-primary);
@@ -1223,6 +1224,23 @@
 
 .wp-v3-cancel-footer-btn:hover {
   background: var(--background-modifier-hover);
+}
+
+.wp-v3-save-footer-btn {
+  padding: 8px 20px;
+  border-radius: 6px;
+  border: 1px solid var(--interactive-accent);
+  background: var(--background-secondary);
+  color: var(--interactive-accent);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.wp-v3-save-footer-btn:hover {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
 }
 
 .wp-v3-publish-footer-btn {
@@ -1331,6 +1349,32 @@
     z-index: 10 !important;
     background: var(--background-primary) !important;
     box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.12) !important;
+    padding: 8px 12px !important;
+    gap: 6px !important;
+  }
+
+  /* 8. footer 按钮：移动端缩小尺寸，自适应行宽 */
+  .wp-v3-edit-footer-btn {
+    font-size: 13px !important;
+    padding: 7px 12px !important;
+    flex: 1 !important;
+    min-width: 0 !important;
+    margin-right: 0 !important;
+  }
+
+  .wp-v3-save-footer-btn,
+  .wp-v3-cancel-footer-btn {
+    font-size: 13px !important;
+    padding: 7px 12px !important;
+    flex: 1 !important;
+    min-width: 0 !important;
+  }
+
+  .wp-v3-publish-footer-btn {
+    font-size: 13px !important;
+    padding: 7px 14px !important;
+    flex: 1.5 !important;
+    min-width: 0 !important;
   }
 }
 

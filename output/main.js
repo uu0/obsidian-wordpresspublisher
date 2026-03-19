@@ -107695,6 +107695,30 @@ var init_wp_publish_modal_v2 = __esm({
         }
       }
       /**
+       * 保存当前参数到 frontmatter（不发布），保存后关闭弹窗
+       */
+      async saveParamsToFrontmatter(params) {
+        if (!this.notePath) return;
+        const file = this.plugin.app.vault.getAbstractFileByPath(this.notePath);
+        if (!file || !(file instanceof import_obsidian9.TFile)) return;
+        try {
+          await this.plugin.app.fileManager.processFrontMatter(file, (fm) => {
+            if (params.slug) fm.slug = params.slug;
+            const categoryNames = params.categories.map((catId) => this.categories.items.find((t) => Number(t.id) === catId)).filter((term) => !!term && Number(term.id) > 0).map((term) => term.name);
+            if (categoryNames.length > 0) fm.categories = categoryNames;
+            if (params.tags && params.tags.length > 0) {
+              fm.tags = TagFormatter.formatTags(params.tags, this.plugin.settings.tagFormat);
+            }
+            if (params.excerpt) fm.excerpt = params.excerpt;
+          });
+          new import_obsidian9.Notice(this.t("publishModal_settingsSaved") || "\u8BBE\u7F6E\u5DF2\u4FDD\u5B58");
+          this.close();
+        } catch (error2) {
+          log4.error("Failed to save params to frontmatter:", error2);
+          new import_obsidian9.Notice("\u4FDD\u5B58\u5931\u8D25: " + (error2 instanceof Error ? error2.message : String(error2)));
+        }
+      }
+      /**
        * 保存生成的内容（标签、摘要等）到 frontmatter
        * 当用户生成内容后关闭窗口时，确保内容不会丢失
        */
@@ -108833,8 +108857,13 @@ var init_wp_publish_modal_v2 = __esm({
           const contentSection = container.querySelector('[data-content-section="true"]');
           if (contentSection == null ? void 0 : contentSection.__enterContentEdit) contentSection.__enterContentEdit();
         };
+        const saveBtn = footer.createEl("button", {
+          text: this.t("publishModal_save") || "\u4FDD\u5B58",
+          cls: "wp-v3-save-footer-btn"
+        });
+        saveBtn.onclick = () => this.saveParamsToFrontmatter(params);
         const cancelBtn = footer.createEl("button", {
-          text: "\u274C " + (this.t("publishModal_cancel") || "\u53D6\u6D88"),
+          text: this.t("publishModal_cancel") || "\u53D6\u6D88",
           cls: "wp-v3-cancel-footer-btn"
         });
         cancelBtn.onclick = () => this.close();
