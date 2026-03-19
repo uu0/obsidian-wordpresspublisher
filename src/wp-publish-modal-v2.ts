@@ -3145,9 +3145,7 @@ export class WpPublishModalV2 extends AbstractModal {
           // 添加占位选项
           select.createEl('option', {
             value: '',
-            text: available.length > 0
-              ? (this.t('publishModal_selectCategory') || '选择分类...')
-              : '（无更多分类）'
+            text: this.t('publishModal_selectCategory') || '选择分类...'
           });
 
           available.forEach(cat => {
