@@ -332,7 +332,7 @@
   "publishModal_previewTitle": "文章预览",
   "publishModal_previewEditPlaceholder": "在此编辑 Markdown 内容...",
   "publishModal_save": "保存",
-  "publishModal_saveParams": "保存参数",
+  "publishModal_saveParams": "保存",
   "publishModal_saveParamsSuccess": "✅ 参数已保存到 frontmatter",
   "publishModal_saveParamsFailed": "❌ 保存参数失败: <%= error %>",
   "publishModal_cancel": "取消",
