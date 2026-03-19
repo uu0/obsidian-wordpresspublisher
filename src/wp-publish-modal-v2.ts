@@ -1876,24 +1876,16 @@ export class WpPublishModalV2 extends AbstractModal {
         // 操作按钮行
         const btnRow = tagsWrap.createEl('span', { cls: 'wp-v3-cat-btn-row' });
 
-        // 「选择」按钮 — 从已有分类中选
+        // 下拉框 — 从已有分类中选（始终显示）
         const available = validCategories.filter(cat => !params.categories.includes(Number(cat.id)));
-        if (available.length > 0) {
-          const selectBtn = btnRow.createEl('button', { cls: 'wp-v3-cat-select-btn', text: this.plugin.t('publishModal_selectCategory') || '选择' });
-          selectBtn.addEventListener('click', () => {
-            const select = btnRow.createEl('select', { cls: 'wp-v3-select' });
-            select.style.width = 'auto';
-            select.style.fontSize = '11px';
-            select.createEl('option', { value: '', text: '...' });
-            available.forEach(cat => select.createEl('option', { value: String(cat.id), text: cat.name }));
-            selectBtn.style.display = 'none';
-            select.addEventListener('change', () => {
-              if (select.value) { params.categories.push(Number(select.value)); renderCats(); }
-            });
-            select.addEventListener('blur', () => { select.remove(); selectBtn.style.display = ''; });
-            select.focus();
-          });
-        }
+        const select = btnRow.createEl('select', { cls: 'wp-v3-select' });
+        select.style.width = 'auto';
+        select.style.fontSize = '11px';
+        select.createEl('option', { value: '', text: this.plugin.t('publishModal_selectCategory') || '选择分类...' });
+        available.forEach(cat => select.createEl('option', { value: String(cat.id), text: cat.name }));
+        select.addEventListener('change', () => {
+          if (select.value) { params.categories.push(Number(select.value)); renderCats(); }
+        });
 
         // 「增加」按钮 — 创建新分类（发布时在远端创建）
         const addBtn = btnRow.createEl('button', { cls: 'wp-v3-cat-add-btn', text: this.plugin.t('publishModal_addCategory') || '增加' });
@@ -3080,42 +3072,28 @@ export class WpPublishModalV2 extends AbstractModal {
         const actionRow = document.createElement('div');
         actionRow.className = 'wp-category-action-row';
 
-        // 「选择」按钮 — 从已有分类中选
+        // 下拉框 — 从已有分类中选（始终显示）
         const available = getAvailableCategories();
-        if (available.length > 0) {
-          const selectBtn = document.createElement('button');
-          selectBtn.className = 'wp-category-select-btn';
-          selectBtn.textContent = this.plugin.t('publishModal_selectCategory') || '选择';
-          selectBtn.onclick = () => {
-            const select = document.createElement('select');
-            select.className = 'wp-category-dropdown';
-            const placeholder = document.createElement('option');
-            placeholder.value = '';
-            placeholder.textContent = '...';
-            select.appendChild(placeholder);
-            available.forEach(cat => {
-              const opt = document.createElement('option');
-              opt.value = String(cat.id);
-              opt.textContent = cat.name;
-              select.appendChild(opt);
-            });
-            select.onchange = () => {
-              if (select.value) {
-                params.categories.push(Number(select.value));
-                renderCategoryTags();
-                renderActionButtons();
-              }
-            };
-            select.onblur = () => {
-              select.remove();
-              selectBtn.style.display = '';
-            };
-            actionRow.insertBefore(select, selectBtn);
-            selectBtn.style.display = 'none';
-            select.focus();
-          };
-          actionRow.appendChild(selectBtn);
-        }
+        const select = document.createElement('select');
+        select.className = 'wp-category-dropdown';
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = this.plugin.t('publishModal_selectCategory') || '选择分类...';
+        select.appendChild(placeholder);
+        available.forEach(cat => {
+          const opt = document.createElement('option');
+          opt.value = String(cat.id);
+          opt.textContent = cat.name;
+          select.appendChild(opt);
+        });
+        select.onchange = () => {
+          if (select.value) {
+            params.categories.push(Number(select.value));
+            renderCategoryTags();
+            renderActionButtons();
+          }
+        };
+        actionRow.appendChild(select);
 
         // 「增加」按钮 — 创建新分类（发布时在远端创建）
         const addBtn = document.createElement('button');
