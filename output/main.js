@@ -65199,6 +65199,123 @@ var init_lodash = __esm({
   }
 });
 
+// src/utils/logger.ts
+function createModuleLogger(moduleName) {
+  return {
+    debug: (message2, data2) => logger.debug(moduleName, message2, data2),
+    info: (message2, data2) => logger.info(moduleName, message2, data2),
+    warn: (message2, data2) => logger.warn(moduleName, message2, data2),
+    error: (message2, error2) => logger.error(moduleName, message2, error2)
+  };
+}
+var Logger, logger;
+var init_logger = __esm({
+  "src/utils/logger.ts"() {
+    "use strict";
+    Logger = class _Logger {
+      constructor() {
+        this.config = {
+          level: 1 /* INFO */,
+          enableConsole: true
+        };
+      }
+      /**
+       * Get singleton instance
+       */
+      static getInstance() {
+        if (!_Logger.instance) {
+          _Logger.instance = new _Logger();
+        }
+        return _Logger.instance;
+      }
+      /**
+       * Set logging level
+       */
+      setLevel(level) {
+        this.config.level = level;
+      }
+      /**
+       * Enable or disable console logging
+       */
+      setEnableConsole(enable) {
+        this.config.enableConsole = enable;
+      }
+      /**
+       * Format log entry
+       */
+      formatEntry(level, module2, message2, data2) {
+        return {
+          timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+          level,
+          module: module2,
+          message: message2,
+          ...data2 !== void 0 && { data: data2 }
+        };
+      }
+      /**
+       * Log debug message
+       */
+      debug(module2, message2, data2) {
+        if (this.config.level <= 0 /* DEBUG */ && this.config.enableConsole) {
+          const entry = this.formatEntry("DEBUG", module2, message2, data2);
+          console.debug(`[${entry.timestamp}] [${entry.module}] ${entry.message}`, data2 || "");
+        }
+      }
+      /**
+       * Log info message
+       */
+      info(module2, message2, data2) {
+        if (this.config.level <= 1 /* INFO */ && this.config.enableConsole) {
+          const entry = this.formatEntry("INFO", module2, message2, data2);
+          console.info(`[${entry.timestamp}] [${entry.module}] ${entry.message}`, data2 || "");
+        }
+      }
+      /**
+       * Log warning message
+       */
+      warn(module2, message2, data2) {
+        if (this.config.level <= 2 /* WARN */ && this.config.enableConsole) {
+          const entry = this.formatEntry("WARN", module2, message2, data2);
+          console.warn(`[${entry.timestamp}] [${entry.module}] ${entry.message}`, data2 || "");
+        }
+      }
+      /**
+       * Log error message
+       */
+      error(module2, message2, error2) {
+        if (this.config.level <= 3 /* ERROR */ && this.config.enableConsole) {
+          const entry = this.formatEntry("ERROR", module2, message2, error2);
+          if (true) {
+            console.error(`[${entry.timestamp}] [${entry.module}] ${entry.message}`, error2 || "");
+          }
+        }
+      }
+      /**
+       * Log with custom log level
+       */
+      log(level, module2, message2, data2) {
+        switch (level) {
+          case 0 /* DEBUG */:
+            this.debug(module2, message2, data2);
+            break;
+          case 1 /* INFO */:
+            this.info(module2, message2, data2);
+            break;
+          case 2 /* WARN */:
+            this.warn(module2, message2, data2);
+            break;
+          case 3 /* ERROR */:
+            this.error(module2, message2, data2);
+            break;
+          default:
+            break;
+        }
+      }
+    };
+    logger = Logger.getInstance();
+  }
+});
+
 // src/pass-crypto.ts
 var AES_GCM, FORMAT_JWK, PassCrypto;
 var init_pass_crypto = __esm({
@@ -65247,7 +65364,12 @@ var init_pass_crypto = __esm({
       async decrypt(encrypted, key, vector) {
         if (this.canUse()) {
           if (key && vector) {
-            const keyObject = JSON.parse(key);
+            let keyObject;
+            try {
+              keyObject = JSON.parse(key);
+            } catch (e) {
+              throw new Error("Decryption failed: stored key is corrupted");
+            }
             const thisKey = await crypto.subtle.importKey(
               FORMAT_JWK,
               keyObject,
@@ -65267,7 +65389,7 @@ var init_pass_crypto = __esm({
             );
             return new TextDecoder().decode(decrypted);
           }
-          return "xx";
+          throw new Error("Decryption failed: missing key or vector");
         } else {
           return this.reverseString(this.base64ToString(this.reverseString(encrypted)));
         }
@@ -65301,7 +65423,7 @@ var init_pass_crypto = __esm({
 
 // src/plugin-settings.ts
 async function upgradeSettings(existingSettings, to) {
-  console.log(existingSettings, to);
+  logger.debug("upgradeSettings", "upgrading settings", { from: existingSettings == null ? void 0 : existingSettings.version, to });
   if (isUndefined_default(existingSettings.version)) {
     if (to === "2" /* V2 */) {
       const newSettings = Object.assign({}, DEFAULT_SETTINGS, {
@@ -65360,6 +65482,7 @@ var init_plugin_settings = __esm({
     "use strict";
     init_wp_api();
     init_lodash();
+    init_logger();
     init_pass_crypto();
     init_consts();
     DEFAULT_SETTINGS = {
@@ -71192,18 +71315,20 @@ var init_date_fns = __esm({
 });
 
 // src/xmlrpc-client.ts
-var import_obsidian, XmlRpcClient;
+var import_obsidian, MODULE, XmlRpcClient;
 var init_xmlrpc_client = __esm({
   "src/xmlrpc-client.ts"() {
     "use strict";
     import_obsidian = require("obsidian");
     init_lodash();
     init_date_fns();
+    init_logger();
+    MODULE = "XmlRpcClient";
     XmlRpcClient = class {
       constructor(options) {
         this.options = options;
         var _a5;
-        console.log(options);
+        logger.debug(MODULE, "Initializing", { url: options.url.href });
         this.href = this.options.url.href;
         if (this.href.endsWith("/")) {
           this.href = this.href.substring(0, this.href.length - 1);
@@ -71219,7 +71344,7 @@ var init_xmlrpc_client = __esm({
       }
       methodCall(method, params) {
         const xml2 = this.objectToXml(method, params);
-        console.log(`Endpoint: ${this.endpoint}, ${method}, request: ${xml2}`, params);
+        logger.debug(MODULE, "methodCall", { endpoint: this.endpoint, method });
         return (0, import_obsidian.request)({
           url: this.endpoint,
           method: "POST",
@@ -71309,7 +71434,7 @@ var init_xmlrpc_client = __esm({
           const responseValue = methodResponse.children[0].children[0].children[0].children[0];
           response = this.fromElement(responseValue);
         }
-        console.log(`response: ${xml2}`, response);
+        logger.debug(MODULE, "methodCall response received");
         return response;
       }
       fromElement(element) {
@@ -99278,123 +99403,6 @@ var init_dist3 = __esm({
   }
 });
 
-// src/utils/logger.ts
-function createModuleLogger(moduleName) {
-  return {
-    debug: (message2, data2) => logger.debug(moduleName, message2, data2),
-    info: (message2, data2) => logger.info(moduleName, message2, data2),
-    warn: (message2, data2) => logger.warn(moduleName, message2, data2),
-    error: (message2, error2) => logger.error(moduleName, message2, error2)
-  };
-}
-var Logger, logger;
-var init_logger = __esm({
-  "src/utils/logger.ts"() {
-    "use strict";
-    Logger = class _Logger {
-      constructor() {
-        this.config = {
-          level: 1 /* INFO */,
-          enableConsole: true
-        };
-      }
-      /**
-       * Get singleton instance
-       */
-      static getInstance() {
-        if (!_Logger.instance) {
-          _Logger.instance = new _Logger();
-        }
-        return _Logger.instance;
-      }
-      /**
-       * Set logging level
-       */
-      setLevel(level) {
-        this.config.level = level;
-      }
-      /**
-       * Enable or disable console logging
-       */
-      setEnableConsole(enable) {
-        this.config.enableConsole = enable;
-      }
-      /**
-       * Format log entry
-       */
-      formatEntry(level, module2, message2, data2) {
-        return {
-          timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-          level,
-          module: module2,
-          message: message2,
-          ...data2 !== void 0 && { data: data2 }
-        };
-      }
-      /**
-       * Log debug message
-       */
-      debug(module2, message2, data2) {
-        if (this.config.level <= 0 /* DEBUG */ && this.config.enableConsole) {
-          const entry = this.formatEntry("DEBUG", module2, message2, data2);
-          console.debug(`[${entry.timestamp}] [${entry.module}] ${entry.message}`, data2 || "");
-        }
-      }
-      /**
-       * Log info message
-       */
-      info(module2, message2, data2) {
-        if (this.config.level <= 1 /* INFO */ && this.config.enableConsole) {
-          const entry = this.formatEntry("INFO", module2, message2, data2);
-          console.info(`[${entry.timestamp}] [${entry.module}] ${entry.message}`, data2 || "");
-        }
-      }
-      /**
-       * Log warning message
-       */
-      warn(module2, message2, data2) {
-        if (this.config.level <= 2 /* WARN */ && this.config.enableConsole) {
-          const entry = this.formatEntry("WARN", module2, message2, data2);
-          console.warn(`[${entry.timestamp}] [${entry.module}] ${entry.message}`, data2 || "");
-        }
-      }
-      /**
-       * Log error message
-       */
-      error(module2, message2, error2) {
-        if (this.config.level <= 3 /* ERROR */ && this.config.enableConsole) {
-          const entry = this.formatEntry("ERROR", module2, message2, error2);
-          if (true) {
-            console.error(`[${entry.timestamp}] [${entry.module}] ${entry.message}`, error2 || "");
-          }
-        }
-      }
-      /**
-       * Log with custom log level
-       */
-      log(level, module2, message2, data2) {
-        switch (level) {
-          case 0 /* DEBUG */:
-            this.debug(module2, message2, data2);
-            break;
-          case 1 /* INFO */:
-            this.info(module2, message2, data2);
-            break;
-          case 2 /* WARN */:
-            this.warn(module2, message2, data2);
-            break;
-          case 3 /* ERROR */:
-            this.error(module2, message2, data2);
-            break;
-          default:
-            break;
-        }
-      }
-    };
-    logger = Logger.getInstance();
-  }
-});
-
 // src/slug-generator.ts
 var logger2, SlugGenerator;
 var init_slug_generator = __esm({
@@ -107687,6 +107695,30 @@ var init_wp_publish_modal_v2 = __esm({
         }
       }
       /**
+       * 保存当前参数到 frontmatter（不发布），保存后关闭弹窗
+       */
+      async saveParamsToFrontmatter(params) {
+        if (!this.notePath) return;
+        const file = this.plugin.app.vault.getAbstractFileByPath(this.notePath);
+        if (!file || !(file instanceof import_obsidian9.TFile)) return;
+        try {
+          await this.plugin.app.fileManager.processFrontMatter(file, (fm) => {
+            if (params.slug) fm.slug = params.slug;
+            const categoryNames = params.categories.map((catId) => this.categories.items.find((t) => Number(t.id) === catId)).filter((term) => !!term && Number(term.id) > 0).map((term) => term.name);
+            if (categoryNames.length > 0) fm.categories = categoryNames;
+            if (params.tags && params.tags.length > 0) {
+              fm.tags = TagFormatter.formatTags(params.tags, this.plugin.settings.tagFormat);
+            }
+            if (params.excerpt) fm.excerpt = params.excerpt;
+          });
+          new import_obsidian9.Notice(this.t("publishModal_settingsSaved") || "\u8BBE\u7F6E\u5DF2\u4FDD\u5B58");
+          this.close();
+        } catch (error2) {
+          log4.error("Failed to save params to frontmatter:", error2);
+          new import_obsidian9.Notice("\u4FDD\u5B58\u5931\u8D25: " + (error2 instanceof Error ? error2.message : String(error2)));
+        }
+      }
+      /**
        * 保存生成的内容（标签、摘要等）到 frontmatter
        * 当用户生成内容后关闭窗口时，确保内容不会丢失
        */
@@ -107719,61 +107751,6 @@ var init_wp_publish_modal_v2 = __esm({
           });
         } catch (error2) {
           log4.error("Failed to save generated content to frontmatter:", error2);
-        }
-      }
-      /**
-       * 保存发布参数到 frontmatter（手动保存按钮调用）
-       * 将当前的发布参数（slug、分类、标签、摘要）保存到笔记的 frontmatter
-       */
-      async saveParamsToFrontmatter(params) {
-        if (!this.notePath) {
-          new import_obsidian9.Notice(this.t("publishModal_saveParamsFailed") || "\u65E0\u6CD5\u4FDD\u5B58\uFF1A\u7B14\u8BB0\u8DEF\u5F84\u4E0D\u5B58\u5728");
-          return;
-        }
-        const file = this.plugin.app.vault.getAbstractFileByPath(this.notePath);
-        if (!file || !(file instanceof import_obsidian9.TFile)) {
-          new import_obsidian9.Notice(this.t("publishModal_saveParamsFailed") || "\u65E0\u6CD5\u4FDD\u5B58\uFF1A\u6587\u4EF6\u4E0D\u5B58\u5728");
-          return;
-        }
-        try {
-          await this.plugin.app.fileManager.processFrontMatter(file, (fm) => {
-            if (params.slug) {
-              fm.slug = params.slug;
-              log4.info("Saved slug to frontmatter:", params.slug);
-            }
-            if (params.categories && params.categories.length > 0) {
-              const categoryNames = [];
-              for (const catId of params.categories) {
-                if (catId > 0) {
-                  const cat = this.categories.items.find((c) => Number(c.id) === catId);
-                  if (cat) {
-                    categoryNames.push(cat.name);
-                  }
-                } else {
-                  const tempCat = this.categories.items.find((c) => Number(c.id) === catId);
-                  if (tempCat) {
-                    categoryNames.push(tempCat.name);
-                  }
-                }
-              }
-              if (categoryNames.length > 0) {
-                fm.categories = categoryNames;
-                log4.info("Saved categories to frontmatter:", categoryNames);
-              }
-            }
-            if (params.tags && params.tags.length > 0) {
-              fm.tags = TagFormatter.formatTags(params.tags, this.plugin.settings.tagFormat);
-              log4.info("Saved tags to frontmatter:", params.tags);
-            }
-            if (params.excerpt) {
-              fm.excerpt = params.excerpt;
-              log4.info("Saved excerpt to frontmatter");
-            }
-          });
-          new import_obsidian9.Notice(this.t("publishModal_saveParamsSuccess") || "\u2705 \u53C2\u6570\u5DF2\u4FDD\u5B58\u5230 frontmatter");
-        } catch (error2) {
-          log4.error("Failed to save params to frontmatter:", error2);
-          new import_obsidian9.Notice(this.t("publishModal_saveParamsFailed") || `\u274C \u4FDD\u5B58\u53C2\u6570\u5931\u8D25: ${error2}`);
         }
       }
       display(params) {
@@ -108736,55 +108713,87 @@ var init_wp_publish_modal_v2 = __esm({
             params.contentFormat = select2.value;
           });
         });
-        const validCategories = this.categories.items.filter((it) => it.name && it.name.trim());
-        if (params.postType === "post" /* Post */ && validCategories.length > 0) {
-          body.createDiv("wp-v3-divider");
-          this.renderV3Field(body, this.t("publishModal_categoryName"), "publishModal_categoryInfo", (fieldEl) => {
-            const tagsWrap = fieldEl.createDiv();
-            tagsWrap.style.display = "flex";
-            tagsWrap.style.flexWrap = "wrap";
-            tagsWrap.style.gap = "4px";
-            const renderCats = () => {
-              tagsWrap.empty();
-              params.categories.forEach((catId) => {
-                const cat = validCategories.find((c) => Number(c.id) === catId);
-                if (!cat) return;
-                const tag = tagsWrap.createEl("span", { cls: "wp-v3-tag-item" });
-                tag.style.backgroundColor = "var(--interactive-accent)";
-                tag.style.fontSize = "11px";
-                tag.createSpan({ text: cat.name });
-                const removeBtn = tag.createEl("button", { cls: "wp-v3-tag-delete-btn", text: "\xD7" });
-                removeBtn.addEventListener("click", (e) => {
-                  e.stopPropagation();
-                  params.categories = params.categories.filter((id) => id !== catId);
-                  renderCats();
-                });
+        const getValidCategoriesV3 = () => this.categories.items.filter((it) => it.name && it.name.trim());
+        body.createDiv("wp-v3-divider");
+        this.renderV3Field(body, this.t("publishModal_categoryName"), "publishModal_categoryInfo", (fieldEl) => {
+          const tagsWrap = fieldEl.createDiv();
+          tagsWrap.style.display = "flex";
+          tagsWrap.style.flexWrap = "wrap";
+          tagsWrap.style.gap = "4px";
+          if (params.categories.length === 0) {
+            const uncategorized = getValidCategoriesV3().find(
+              (it) => ["Uncategorized", "\u672A\u5206\u7C7B", this.plugin.t("publishModal_uncategorized")].includes(it.name)
+            );
+            if (uncategorized) params.categories = [Number(uncategorized.id)];
+          }
+          const renderCats = () => {
+            tagsWrap.empty();
+            const validCategories = getValidCategoriesV3();
+            params.categories.forEach((catId) => {
+              const cat = validCategories.find((c) => Number(c.id) === catId);
+              if (!cat) return;
+              const tag = tagsWrap.createEl("span", { cls: "wp-v3-tag-item" });
+              tag.style.backgroundColor = "var(--interactive-accent)";
+              tag.style.fontSize = "11px";
+              tag.createSpan({ text: cat.name });
+              const removeBtn = tag.createEl("button", { cls: "wp-v3-tag-delete-btn", text: "\xD7" });
+              removeBtn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                params.categories = params.categories.filter((id) => id !== catId);
+                renderCats();
               });
-              const available = validCategories.filter((cat) => !params.categories.includes(Number(cat.id)));
-              if (available.length > 0) {
-                const select2 = tagsWrap.createEl("select", { cls: "wp-v3-select" });
-                select2.style.width = "auto";
-                select2.style.fontSize = "11px";
-                select2.style.padding = "2px 6px";
-                select2.createEl("option", { value: "", text: "+" });
-                available.forEach((cat) => select2.createEl("option", { value: String(cat.id), text: cat.name }));
-                select2.addEventListener("change", () => {
-                  if (select2.value) {
-                    params.categories.push(Number(select2.value));
-                    renderCats();
-                  }
-                });
+            });
+            const btnRow = tagsWrap.createEl("span", { cls: "wp-v3-cat-btn-row" });
+            const available = validCategories.filter((cat) => !params.categories.includes(Number(cat.id)));
+            const select2 = btnRow.createEl("select", { cls: "wp-v3-select" });
+            select2.style.width = "auto";
+            select2.style.fontSize = "11px";
+            select2.createEl("option", { value: "", text: this.plugin.t("publishModal_selectCategory") || "\u9009\u62E9\u5206\u7C7B..." });
+            available.forEach((cat) => select2.createEl("option", { value: String(cat.id), text: cat.name }));
+            select2.addEventListener("change", () => {
+              if (select2.value) {
+                params.categories.push(Number(select2.value));
+                renderCats();
               }
-            };
-            if (params.categories.length === 0) {
-              const uncategorized = validCategories.find(
-                (it) => ["Uncategorized", "\u672A\u5206\u7C7B", this.plugin.t("publishModal_uncategorized")].includes(it.name)
-              );
-              if (uncategorized) params.categories = [Number(uncategorized.id)];
-            }
-            renderCats();
-          });
-        }
+            });
+            const addBtn = btnRow.createEl("button", { cls: "wp-v3-cat-add-btn", text: this.plugin.t("publishModal_addCategory") || "\u589E\u52A0" });
+            addBtn.addEventListener("click", () => {
+              addBtn.style.display = "none";
+              const input = btnRow.createEl("input", { cls: "wp-v3-input", type: "text" });
+              input.style.width = "80px";
+              input.style.fontSize = "11px";
+              input.placeholder = this.plugin.t("publishModal_newCategoryPlaceholder") || "\u65B0\u5206\u7C7B\u540D\u79F0";
+              const commit = () => {
+                const name = input.value.trim();
+                if (name) {
+                  const tempId = -(this.categories.items.length + 100 + params.categories.length);
+                  this.categories.items.push({ id: String(tempId), name, slug: name.toLowerCase().replace(/\s+/g, "-"), taxonomy: "category", description: "", count: 0 });
+                  params.categories.push(tempId);
+                }
+                input.remove();
+                addBtn.style.display = "";
+                renderCats();
+              };
+              let v3CatCommitted = false;
+              input.addEventListener("keydown", (e) => {
+                if (e.key === "Enter") {
+                  v3CatCommitted = true;
+                  commit();
+                }
+                if (e.key === "Escape") {
+                  v3CatCommitted = true;
+                  input.remove();
+                  addBtn.style.display = "";
+                }
+              });
+              input.addEventListener("blur", () => {
+                if (!v3CatCommitted) commit();
+              });
+              input.focus();
+            });
+          };
+          renderCats();
+        });
         if (this.matterData.postId) {
           body.createDiv("wp-v3-divider");
           const toggleRow = body.createDiv("wp-v3-toggle-row");
@@ -108847,45 +108856,30 @@ var init_wp_publish_modal_v2 = __esm({
       // ==================== V3.1 底部操作栏 ====================
       renderV3Footer(container, params) {
         const footer = container.createDiv("wp-v3-footer");
-        const isMobile = window.innerWidth <= 480;
         const editBtn = footer.createEl("button", {
+          text: this.t("publishModal_editButton") || "\u270F\uFE0F \u7F16\u8F91",
           cls: "wp-v3-edit-footer-btn"
         });
-        editBtn.textContent = isMobile ? "\u270F\uFE0F" : this.t("publishModal_editButton") || "\u270F\uFE0F \u7F16\u8F91";
-        editBtn.title = this.t("publishModal_editButton") || "\u7F16\u8F91\u5185\u5BB9";
         editBtn.onclick = () => {
           const contentSection = container.querySelector('[data-content-section="true"]');
           if (contentSection == null ? void 0 : contentSection.__enterContentEdit) contentSection.__enterContentEdit();
         };
-        const saveParamsBtn = footer.createEl("button", {
-          cls: "wp-v3-save-params-btn"
+        const saveBtn = footer.createEl("button", {
+          text: this.t("publishModal_save") || "\u4FDD\u5B58",
+          cls: "wp-v3-save-footer-btn"
         });
-        saveParamsBtn.textContent = isMobile ? "\u{1F4BE}" : "\u{1F4BE} " + (this.t("publishModal_saveParams") || "\u4FDD\u5B58\u53C2\u6570");
-        saveParamsBtn.title = this.t("publishModal_saveParams") || "\u4FDD\u5B58\u53C2\u6570\u5230 frontmatter";
-        saveParamsBtn.onclick = async () => {
-          await this.saveParamsToFrontmatter(params);
-        };
+        saveBtn.onclick = () => this.saveParamsToFrontmatter(params);
         const cancelBtn = footer.createEl("button", {
+          text: this.t("publishModal_cancel") || "\u53D6\u6D88",
           cls: "wp-v3-cancel-footer-btn"
         });
-        cancelBtn.textContent = isMobile ? "\u274C" : "\u274C " + (this.t("publishModal_cancel") || "\u53D6\u6D88");
-        cancelBtn.title = this.t("publishModal_cancel") || "\u53D6\u6D88";
         cancelBtn.onclick = () => this.close();
         const publishBtn = footer.createEl("button", {
+          text: this.t("publishModal_publishButton") || "\u{1F680} \u53D1\u5E03",
           cls: "wp-v3-publish-footer-btn"
         });
-        publishBtn.textContent = isMobile ? "\u{1F680}" : this.t("publishModal_publishButton") || "\u{1F680} \u53D1\u5E03";
-        publishBtn.title = this.t("publishModal_publishButton") || "\u53D1\u5E03\u5230 WordPress";
         this.publishBtn = publishBtn;
         publishBtn.onclick = () => this.doPublish(params, publishBtn);
-        const resizeObserver = new ResizeObserver(() => {
-          const currentIsMobile = window.innerWidth <= 480;
-          editBtn.textContent = currentIsMobile ? "\u270F\uFE0F" : this.t("publishModal_editButton") || "\u270F\uFE0F \u7F16\u8F91";
-          saveParamsBtn.textContent = currentIsMobile ? "\u{1F4BE}" : "\u{1F4BE} " + (this.t("publishModal_saveParams") || "\u4FDD\u5B58\u53C2\u6570");
-          cancelBtn.textContent = currentIsMobile ? "\u274C" : "\u274C " + (this.t("publishModal_cancel") || "\u53D6\u6D88");
-          publishBtn.textContent = currentIsMobile ? "\u{1F680}" : this.t("publishModal_publishButton") || "\u{1F680} \u53D1\u5E03";
-        });
-        resizeObserver.observe(document.body);
       }
       /**
        * 设置滚动监听，为 sticky 元素添加阴影效果
@@ -109622,8 +109616,8 @@ var init_wp_publish_modal_v2 = __esm({
           }
         }
         this.addInfoButton(slugSetting, "publishModal_slugInfo");
-        const validCategories = this.categories.items.filter((it) => it.name && it.name.trim());
-        if (params.postType === "post" /* Post */ && validCategories.length > 0) {
+        const getValidCategories = () => this.categories.items.filter((it) => it.name && it.name.trim());
+        {
           const categoryWrapper = gridContainer.createDiv("wp-grid-full");
           const categoryHeader = categoryWrapper.createDiv("wp-category-header");
           const titleRow = categoryHeader.createDiv("wp-category-title-row");
@@ -109637,75 +109631,111 @@ var init_wp_publish_modal_v2 = __esm({
           const tagsContainer = document.createElement("div");
           tagsContainer.className = "wp-category-tags-container";
           categoryHeader.appendChild(tagsContainer);
-          const addControl = document.createElement("div");
-          addControl.className = "wp-category-add-control";
-          categoryHeader.appendChild(addControl);
           const getAvailableCategories = () => {
-            return validCategories.filter(
+            return getValidCategories().filter(
               (cat) => !params.categories.includes(Number(cat.id))
             );
           };
           const renderCategoryTags = () => {
-            tagsContainer.empty();
+            Array.from(tagsContainer.children).forEach((child) => {
+              if (!child.classList.contains("wp-category-action-row")) {
+                tagsContainer.removeChild(child);
+              }
+            });
+            const actionRow = tagsContainer.querySelector(".wp-category-action-row");
             params.categories.forEach((catId) => {
-              const cat = validCategories.find((c) => Number(c.id) === catId);
+              const cat = getValidCategories().find((c) => Number(c.id) === catId);
               if (cat) {
-                const tag = tagsContainer.createEl("span", {
-                  cls: "wp-category-tag",
-                  text: cat.name
-                });
-                const removeBtn = tag.createEl("span", {
-                  cls: "wp-category-tag-remove",
-                  text: "\xD7"
-                });
+                const tag = document.createElement("span");
+                tag.className = "wp-category-tag";
+                tag.textContent = cat.name;
+                const removeBtn = document.createElement("span");
+                removeBtn.className = "wp-category-tag-remove";
+                removeBtn.textContent = "\xD7";
                 removeBtn.onclick = (e) => {
                   e.stopPropagation();
                   params.categories = params.categories.filter((id) => id !== catId);
                   renderCategoryTags();
-                  renderAddDropdown();
+                  renderActionButtons();
                 };
+                tag.appendChild(removeBtn);
+                if (actionRow) {
+                  tagsContainer.insertBefore(tag, actionRow);
+                } else {
+                  tagsContainer.appendChild(tag);
+                }
               }
             });
           };
-          const renderAddDropdown = () => {
-            addControl.empty();
+          const renderActionButtons = () => {
+            const oldRow = tagsContainer.querySelector(".wp-category-action-row");
+            if (oldRow) oldRow.remove();
+            const actionRow = document.createElement("div");
+            actionRow.className = "wp-category-action-row";
             const available = getAvailableCategories();
-            const addBtn = addControl.createEl("button", {
-              cls: "wp-category-add-btn",
-              text: "+"
+            const select2 = document.createElement("select");
+            select2.className = "wp-category-dropdown";
+            const placeholder = document.createElement("option");
+            placeholder.value = "";
+            placeholder.textContent = this.plugin.t("publishModal_selectCategory") || "\u9009\u62E9\u5206\u7C7B...";
+            select2.appendChild(placeholder);
+            available.forEach((cat) => {
+              const opt = document.createElement("option");
+              opt.value = String(cat.id);
+              opt.textContent = cat.name;
+              select2.appendChild(opt);
             });
+            select2.onchange = () => {
+              if (select2.value) {
+                params.categories.push(Number(select2.value));
+                renderCategoryTags();
+                renderActionButtons();
+              }
+            };
+            actionRow.appendChild(select2);
+            const addBtn = document.createElement("button");
+            addBtn.className = "wp-category-add-btn";
+            addBtn.textContent = this.plugin.t("publishModal_addCategory") || "\u589E\u52A0";
             addBtn.onclick = () => {
-              const select2 = addControl.createEl("select", {
-                cls: "wp-category-dropdown"
-              });
-              select2.createEl("option", {
-                value: "",
-                text: this.t("publishModal_selectCategory") || "\u9009\u62E9\u5206\u7C7B..."
-              });
-              available.forEach((cat) => {
-                select2.createEl("option", {
-                  value: String(cat.id),
-                  text: cat.name
-                });
-              });
-              select2.onchange = () => {
-                if (select2.value) {
-                  params.categories.push(Number(select2.value));
+              addBtn.style.display = "none";
+              const input = document.createElement("input");
+              input.className = "wp-category-new-input";
+              input.placeholder = this.plugin.t("publishModal_newCategoryPlaceholder") || "\u65B0\u5206\u7C7B\u540D\u79F0";
+              const commit = () => {
+                const name = input.value.trim();
+                if (name) {
+                  const tempId = -(this.categories.items.length + 100 + params.categories.length);
+                  this.categories.items.push({ id: String(tempId), name, slug: name.toLowerCase().replace(/\s+/g, "-"), taxonomy: "category", description: "", count: 0 });
+                  params.categories.push(tempId);
                   renderCategoryTags();
-                  renderAddDropdown();
+                  renderActionButtons();
+                }
+                input.remove();
+                addBtn.style.display = "";
+              };
+              let gridCatCommitted = false;
+              input.onkeydown = (e) => {
+                if (e.key === "Enter") {
+                  gridCatCommitted = true;
+                  commit();
+                }
+                if (e.key === "Escape") {
+                  gridCatCommitted = true;
+                  input.remove();
+                  addBtn.style.display = "";
                 }
               };
-              select2.onblur = () => {
-                setTimeout(() => {
-                  renderAddDropdown();
-                }, 100);
+              input.onblur = () => {
+                if (!gridCatCommitted) commit();
               };
-              select2.focus();
-              addBtn.style.display = "none";
+              actionRow.insertBefore(input, addBtn);
+              input.focus();
             };
+            actionRow.appendChild(addBtn);
+            tagsContainer.appendChild(actionRow);
           };
           if (params.categories.length === 0) {
-            const uncategorized = validCategories.find(
+            const uncategorized = getValidCategories().find(
               (it) => it.name === this.plugin.t("publishModal_uncategorized") || it.name === "Uncategorized" || it.name === "\u672A\u5206\u7C7B"
             );
             if (uncategorized) {
@@ -109713,7 +109743,7 @@ var init_wp_publish_modal_v2 = __esm({
             }
           }
           renderCategoryTags();
-          renderAddDropdown();
+          renderActionButtons();
         }
         const statusWrapper = gridContainer.createDiv();
         new import_obsidian9.Setting(statusWrapper).setName(this.t("publishModal_statusName")).setDesc(this.t("publishModal_statusDesc")).addDropdown((dropdown) => {
@@ -113075,26 +113105,15 @@ var init_frontmatter_manager = __esm({
         return [];
       }
       /**
-       * Normalize category value for comparison
-       * Handles common category name/ID mappings
+       * Normalize category value for comparison.
+       * Maps known default category names to their canonical ID "1".
+       * Numeric ID "1" is kept as-is (no reverse mapping to avoid asymmetry).
        */
       normalizeCategoryValue(value) {
         const trimmed = value.trim();
-        const categoryMappings = {
-          // Chinese
-          "\u672A\u5206\u7C7B": "1",
-          "Uncategorized": "1"
-          // Add other common mappings as needed
-        };
-        if (categoryMappings[trimmed]) {
-          return [categoryMappings[trimmed]];
-        }
-        const reverseMappings = {
-          "1": "\u672A\u5206\u7C7B"
-          // Default category ID
-        };
-        if (reverseMappings[trimmed]) {
-          return [reverseMappings[trimmed]];
+        const defaultCategoryNames = ["\u672A\u5206\u7C7B", "Uncategorized", "uncategorized"];
+        if (defaultCategoryNames.includes(trimmed)) {
+          return ["1"];
         }
         return null;
       }
@@ -113449,10 +113468,6 @@ var init_abstract_wp_client = __esm({
               await this.plugin.app.fileManager.processFrontMatter(file, (fm) => {
                 const knownKeys = ["blogName", "postId", "postType", "categories", "slug", "featurePicture", "featuredImageId", "tags"];
                 const existingKeys = Object.keys(fm);
-                const duplicates = existingKeys.filter((key, index2) => existingKeys.indexOf(key) !== index2);
-                if (duplicates.length > 0) {
-                  new import_obsidian13.Notice(this.plugin.t("notice_duplicateFrontmatter", { fields: duplicates.join(", ") }));
-                }
                 const existingOtherFields = {};
                 for (const key of existingKeys) {
                   if (!knownKeys.includes(key) && key !== "excerpt" && key !== "content") {
@@ -113558,7 +113573,7 @@ var init_abstract_wp_client = __esm({
         }
       }
       async publishPost(defaultPostParams) {
-        var _a5;
+        var _a5, _b;
         try {
           if (!this.profile.endpoint || this.profile.endpoint.length === 0) {
             throw new Error(this.plugin.i18n.t("error_noEndpoint"));
@@ -113663,21 +113678,14 @@ var init_abstract_wp_client = __esm({
               selectedCategories = fmCatArray;
               console.log("[publishPost] Using numeric IDs from frontmatter:", selectedCategories);
             } else {
-              if (this.profile.lastSelectedCategories && this.profile.lastSelectedCategories.length > 0) {
-                selectedCategories = this.profile.lastSelectedCategories;
-              } else {
-                const uncategorized = categories.find(
-                  (cat) => cat.name === "Uncategorized" || cat.name === "\u672A\u5206\u7C7B" || cat.name.toLowerCase() === "uncategorized"
-                );
-                selectedCategories = uncategorized ? [Number(uncategorized.id)] : [1];
-              }
-              console.log("[publishPost] No categories in frontmatter, using default:", selectedCategories);
+              selectedCategories = (_a5 = this.profile.lastSelectedCategories) != null ? _a5 : [1];
+              console.log("[publishPost] No categories in frontmatter, using lastSelectedCategories:", selectedCategories);
             }
             const postTypes = await this.getPostTypes(auth);
             if (postTypes.length === 0) {
               postTypes.push("post" /* Post */);
             }
-            const selectedPostType = (_a5 = matterData.postType) != null ? _a5 : "post" /* Post */;
+            const selectedPostType = (_b = matterData.postType) != null ? _b : "post" /* Post */;
             result = await new Promise((resolve) => {
               console.log("[WpPublishModalV2] Creating modal instance...");
               const publishModal = new WpPublishModalV2(
@@ -114376,18 +114384,21 @@ var init_rest_client = __esm({
         };
         logger.debug(this.moduleName, "HTTP GET request", { endpoint, headers: opts.headers });
         const timeoutMs = (_a5 = options == null ? void 0 : options.timeout) != null ? _a5 : this.timeout;
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
         try {
-          const response = await (0, import_obsidian14.requestUrl)({
-            url: endpoint,
-            method: "GET",
-            headers: {
-              "content-type": "application/json",
-              "user-agent": "obsidian.md",
-              ...opts.headers
-            }
-          });
+          const response = await Promise.race([
+            (0, import_obsidian14.requestUrl)({
+              url: endpoint,
+              method: "GET",
+              headers: {
+                "content-type": "application/json",
+                "user-agent": "obsidian.md",
+                ...opts.headers
+              }
+            }),
+            new Promise(
+              (_, reject) => setTimeout(() => reject(new Error(`GET request timed out after ${timeoutMs}ms: ${endpoint}`)), timeoutMs)
+            )
+          ]);
           logger.debug(this.moduleName, "HTTP GET response received", {
             status: response.status,
             endpoint
@@ -114396,8 +114407,6 @@ var init_rest_client = __esm({
         } catch (error2) {
           logger.error(this.moduleName, "HTTP GET request failed", error2);
           throw error2;
-        } finally {
-          clearTimeout(timeoutId);
         }
       }
       async httpPost(path, body, options) {
@@ -114427,19 +114436,22 @@ var init_rest_client = __esm({
           contentType: predefinedHeaders["content-type"]
         });
         const timeoutMs = (_a5 = options == null ? void 0 : options.timeout) != null ? _a5 : this.timeout;
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
         try {
-          const response = await (0, import_obsidian14.requestUrl)({
-            url: endpoint,
-            method: "POST",
-            headers: {
-              "user-agent": "obsidian.md",
-              ...predefinedHeaders,
-              ...options.headers
-            },
-            body: requestBody
-          });
+          const response = await Promise.race([
+            (0, import_obsidian14.requestUrl)({
+              url: endpoint,
+              method: "POST",
+              headers: {
+                "user-agent": "obsidian.md",
+                ...predefinedHeaders,
+                ...options.headers
+              },
+              body: requestBody
+            }),
+            new Promise(
+              (_, reject) => setTimeout(() => reject(new Error(`POST request timed out after ${timeoutMs}ms: ${endpoint}`)), timeoutMs)
+            )
+          ]);
           logger.debug(this.moduleName, "HTTP POST response received", {
             status: response.status,
             endpoint
@@ -114448,8 +114460,6 @@ var init_rest_client = __esm({
         } catch (error2) {
           logger.error(this.moduleName, "HTTP POST request failed", error2);
           throw error2;
-        } finally {
-          clearTimeout(timeoutId);
         }
       }
     };
@@ -114482,6 +114492,7 @@ var init_wp_rest_client = __esm({
     init_wp_api();
     init_rest_client();
     init_lodash();
+    init_logger();
     init_types2();
     init_date_fns();
     WpRestClient = class extends AbstractWordPressClient {
@@ -114536,7 +114547,7 @@ var init_wp_rest_client = __esm({
             headers: this.context.getHeaders(certificate)
           }
         );
-        console.log("WpRestClient response", resp);
+        logger.debug("WpRestClient", "publish response", resp);
         try {
           const result = this.context.responseParser.toWordPressPublishResult(postParams, resp);
           return {
@@ -114628,7 +114639,7 @@ var init_wp_rest_client = __esm({
               headers: this.context.getHeaders(certificate)
             }
           );
-          console.log("WpRestClient newTag response", resp);
+          logger.debug("WpRestClient", "newTag response", resp);
           return this.context.responseParser.toTerm(resp);
         } else {
           return exists[0];
@@ -114643,7 +114654,7 @@ var init_wp_rest_client = __esm({
             headers: this.context.getHeaders(certificate)
           }
         );
-        console.log("WpRestClient createCategory response", resp);
+        logger.debug("WpRestClient", "createCategory response", resp);
         return this.context.responseParser.toTerm(resp);
       }
       async uploadMedia(media, certificate) {
@@ -114789,7 +114800,7 @@ var init_wp_rest_client = __esm({
                 categories: (_b = postParams.categories) != null ? _b : response.categories
               };
             }
-            throw new Error("xx");
+            throw new Error(`Unexpected publish response: missing post id. Response: ${JSON.stringify(response)}`);
           },
           toWordPressMediaUploadResult: (response) => {
             return {
@@ -114825,14 +114836,14 @@ var init_wp_rest_client = __esm({
       constructor() {
         super();
         this.name = "WpRestClientMiniOrangeContext";
-        console.log(`${this.name} loaded`);
+        logger.debug("WpRestClientMiniOrangeContext", "loaded");
       }
     };
     WpRestClientAppPasswordContext = class extends WpRestClientCommonContext {
       constructor() {
         super();
         this.name = "WpRestClientAppPasswordContext";
-        console.log(`${this.name} loaded`);
+        logger.debug("WpRestClientAppPasswordContext", "loaded");
       }
     };
     WpRestClientWpComOAuth2Context = class {
@@ -114861,7 +114872,7 @@ var init_wp_rest_client = __esm({
                 categories: (_b = postParams.categories) != null ? _b : Object.values(response.categories).map((cat) => cat.ID)
               };
             }
-            throw new Error("xx");
+            throw new Error(`Unexpected WP.com publish response: missing post ID. Response: ${JSON.stringify(response)}`);
           },
           toWordPressMediaUploadResult: (response) => {
             if (response.media.length > 0) {
@@ -114895,7 +114906,7 @@ var init_wp_rest_client = __esm({
             return [];
           }
         };
-        console.log(`${this.name} loaded`);
+        logger.debug("WpRestClientWpComOAuth2Context", "loaded");
       }
       formItemNameMapper(name, isArray2) {
         if (name === "file" && !isArray2) {
@@ -115100,11 +115111,11 @@ init_utils5();
 var import_obsidian16 = require("obsidian");
 init_wp_client();
 init_consts();
+init_logger();
 var OAuth2Client = class _OAuth2Client {
   constructor(options, plugin4) {
     this.options = options;
     this.plugin = plugin4;
-    console.log(options);
   }
   static getWpOAuth2Client(plugin4) {
     return new _OAuth2Client({
@@ -115149,7 +115160,7 @@ var OAuth2Client = class _OAuth2Client {
       },
       body: generateQueryString(body)
     }).then((response) => {
-      console.log("getToken response", response);
+      logger.debug("OAuth2Client", "getToken response received", { status: response.status });
       const resp = response.json;
       return {
         accessToken: resp.access_token,
@@ -115173,7 +115184,7 @@ var OAuth2Client = class _OAuth2Client {
           "User-Agent": "obsidian.md"
         }
       });
-      console.log("validateToken response", response);
+      logger.debug("OAuth2Client", "validateToken response received", { status: response.status });
       return {
         code: 0 /* OK */,
         data: "done",
@@ -116037,6 +116048,7 @@ __export(en_exports, {
   profilesManageModal_showDetails: () => profilesManageModal_showDetails,
   profilesManageModal_title: () => profilesManageModal_title,
   profiles_default: () => profiles_default,
+  publishModal_addCategory: () => publishModal_addCategory,
   publishModal_advancedNotice: () => publishModal_advancedNotice,
   publishModal_advancedTab: () => publishModal_advancedTab,
   publishModal_advancedTitle: () => publishModal_advancedTitle,
@@ -116103,6 +116115,7 @@ __export(en_exports, {
   publishModal_loadingRemoteImage: () => publishModal_loadingRemoteImage,
   publishModal_localImage: () => publishModal_localImage,
   publishModal_localImageButton: () => publishModal_localImageButton,
+  publishModal_newCategoryPlaceholder: () => publishModal_newCategoryPlaceholder,
   publishModal_noExcerpt: () => publishModal_noExcerpt,
   publishModal_noFeaturedImage: () => publishModal_noFeaturedImage,
   publishModal_noHistory: () => publishModal_noHistory,
@@ -116149,9 +116162,6 @@ __export(en_exports, {
   publishModal_save: () => publishModal_save,
   publishModal_saveAndUseButton: () => publishModal_saveAndUseButton,
   publishModal_saveButton: () => publishModal_saveButton,
-  publishModal_saveParams: () => publishModal_saveParams,
-  publishModal_saveParamsFailed: () => publishModal_saveParamsFailed,
-  publishModal_saveParamsSuccess: () => publishModal_saveParamsSuccess,
   publishModal_saveSettings: () => publishModal_saveSettings,
   publishModal_selectCategory: () => publishModal_selectCategory,
   publishModal_selectFeaturedImage: () => publishModal_selectFeaturedImage,
@@ -116571,6 +116581,8 @@ var publishModal_slugTranslateFailed = "Translation failed: <%= error %>";
 var publishModal_categoryName = "Category";
 var publishModal_categoryDesc = "Select post category";
 var publishModal_selectCategory = "Select category...";
+var publishModal_addCategory = "Add";
+var publishModal_newCategoryPlaceholder = "New category name";
 var publishModal_statusName = "Status";
 var publishModal_statusDesc = "Select publish status";
 var publishModal_postDateTimeName = "Publish Date";
@@ -116660,9 +116672,6 @@ var publishModal_advancedTab = "\u{1F527} Advanced";
 var publishModal_previewTitle = "Post Preview";
 var publishModal_previewEditPlaceholder = "Edit Markdown content here...";
 var publishModal_save = "Save";
-var publishModal_saveParams = "Save Params";
-var publishModal_saveParamsSuccess = "\u2705 Parameters saved to frontmatter";
-var publishModal_saveParamsFailed = "\u274C Failed to save parameters: <%= error %>";
 var publishModal_cancel = "Cancel";
 var publishModal_previewFeaturedImage = "Featured Image";
 var publishModal_previewFeaturedImageUploaded = "Featured Image (Uploaded to WordPress)";
@@ -116982,6 +116991,8 @@ var en_default = {
   publishModal_categoryName,
   publishModal_categoryDesc,
   publishModal_selectCategory,
+  publishModal_addCategory,
+  publishModal_newCategoryPlaceholder,
   publishModal_statusName,
   publishModal_statusDesc,
   publishModal_postDateTimeName,
@@ -117071,9 +117082,6 @@ var en_default = {
   publishModal_previewTitle,
   publishModal_previewEditPlaceholder,
   publishModal_save,
-  publishModal_saveParams,
-  publishModal_saveParamsSuccess,
-  publishModal_saveParamsFailed,
   publishModal_cancel,
   publishModal_previewFeaturedImage,
   publishModal_previewFeaturedImageUploaded,
@@ -117275,6 +117283,7 @@ __export(zh_cn_exports, {
   profilesManageModal_showDetails: () => profilesManageModal_showDetails2,
   profilesManageModal_title: () => profilesManageModal_title2,
   profiles_default: () => profiles_default2,
+  publishModal_addCategory: () => publishModal_addCategory2,
   publishModal_advancedNotice: () => publishModal_advancedNotice2,
   publishModal_advancedTab: () => publishModal_advancedTab2,
   publishModal_advancedTitle: () => publishModal_advancedTitle2,
@@ -117341,6 +117350,7 @@ __export(zh_cn_exports, {
   publishModal_loadingRemoteImage: () => publishModal_loadingRemoteImage2,
   publishModal_localImage: () => publishModal_localImage2,
   publishModal_localImageButton: () => publishModal_localImageButton2,
+  publishModal_newCategoryPlaceholder: () => publishModal_newCategoryPlaceholder2,
   publishModal_noExcerpt: () => publishModal_noExcerpt2,
   publishModal_noFeaturedImage: () => publishModal_noFeaturedImage2,
   publishModal_noHistory: () => publishModal_noHistory2,
@@ -117387,9 +117397,6 @@ __export(zh_cn_exports, {
   publishModal_save: () => publishModal_save2,
   publishModal_saveAndUseButton: () => publishModal_saveAndUseButton2,
   publishModal_saveButton: () => publishModal_saveButton2,
-  publishModal_saveParams: () => publishModal_saveParams2,
-  publishModal_saveParamsFailed: () => publishModal_saveParamsFailed2,
-  publishModal_saveParamsSuccess: () => publishModal_saveParamsSuccess2,
   publishModal_saveSettings: () => publishModal_saveSettings2,
   publishModal_selectCategory: () => publishModal_selectCategory2,
   publishModal_selectFeaturedImage: () => publishModal_selectFeaturedImage2,
@@ -117809,6 +117816,8 @@ var publishModal_slugTranslateFailed2 = "\u7FFB\u8BD1\u5931\u8D25: <%= error %>"
 var publishModal_categoryName2 = "\u5206\u7C7B";
 var publishModal_categoryDesc2 = "\u9009\u62E9\u6587\u7AE0\u5206\u7C7B";
 var publishModal_selectCategory2 = "\u9009\u62E9\u5206\u7C7B...";
+var publishModal_addCategory2 = "\u589E\u52A0";
+var publishModal_newCategoryPlaceholder2 = "\u65B0\u5206\u7C7B\u540D\u79F0";
 var publishModal_statusName2 = "\u72B6\u6001";
 var publishModal_statusDesc2 = "\u9009\u62E9\u53D1\u5E03\u72B6\u6001";
 var publishModal_postDateTimeName2 = "\u53D1\u5E03\u65F6\u95F4";
@@ -117898,9 +117907,6 @@ var publishModal_advancedTab2 = "\u{1F527} \u9AD8\u7EA7\u8BBE\u7F6E";
 var publishModal_previewTitle2 = "\u6587\u7AE0\u9884\u89C8";
 var publishModal_previewEditPlaceholder2 = "\u5728\u6B64\u7F16\u8F91 Markdown \u5185\u5BB9...";
 var publishModal_save2 = "\u4FDD\u5B58";
-var publishModal_saveParams2 = "\u4FDD\u5B58";
-var publishModal_saveParamsSuccess2 = "\u2705 \u53C2\u6570\u5DF2\u4FDD\u5B58\u5230 frontmatter";
-var publishModal_saveParamsFailed2 = "\u274C \u4FDD\u5B58\u53C2\u6570\u5931\u8D25: <%= error %>";
 var publishModal_cancel2 = "\u53D6\u6D88";
 var publishModal_previewFeaturedImage2 = "\u7279\u8272\u56FE\u7247";
 var publishModal_previewFeaturedImageUploaded2 = "\u7279\u8272\u56FE\u7247\uFF08\u5DF2\u4E0A\u4F20\u5230 WordPress\uFF09";
@@ -118220,6 +118226,8 @@ var zh_cn_default = {
   publishModal_categoryName: publishModal_categoryName2,
   publishModal_categoryDesc: publishModal_categoryDesc2,
   publishModal_selectCategory: publishModal_selectCategory2,
+  publishModal_addCategory: publishModal_addCategory2,
+  publishModal_newCategoryPlaceholder: publishModal_newCategoryPlaceholder2,
   publishModal_statusName: publishModal_statusName2,
   publishModal_statusDesc: publishModal_statusDesc2,
   publishModal_postDateTimeName: publishModal_postDateTimeName2,
@@ -118309,9 +118317,6 @@ var zh_cn_default = {
   publishModal_previewTitle: publishModal_previewTitle2,
   publishModal_previewEditPlaceholder: publishModal_previewEditPlaceholder2,
   publishModal_save: publishModal_save2,
-  publishModal_saveParams: publishModal_saveParams2,
-  publishModal_saveParamsSuccess: publishModal_saveParamsSuccess2,
-  publishModal_saveParamsFailed: publishModal_saveParamsFailed2,
   publishModal_cancel: publishModal_cancel2,
   publishModal_previewFeaturedImage: publishModal_previewFeaturedImage2,
   publishModal_previewFeaturedImageUploaded: publishModal_previewFeaturedImageUploaded2,
@@ -118491,7 +118496,7 @@ var FeaturePictureCacheManager = class {
     this.CACHE_DURATION = 7 * 24 * 60 * 60 * 1e3;
     // 7 days in ms
     this.CACHE_KEY = "feature-picture-cache";
-    this.loadCache();
+    this._ready = this.loadCache();
   }
   /**
    * Load cache from plugin data
@@ -118550,6 +118555,7 @@ var FeaturePictureCacheManager = class {
    * @param featuredImageId - Featured image ID
    */
   async set(postId, url, featuredImageId) {
+    await this._ready;
     const key = String(postId);
     const now = Date.now();
     this.cache[key] = {
@@ -118566,6 +118572,7 @@ var FeaturePictureCacheManager = class {
    * @param postId - Post ID
    */
   async clear(postId) {
+    await this._ready;
     const key = String(postId);
     if (this.cache[key]) {
       delete this.cache[key];
@@ -118578,6 +118585,7 @@ var FeaturePictureCacheManager = class {
    * Should be called on plugin load
    */
   async cleanExpired() {
+    await this._ready;
     const now = Date.now();
     const keys2 = Object.keys(this.cache);
     let cleanedCount = 0;
@@ -118596,6 +118604,7 @@ var FeaturePictureCacheManager = class {
    * Clear all cache
    */
   async clearAll() {
+    await this._ready;
     this.cache = {};
     log5.info("All cache cleared");
     await this.saveCache();

@@ -308,14 +308,8 @@ export abstract class AbstractWordPressClient implements WordPressClient {
         const file = this.plugin.app.workspace.getActiveFile();
         if (file) {
           await this.plugin.app.fileManager.processFrontMatter(file, fm => {
-            // Check for duplicate keys before modification
             const knownKeys = ['blogName', 'postId', 'postType', 'categories', 'slug', 'featurePicture', 'featuredImageId', 'tags'];
             const existingKeys = Object.keys(fm);
-            const duplicates = existingKeys.filter((key, index) => existingKeys.indexOf(key) !== index);
-            if (duplicates.length > 0) {
-              new Notice(this.plugin.t('notice_duplicateFrontmatter', { fields: duplicates.join(', ') }));
-            }
-
             // Preserve existing non-plugin fields
             const existingOtherFields: Record<string, any> = {};
             for (const key of existingKeys) {

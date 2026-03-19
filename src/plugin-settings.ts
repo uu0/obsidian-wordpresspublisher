@@ -3,6 +3,7 @@ import { WpProfile } from './wp-profile';
 import { CommentStatus, PostStatus } from './wp-api';
 import { isNil, isUndefined } from 'lodash-es';
 import { SafeAny } from './utils';
+import { logger } from './utils/logger';
 import { PassCrypto } from './pass-crypto';
 import { WP_DEFAULT_PROFILE_NAME } from './consts';
 import { AIServiceConfig } from './ai-service';
@@ -164,7 +165,7 @@ export async function upgradeSettings(
   existingSettings: SafeAny,
   to: SettingsVersion
 ): Promise<{ needUpgrade: boolean, settings: WordpressPluginSettings }> {
-  console.log(existingSettings, to);
+  logger.debug('upgradeSettings', 'upgrading settings', { from: existingSettings?.version, to });
   if (isUndefined(existingSettings.version)) {
     // V1
     if (to === SettingsVersion.V2) {
