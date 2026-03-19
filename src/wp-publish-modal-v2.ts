@@ -1941,11 +1941,12 @@ export class WpPublishModalV2 extends AbstractModal {
             addBtn.style.display = '';
             renderCats();
           };
+          let v3CatCommitted = false;
           input.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') commit();
-            if (e.key === 'Escape') { input.remove(); addBtn.style.display = ''; }
+            if (e.key === 'Enter') { v3CatCommitted = true; commit(); }
+            if (e.key === 'Escape') { v3CatCommitted = true; input.remove(); addBtn.style.display = ''; }
           });
-          input.addEventListener('blur', commit);
+          input.addEventListener('blur', () => { if (!v3CatCommitted) commit(); });
           input.focus();
         });
       };
@@ -3158,11 +3159,12 @@ export class WpPublishModalV2 extends AbstractModal {
             input.remove();
             addBtn.style.display = '';
           };
+          let gridCatCommitted = false;
           input.onkeydown = (e) => {
-            if (e.key === 'Enter') commit();
-            if (e.key === 'Escape') { input.remove(); addBtn.style.display = ''; }
+            if (e.key === 'Enter') { gridCatCommitted = true; commit(); }
+            if (e.key === 'Escape') { gridCatCommitted = true; input.remove(); addBtn.style.display = ''; }
           };
-          input.onblur = commit;
+          input.onblur = () => { if (!gridCatCommitted) commit(); };
           actionRow.insertBefore(input, addBtn);
           input.focus();
         };
