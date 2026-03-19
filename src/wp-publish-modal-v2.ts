@@ -1968,11 +1968,16 @@ export class WpPublishModalV2 extends AbstractModal {
   private renderV3Footer(container: HTMLElement, params: WordPressPostParams): void {
     const footer = container.createDiv('wp-v3-footer');
 
+    // 检测是否为移动端小屏幕
+    const isMobile = window.innerWidth <= 480;
+
     // ✏️ 编辑按钮（靠左，进入文章内容编辑模式）
     const editBtn = footer.createEl('button', {
-      text: this.t('publishModal_editButton') || '✏️ 编辑',
       cls: 'wp-v3-edit-footer-btn'
     });
+    // 移动端小屏幕只显示 emoji，桌面端显示完整文本
+    editBtn.textContent = isMobile ? '✏️' : (this.t('publishModal_editButton') || '✏️ 编辑');
+    editBtn.title = this.t('publishModal_editButton') || '编辑内容'; // 添加 tooltip
     editBtn.onclick = () => {
       // 直接调用 Content section 挂载的 enterContentEdit 函数
       const contentSection = container.querySelector('[data-content-section="true"]') as any;
@@ -1980,17 +1985,28 @@ export class WpPublishModalV2 extends AbstractModal {
     };
 
     const cancelBtn = footer.createEl('button', {
-      text: '❌ ' + (this.t('publishModal_cancel') || '取消'),
       cls: 'wp-v3-cancel-footer-btn'
     });
+    cancelBtn.textContent = isMobile ? '❌' : ('❌ ' + (this.t('publishModal_cancel') || '取消'));
+    cancelBtn.title = this.t('publishModal_cancel') || '取消'; // 添加 tooltip
     cancelBtn.onclick = () => this.close();
 
     const publishBtn = footer.createEl('button', {
-      text: this.t('publishModal_publishButton') || '🚀 发布',
       cls: 'wp-v3-publish-footer-btn'
     }) as HTMLButtonElement;
+    publishBtn.textContent = isMobile ? '🚀' : (this.t('publishModal_publishButton') || '🚀 发布');
+    publishBtn.title = this.t('publishModal_publishButton') || '发布到 WordPress'; // 添加 tooltip
     this.publishBtn = publishBtn;
     publishBtn.onclick = () => this.doPublish(params, publishBtn);
+
+    // 监听窗口大小变化，动态调整按钮文本
+    const resizeObserver = new ResizeObserver(() => {
+      const currentIsMobile = window.innerWidth <= 480;
+      editBtn.textContent = currentIsMobile ? '✏️' : (this.t('publishModal_editButton') || '✏️ 编辑');
+      cancelBtn.textContent = currentIsMobile ? '❌' : ('❌ ' + (this.t('publishModal_cancel') || '取消'));
+      publishBtn.textContent = currentIsMobile ? '🚀' : (this.t('publishModal_publishButton') || '🚀 发布');
+    });
+    resizeObserver.observe(document.body);
   }
 
   /**

@@ -108792,25 +108792,36 @@ var init_wp_publish_modal_v2 = __esm({
       // ==================== V3.1 底部操作栏 ====================
       renderV3Footer(container, params) {
         const footer = container.createDiv("wp-v3-footer");
+        const isMobile = window.innerWidth <= 480;
         const editBtn = footer.createEl("button", {
-          text: this.t("publishModal_editButton") || "\u270F\uFE0F \u7F16\u8F91",
           cls: "wp-v3-edit-footer-btn"
         });
+        editBtn.textContent = isMobile ? "\u270F\uFE0F" : this.t("publishModal_editButton") || "\u270F\uFE0F \u7F16\u8F91";
+        editBtn.title = this.t("publishModal_editButton") || "\u7F16\u8F91\u5185\u5BB9";
         editBtn.onclick = () => {
           const contentSection = container.querySelector('[data-content-section="true"]');
           if (contentSection == null ? void 0 : contentSection.__enterContentEdit) contentSection.__enterContentEdit();
         };
         const cancelBtn = footer.createEl("button", {
-          text: "\u274C " + (this.t("publishModal_cancel") || "\u53D6\u6D88"),
           cls: "wp-v3-cancel-footer-btn"
         });
+        cancelBtn.textContent = isMobile ? "\u274C" : "\u274C " + (this.t("publishModal_cancel") || "\u53D6\u6D88");
+        cancelBtn.title = this.t("publishModal_cancel") || "\u53D6\u6D88";
         cancelBtn.onclick = () => this.close();
         const publishBtn = footer.createEl("button", {
-          text: this.t("publishModal_publishButton") || "\u{1F680} \u53D1\u5E03",
           cls: "wp-v3-publish-footer-btn"
         });
+        publishBtn.textContent = isMobile ? "\u{1F680}" : this.t("publishModal_publishButton") || "\u{1F680} \u53D1\u5E03";
+        publishBtn.title = this.t("publishModal_publishButton") || "\u53D1\u5E03\u5230 WordPress";
         this.publishBtn = publishBtn;
         publishBtn.onclick = () => this.doPublish(params, publishBtn);
+        const resizeObserver = new ResizeObserver(() => {
+          const currentIsMobile = window.innerWidth <= 480;
+          editBtn.textContent = currentIsMobile ? "\u270F\uFE0F" : this.t("publishModal_editButton") || "\u270F\uFE0F \u7F16\u8F91";
+          cancelBtn.textContent = currentIsMobile ? "\u274C" : "\u274C " + (this.t("publishModal_cancel") || "\u53D6\u6D88");
+          publishBtn.textContent = currentIsMobile ? "\u{1F680}" : this.t("publishModal_publishButton") || "\u{1F680} \u53D1\u5E03";
+        });
+        resizeObserver.observe(document.body);
       }
       /**
        * 设置滚动监听，为 sticky 元素添加阴影效果

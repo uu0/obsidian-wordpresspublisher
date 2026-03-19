@@ -1332,6 +1332,20 @@
     background: var(--background-primary) !important;
     box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.12) !important;
   }
+
+  /* 移动端底栏按钮优化 - 减小 padding 和字体 */
+  .wp-v3-footer {
+    padding: 8px 12px !important;
+    gap: 8px !important;
+  }
+
+  .wp-v3-edit-footer-btn,
+  .wp-v3-cancel-footer-btn,
+  .wp-v3-publish-footer-btn {
+    padding: 6px 12px !important;
+    font-size: 13px !important;
+    min-height: 36px;
+  }
 }
 
 /* 横屏低高度 */
@@ -2953,6 +2967,23 @@
     padding: 12px;
     font-size: 13px;
   }
+
+  /* 超小屏幕底栏按钮垂直堆叠 */
+  .wp-v3-footer {
+    flex-direction: column !important;
+    gap: 6px !important;
+    padding: 8px !important;
+  }
+
+  .wp-v3-edit-footer-btn,
+  .wp-v3-cancel-footer-btn,
+  .wp-v3-publish-footer-btn {
+    width: 100% !important;
+    margin-right: 0 !important;
+    padding: 10px 16px !important;
+    font-size: 14px !important;
+    min-height: 44px; /* iOS 推荐最小触摸区域 */
+  }
 }
 
 /* ==================== 触摸设备优化 ==================== */
@@ -2962,7 +2993,10 @@
   .wp-publish-tab-item,
   .wp-category-tag,
   .wp-tag-item,
-  .wp-category-add-btn {
+  .wp-category-add-btn,
+  .wp-v3-edit-footer-btn,
+  .wp-v3-cancel-footer-btn,
+  .wp-v3-publish-footer-btn {
     min-height: 44px; /* iOS 推荐最小触摸区域 */
   }
 
