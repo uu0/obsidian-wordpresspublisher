@@ -54,11 +54,25 @@ var init_wp_api = __esm({
 });
 
 // src/consts.ts
-var ERROR_NOTICE_TIMEOUT, WP_OAUTH2_CLIENT_ID, WP_OAUTH2_CLIENT_SECRET, WP_OAUTH2_TOKEN_ENDPOINT, WP_OAUTH2_AUTHORIZE_ENDPOINT, WP_OAUTH2_VALIDATE_TOKEN_ENDPOINT, WP_OAUTH2_URL_ACTION, WP_OAUTH2_REDIRECT_URI, WP_DEFAULT_PROFILE_NAME;
+var ERROR_NOTICE_TIMEOUT, FEATURED_IMAGE_UPLOAD_MAX_RETRIES, FEATURED_IMAGE_UPLOAD_RETRY_DELAY_MS, AUTH_CACHE_DURATION_MS, WP_OAUTH2_CLIENT_ID, WP_OAUTH2_CLIENT_SECRET, WP_OAUTH2_TOKEN_ENDPOINT, WP_OAUTH2_AUTHORIZE_ENDPOINT, WP_OAUTH2_VALIDATE_TOKEN_ENDPOINT, WP_OAUTH2_URL_ACTION, WP_OAUTH2_REDIRECT_URI, WP_DEFAULT_PROFILE_NAME;
 var init_consts = __esm({
   "src/consts.ts"() {
     "use strict";
     ERROR_NOTICE_TIMEOUT = 15e3;
+    FEATURED_IMAGE_UPLOAD_MAX_RETRIES = 2;
+    FEATURED_IMAGE_UPLOAD_RETRY_DELAY_MS = 2e3;
+    AUTH_CACHE_DURATION_MS = {
+      "1d": 24 * 60 * 60 * 1e3,
+      // 1 day
+      "1w": 7 * 24 * 60 * 60 * 1e3,
+      // 1 week
+      "1m": 30 * 24 * 60 * 60 * 1e3,
+      // 1 month (approx)
+      "6m": 180 * 24 * 60 * 60 * 1e3,
+      // 6 months (approx)
+      "forever": Number.MAX_SAFE_INTEGER
+      // Never expire
+    };
     WP_OAUTH2_CLIENT_ID = "79085";
     WP_OAUTH2_CLIENT_SECRET = "zg4mKy9O1mc1mmynShJTVxs8r1k3X4e3g1sv5URlkpZqlWdUdAA7C2SSBOo02P7X";
     WP_OAUTH2_TOKEN_ENDPOINT = "https://public-api.wordpress.com/oauth2/token";
@@ -65504,7 +65518,8 @@ var init_plugin_settings = __esm({
       enableImageCompression: true,
       imageMaxSizeKB: 500,
       imageMinQuality: 0.6,
-      tagFormat: "yaml" /* YAML */
+      tagFormat: "yaml" /* YAML */,
+      authCacheDuration: "1m" /* OneMonth */
     };
   }
 });
@@ -113313,7 +113328,7 @@ function getImages(content) {
   }
   return paths;
 }
-var import_obsidian13, import_file_type_checker, AbstractWordPressClient;
+var import_obsidian13, import_file_type_checker, globalAuthCache, AbstractWordPressClient;
 var init_abstract_wp_client = __esm({
   "src/abstract-wp-client.ts"() {
     "use strict";
@@ -113333,6 +113348,7 @@ var init_abstract_wp_client = __esm({
     init_frontmatter_manager();
     init_frontmatter_conflict_modal();
     init_tag_formatter();
+    globalAuthCache = /* @__PURE__ */ new Map();
     AbstractWordPressClient = class {
       constructor(plugin4, profile) {
         this.plugin = plugin4;
@@ -113404,6 +113420,61 @@ var init_abstract_wp_client = __esm({
           return term ? term.name : String(id);
         });
       }
+      /**
+       * Get the cache key for the current profile
+       */
+      getAuthCacheKey() {
+        return `${this.profile.name}_${this.profile.endpoint}`;
+      }
+      /**
+       * Check if the cached authentication is still valid based on user's cache duration setting
+       */
+      isAuthCacheValid(cacheEntry) {
+        var _a5, _b;
+        const cacheDuration = (_a5 = this.plugin.settings.authCacheDuration) != null ? _a5 : "1m";
+        const maxAge = (_b = AUTH_CACHE_DURATION_MS[cacheDuration]) != null ? _b : AUTH_CACHE_DURATION_MS["1m"];
+        const age = Date.now() - cacheEntry.timestamp;
+        return age < maxAge;
+      }
+      /**
+       * Get cached authentication if available and valid
+       */
+      getCachedAuth() {
+        const cacheKey = this.getAuthCacheKey();
+        const cacheEntry = globalAuthCache.get(cacheKey);
+        if (cacheEntry && cacheEntry.profileName === this.profile.name) {
+          if (this.isAuthCacheValid(cacheEntry)) {
+            console.log(`[getCachedAuth] Using cached auth for profile: ${this.profile.name}`);
+            return cacheEntry.auth;
+          } else {
+            console.log(`[getCachedAuth] Cache expired for profile: ${this.profile.name}`);
+            globalAuthCache.delete(cacheKey);
+          }
+        }
+        return null;
+      }
+      /**
+       * Cache authentication for future use
+       */
+      cacheAuth(auth) {
+        var _a5;
+        const cacheKey = this.getAuthCacheKey();
+        const cacheDuration = (_a5 = this.plugin.settings.authCacheDuration) != null ? _a5 : "1m";
+        console.log(`[cacheAuth] Caching auth for profile: ${this.profile.name}, duration: ${cacheDuration}`);
+        globalAuthCache.set(cacheKey, {
+          auth,
+          timestamp: Date.now(),
+          profileName: this.profile.name
+        });
+      }
+      /**
+       * Clear cached authentication for current profile
+       */
+      clearCachedAuth() {
+        const cacheKey = this.getAuthCacheKey();
+        console.log(`[clearCachedAuth] Clearing cache for profile: ${this.profile.name}`);
+        globalAuthCache.delete(cacheKey);
+      }
       async getAuth() {
         let auth = {
           username: null,
@@ -113411,6 +113482,10 @@ var init_abstract_wp_client = __esm({
         };
         try {
           if (this.needLogin()) {
+            const cachedAuth = this.getCachedAuth();
+            if (cachedAuth) {
+              return cachedAuth;
+            }
             if (this.profile.username && this.profile.password) {
               auth = {
                 username: this.profile.username,
@@ -113420,12 +113495,17 @@ var init_abstract_wp_client = __esm({
               if (authResult.code !== 0 /* OK */) {
                 throw new Error(this.plugin.i18n.t("error_invalidUser"));
               }
+              this.cacheAuth(auth);
             }
           }
         } catch (error2) {
           showError(error2);
+          this.clearCachedAuth();
           const result = await openLoginModal(this.plugin, this.profile, async (auth2) => {
             const authResult = await this.validateUser(auth2);
+            if (authResult.code === 0 /* OK */) {
+              this.cacheAuth(auth2);
+            }
             return authResult.code === 0 /* OK */;
           });
           auth = result.auth;
@@ -113804,11 +113884,11 @@ var init_abstract_wp_client = __esm({
                           console.log("[WpPublishModalV2] Image does not need compression or compression failed");
                         }
                       }
-                      const uploadResult = await this.uploadMedia({
+                      const uploadResult = await this.uploadMediaWithRetry({
                         mimeType: imageMimeType,
                         fileName: featuredImage.fileName,
                         content: imageContent
-                      }, auth);
+                      }, auth, featuredImage.fileName);
                       if (uploadResult.code === 0 /* OK */) {
                         postParams2.featuredMedia = uploadResult.data.id;
                         featuredImageUrl = uploadResult.data.url;
@@ -113895,6 +113975,111 @@ var init_abstract_wp_client = __esm({
           }
         });
         return terms;
+      }
+      /**
+       * Check if an error is a transient error that should trigger a retry
+       * Transient errors include: 502, 503, 504, timeout, network issues
+       * @param error - The error to check
+       * @returns True if the error is transient and should be retried
+       */
+      isTransientError(error2) {
+        if (!error2) return false;
+        const errorMessage = error2.message || error2.toString() || "";
+        const errorCode = error2.code || error2.status || "";
+        const transientStatusCodes = ["502", "503", "504", "500"];
+        const hasTransientStatus = transientStatusCodes.some(
+          (code2) => errorMessage.includes(code2) || String(errorCode).includes(code2)
+        );
+        const transientErrorPatterns = [
+          "timeout",
+          "network",
+          "econnreset",
+          "econnrefused",
+          "ENOTFOUND",
+          "ETIMEDOUT",
+          "socket hang up",
+          "temporary",
+          "unavailable",
+          "rate limit",
+          "too many requests"
+        ];
+        const hasTransientPattern = transientErrorPatterns.some(
+          (pattern) => errorMessage.toLowerCase().includes(pattern.toLowerCase())
+        );
+        return hasTransientStatus || hasTransientPattern;
+      }
+      /**
+       * Upload media with automatic retry for transient errors (P0 feature)
+       * Implements smart error handling with up to 2 retries for transient server errors
+       * @param media - Media to upload
+       * @param certificate - Authentication credentials
+       * @param fileName - Original file name for error messages
+       * @returns Upload result with retry information
+       */
+      async uploadMediaWithRetry(media, certificate, fileName) {
+        let lastError;
+        let attempt2 = 0;
+        while (attempt2 <= FEATURED_IMAGE_UPLOAD_MAX_RETRIES) {
+          try {
+            console.log(`[uploadMediaWithRetry] Attempt ${attempt2 + 1}/${FEATURED_IMAGE_UPLOAD_MAX_RETRIES + 1} for ${fileName}`);
+            const result = await this.uploadMedia(media, certificate);
+            if (result.code === 0 /* OK */) {
+              if (attempt2 > 0) {
+                console.log(`[uploadMediaWithRetry] Upload succeeded after ${attempt2 + 1} attempts`);
+                new import_obsidian13.Notice(this.plugin.i18n.t("notice_featuredImageUploadRetrySuccess", {
+                  fileName,
+                  attempts: String(attempt2 + 1)
+                }), 5e3);
+              }
+              return result;
+            }
+            if (result.error && this.isTransientError(result.error)) {
+              lastError = result.error;
+              attempt2++;
+              if (attempt2 <= FEATURED_IMAGE_UPLOAD_MAX_RETRIES) {
+                console.log(`[uploadMediaWithRetry] Transient error detected, retrying in ${FEATURED_IMAGE_UPLOAD_RETRY_DELAY_MS}ms...`, result.error);
+                new import_obsidian13.Notice(this.plugin.i18n.t("notice_featuredImageUploadRetrying", {
+                  fileName,
+                  attempt: String(attempt2),
+                  maxRetries: String(FEATURED_IMAGE_UPLOAD_MAX_RETRIES)
+                }), 3e3);
+                await sleep2(FEATURED_IMAGE_UPLOAD_RETRY_DELAY_MS);
+                continue;
+              }
+            } else {
+              return result;
+            }
+          } catch (error2) {
+            lastError = error2;
+            if (this.isTransientError(error2)) {
+              attempt2++;
+              if (attempt2 <= FEATURED_IMAGE_UPLOAD_MAX_RETRIES) {
+                console.log(`[uploadMediaWithRetry] Transient exception detected, retrying in ${FEATURED_IMAGE_UPLOAD_RETRY_DELAY_MS}ms...`, error2);
+                new import_obsidian13.Notice(this.plugin.i18n.t("notice_featuredImageUploadRetrying", {
+                  fileName,
+                  attempt: String(attempt2),
+                  maxRetries: String(FEATURED_IMAGE_UPLOAD_MAX_RETRIES)
+                }), 3e3);
+                await sleep2(FEATURED_IMAGE_UPLOAD_RETRY_DELAY_MS);
+                continue;
+              }
+            } else {
+              throw error2;
+            }
+          }
+        }
+        console.error(`[uploadMediaWithRetry] Upload failed after ${attempt2} attempts`, lastError);
+        return {
+          code: 1 /* Error */,
+          error: {
+            code: 2 /* ServerInternalError */,
+            message: this.plugin.i18n.t("error_featuredImageUploadFailedAfterRetries", {
+              fileName,
+              attempts: String(attempt2),
+              error: (lastError == null ? void 0 : lastError.message) || (lastError == null ? void 0 : lastError.toString()) || "Unknown error"
+            })
+          }
+        };
       }
       readFromFrontMatter(noteTitle, matterData, params) {
         var _a5, _b, _c, _d;
@@ -115160,6 +115345,9 @@ async function processFile(file, app) {
     matter: frontmatter != null ? frontmatter : {}
   };
 }
+function sleep2(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 var import_obsidian15;
 var init_utils5 = __esm({
   "src/utils.ts"() {
@@ -115738,6 +115926,13 @@ var WordpressSettingTab = class extends import_obsidian19.PluginSettingTab {
         this.display();
       });
     });
+    new import_obsidian19.Setting(containerEl).setName(t("settings_authCacheDuration")).setDesc(t("settings_authCacheDurationDesc")).addDropdown((dropdown) => {
+      var _a6;
+      dropdown.addOption("1d" /* OneDay */, t("settings_authCacheDurationOneDay")).addOption("1w" /* OneWeek */, t("settings_authCacheDurationOneWeek")).addOption("1m" /* OneMonth */, t("settings_authCacheDurationOneMonth")).addOption("6m" /* SixMonths */, t("settings_authCacheDurationSixMonths")).addOption("forever" /* Forever */, t("settings_authCacheDurationForever")).setValue((_a6 = this.plugin.settings.authCacheDuration) != null ? _a6 : "1m" /* OneMonth */).onChange(async (value) => {
+        this.plugin.settings.authCacheDuration = value;
+        await this.plugin.saveSettings();
+      });
+    });
     containerEl.createEl("h2", { text: t("settings_aiConfig") });
     containerEl.createEl("h3", { text: t("settings_slugGeneration") });
     new import_obsidian19.Setting(containerEl).setName(t("settings_autoGenerateSlug")).setDesc(t("settings_autoGenerateSlugDesc")).addToggle(
@@ -116058,6 +116253,7 @@ __export(en_exports, {
   defaultPrompt_tagsEn: () => defaultPrompt_tagsEn,
   error_cannotParseResponse: () => error_cannotParseResponse,
   error_categoriesCreationFailed: () => error_categoriesCreationFailed,
+  error_featuredImageUploadFailedAfterRetries: () => error_featuredImageUploadFailedAfterRetries,
   error_invalidUrl: () => error_invalidUrl,
   error_invalidUser: () => error_invalidUser,
   error_invalidWpComToken: () => error_invalidWpComToken,
@@ -116105,6 +116301,8 @@ __export(en_exports, {
   notice_aiConfigValid: () => notice_aiConfigValid,
   notice_createCategoryFailed: () => notice_createCategoryFailed,
   notice_duplicateFrontmatter: () => notice_duplicateFrontmatter,
+  notice_featuredImageUploadRetrySuccess: () => notice_featuredImageUploadRetrySuccess,
+  notice_featuredImageUploadRetrying: () => notice_featuredImageUploadRetrying,
   notice_imageAIApiKeyRequired: () => notice_imageAIApiKeyRequired,
   notice_imageAIConfigInvalid: () => notice_imageAIConfigInvalid,
   notice_imageAIConfigRequired: () => notice_imageAIConfigRequired,
@@ -116340,6 +116538,13 @@ __export(en_exports, {
   settings_apiTypeRestWpComOAuth2Desc: () => settings_apiTypeRestWpComOAuth2Desc,
   settings_apiTypeXmlRpc: () => settings_apiTypeXmlRpc,
   settings_apiTypeXmlRpcDesc: () => settings_apiTypeXmlRpcDesc,
+  settings_authCacheDuration: () => settings_authCacheDuration,
+  settings_authCacheDurationDesc: () => settings_authCacheDurationDesc,
+  settings_authCacheDurationForever: () => settings_authCacheDurationForever,
+  settings_authCacheDurationOneDay: () => settings_authCacheDurationOneDay,
+  settings_authCacheDurationOneMonth: () => settings_authCacheDurationOneMonth,
+  settings_authCacheDurationOneWeek: () => settings_authCacheDurationOneWeek,
+  settings_authCacheDurationSixMonths: () => settings_authCacheDurationSixMonths,
   settings_autoGenerateSlug: () => settings_autoGenerateSlug,
   settings_autoGenerateSlugDesc: () => settings_autoGenerateSlugDesc,
   settings_commentConvertMode: () => settings_commentConvertMode,
@@ -116564,6 +116769,13 @@ var settings_languageDesc = "Select plugin interface language";
 var settings_languageAuto = "Auto (Follow System)";
 var settings_languageEn = "English";
 var settings_languageZhCn = "\u7B80\u4F53\u4E2D\u6587";
+var settings_authCacheDuration = "Auth Cache Duration";
+var settings_authCacheDurationDesc = "How long to cache WordPress authentication credentials. Shorter durations are more secure but require more frequent re-authentication.";
+var settings_authCacheDurationOneDay = "1 Day";
+var settings_authCacheDurationOneWeek = "1 Week";
+var settings_authCacheDurationOneMonth = "1 Month";
+var settings_authCacheDurationSixMonths = "6 Months";
+var settings_authCacheDurationForever = "Forever";
 var settings_aiConfig = "AI Configuration";
 var settings_slugGeneration = "Slug Generation Settings";
 var settings_autoGenerateSlug = "Auto-generate Slug";
@@ -116621,6 +116833,8 @@ var notice_invalidImageFormat = "Invalid image format. Please select a JPEG, PNG
 var notice_imageTooLarge = "Image file is too large. Maximum size is 10MB.";
 var notice_imageLoadFailed = "Failed to load image file.";
 var notice_imageCompressed = "Image compressed: <%= originalSize %>KB \u2192 <%= compressedSize %>KB";
+var notice_featuredImageUploadRetrying = "Featured image upload failed (transient error), retrying <%= attempt %>/<%= maxRetries %>...";
+var notice_featuredImageUploadRetrySuccess = "Featured image uploaded successfully after <%= attempts %> attempt(s): <%= fileName %>";
 var notice_aiConfigValid = "\u2713 AI configuration validated successfully";
 var notice_aiConfigInvalid = "\u2717 AI configuration validation failed: <%= error %>";
 var notice_imageAIConfigRequired = "Please configure Image Generation AI first";
@@ -116747,6 +116961,7 @@ var notice_publishCancelled = "\u274C Publishing cancelled";
 var error_userCancelledPublish = "User cancelled publishing";
 var error_categoriesCreationFailed = "Failed to create categories: <%= names %>. Please create them manually in WordPress or choose existing categories.";
 var error_noCategoriesAvailable = "No categories available for publishing. Please select at least one category.";
+var error_featuredImageUploadFailedAfterRetries = "Featured image upload failed after <%= attempts %> attempt(s): <%= fileName %>. Error: <%= error %>";
 var frontmatter_defaultCategory = "Uncategorized";
 var publishModal_basicSettings = "Basic Settings";
 var publishModal_statusDraft = "Draft";
@@ -116978,6 +117193,13 @@ var en_default = {
   settings_languageAuto,
   settings_languageEn,
   settings_languageZhCn,
+  settings_authCacheDuration,
+  settings_authCacheDurationDesc,
+  settings_authCacheDurationOneDay,
+  settings_authCacheDurationOneWeek,
+  settings_authCacheDurationOneMonth,
+  settings_authCacheDurationSixMonths,
+  settings_authCacheDurationForever,
   settings_aiConfig,
   settings_slugGeneration,
   settings_autoGenerateSlug,
@@ -117035,6 +117257,8 @@ var en_default = {
   notice_imageTooLarge,
   notice_imageLoadFailed,
   notice_imageCompressed,
+  notice_featuredImageUploadRetrying,
+  notice_featuredImageUploadRetrySuccess,
   notice_aiConfigValid,
   notice_aiConfigInvalid,
   notice_imageAIConfigRequired,
@@ -117161,6 +117385,7 @@ var en_default = {
   error_userCancelledPublish,
   error_categoriesCreationFailed,
   error_noCategoriesAvailable,
+  error_featuredImageUploadFailedAfterRetries,
   frontmatter_defaultCategory,
   publishModal_basicSettings,
   publishModal_statusDraft,
@@ -117305,6 +117530,7 @@ __export(zh_cn_exports, {
   defaultPrompt_tagsEn: () => defaultPrompt_tagsEn2,
   error_cannotParseResponse: () => error_cannotParseResponse2,
   error_categoriesCreationFailed: () => error_categoriesCreationFailed2,
+  error_featuredImageUploadFailedAfterRetries: () => error_featuredImageUploadFailedAfterRetries2,
   error_invalidUrl: () => error_invalidUrl2,
   error_invalidUser: () => error_invalidUser2,
   error_invalidWpComToken: () => error_invalidWpComToken2,
@@ -117352,6 +117578,8 @@ __export(zh_cn_exports, {
   notice_aiConfigValid: () => notice_aiConfigValid2,
   notice_createCategoryFailed: () => notice_createCategoryFailed2,
   notice_duplicateFrontmatter: () => notice_duplicateFrontmatter2,
+  notice_featuredImageUploadRetrySuccess: () => notice_featuredImageUploadRetrySuccess2,
+  notice_featuredImageUploadRetrying: () => notice_featuredImageUploadRetrying2,
   notice_imageAIApiKeyRequired: () => notice_imageAIApiKeyRequired2,
   notice_imageAIConfigInvalid: () => notice_imageAIConfigInvalid2,
   notice_imageAIConfigRequired: () => notice_imageAIConfigRequired2,
@@ -117587,6 +117815,13 @@ __export(zh_cn_exports, {
   settings_apiTypeRestWpComOAuth2Desc: () => settings_apiTypeRestWpComOAuth2Desc2,
   settings_apiTypeXmlRpc: () => settings_apiTypeXmlRpc2,
   settings_apiTypeXmlRpcDesc: () => settings_apiTypeXmlRpcDesc2,
+  settings_authCacheDuration: () => settings_authCacheDuration2,
+  settings_authCacheDurationDesc: () => settings_authCacheDurationDesc2,
+  settings_authCacheDurationForever: () => settings_authCacheDurationForever2,
+  settings_authCacheDurationOneDay: () => settings_authCacheDurationOneDay2,
+  settings_authCacheDurationOneMonth: () => settings_authCacheDurationOneMonth2,
+  settings_authCacheDurationOneWeek: () => settings_authCacheDurationOneWeek2,
+  settings_authCacheDurationSixMonths: () => settings_authCacheDurationSixMonths2,
   settings_autoGenerateSlug: () => settings_autoGenerateSlug2,
   settings_autoGenerateSlugDesc: () => settings_autoGenerateSlugDesc2,
   settings_commentConvertMode: () => settings_commentConvertMode2,
@@ -117811,6 +118046,13 @@ var settings_languageDesc2 = "\u9009\u62E9\u63D2\u4EF6\u754C\u9762\u8BED\u8A00";
 var settings_languageAuto2 = "\u81EA\u52A8\uFF08\u8DDF\u968F\u7CFB\u7EDF\uFF09";
 var settings_languageEn2 = "English";
 var settings_languageZhCn2 = "\u7B80\u4F53\u4E2D\u6587";
+var settings_authCacheDuration2 = "\u8BA4\u8BC1\u7F13\u5B58\u65F6\u957F";
+var settings_authCacheDurationDesc2 = "WordPress \u8BA4\u8BC1\u51ED\u636E\u7684\u7F13\u5B58\u65F6\u957F\u3002\u8F83\u77ED\u7684\u65F6\u957F\u66F4\u5B89\u5168\uFF0C\u4F46\u9700\u8981\u66F4\u9891\u7E41\u5730\u91CD\u65B0\u8BA4\u8BC1\u3002";
+var settings_authCacheDurationOneDay2 = "1 \u5929";
+var settings_authCacheDurationOneWeek2 = "1 \u5468";
+var settings_authCacheDurationOneMonth2 = "1 \u4E2A\u6708";
+var settings_authCacheDurationSixMonths2 = "6 \u4E2A\u6708";
+var settings_authCacheDurationForever2 = "\u6C38\u4E45";
 var settings_aiConfig2 = "AI \u914D\u7F6E";
 var settings_slugGeneration2 = "Slug \u751F\u6210\u8BBE\u7F6E";
 var settings_autoGenerateSlug2 = "\u81EA\u52A8\u751F\u6210 Slug";
@@ -117868,6 +118110,8 @@ var notice_invalidImageFormat2 = "\u65E0\u6548\u7684\u56FE\u7247\u683C\u5F0F\u30
 var notice_imageTooLarge2 = "\u56FE\u7247\u6587\u4EF6\u8FC7\u5927\u3002\u6700\u5927\u652F\u6301 10MB\u3002";
 var notice_imageLoadFailed2 = "\u52A0\u8F7D\u56FE\u7247\u6587\u4EF6\u5931\u8D25\u3002";
 var notice_imageCompressed2 = "\u56FE\u7247\u5DF2\u538B\u7F29: <%= originalSize %>KB \u2192 <%= compressedSize %>KB";
+var notice_featuredImageUploadRetrying2 = "\u7279\u8272\u56FE\u7247\u4E0A\u4F20\u5931\u8D25\uFF08\u4E34\u65F6\u9519\u8BEF\uFF09\uFF0C\u6B63\u5728\u91CD\u8BD5 <%= attempt %>/<%= maxRetries %>...";
+var notice_featuredImageUploadRetrySuccess2 = "\u7279\u8272\u56FE\u7247\u4E0A\u4F20\u6210\u529F\uFF08\u5171\u5C1D\u8BD5 <%= attempts %> \u6B21\uFF09: <%= fileName %>";
 var notice_aiConfigValid2 = "\u2713 AI \u914D\u7F6E\u9A8C\u8BC1\u6210\u529F";
 var notice_aiConfigInvalid2 = "\u2717 AI \u914D\u7F6E\u9A8C\u8BC1\u5931\u8D25: <%= error %>";
 var notice_imageAIConfigRequired2 = "\u8BF7\u5148\u914D\u7F6E\u56FE\u7247\u751F\u6210 AI";
@@ -117994,6 +118238,7 @@ var notice_publishCancelled2 = "\u274C \u53D1\u5E03\u5DF2\u53D6\u6D88";
 var error_userCancelledPublish2 = "\u7528\u6237\u53D6\u6D88\u53D1\u5E03";
 var error_categoriesCreationFailed2 = "\u65E0\u6CD5\u521B\u5EFA\u5206\u7C7B: <%= names %>\u3002\u8BF7\u5728 WordPress \u4E2D\u624B\u52A8\u521B\u5EFA\u8FD9\u4E9B\u5206\u7C7B\u6216\u9009\u62E9\u73B0\u6709\u5206\u7C7B\u3002";
 var error_noCategoriesAvailable2 = "\u6CA1\u6709\u53EF\u7528\u7684\u5206\u7C7B\u7528\u4E8E\u53D1\u5E03\u3002\u8BF7\u81F3\u5C11\u9009\u62E9\u4E00\u4E2A\u5206\u7C7B\u3002";
+var error_featuredImageUploadFailedAfterRetries2 = "\u7279\u8272\u56FE\u7247\u4E0A\u4F20\u5931\u8D25\uFF08\u5DF2\u5C1D\u8BD5 <%= attempts %> \u6B21\uFF09: <%= fileName %>\u3002\u9519\u8BEF: <%= error %>";
 var frontmatter_defaultCategory2 = "\u672A\u5206\u7C7B";
 var publishModal_basicSettings2 = "\u57FA\u672C\u8BBE\u7F6E";
 var publishModal_statusDraft2 = "\u8349\u7A3F";
@@ -118225,6 +118470,13 @@ var zh_cn_default = {
   settings_languageAuto: settings_languageAuto2,
   settings_languageEn: settings_languageEn2,
   settings_languageZhCn: settings_languageZhCn2,
+  settings_authCacheDuration: settings_authCacheDuration2,
+  settings_authCacheDurationDesc: settings_authCacheDurationDesc2,
+  settings_authCacheDurationOneDay: settings_authCacheDurationOneDay2,
+  settings_authCacheDurationOneWeek: settings_authCacheDurationOneWeek2,
+  settings_authCacheDurationOneMonth: settings_authCacheDurationOneMonth2,
+  settings_authCacheDurationSixMonths: settings_authCacheDurationSixMonths2,
+  settings_authCacheDurationForever: settings_authCacheDurationForever2,
   settings_aiConfig: settings_aiConfig2,
   settings_slugGeneration: settings_slugGeneration2,
   settings_autoGenerateSlug: settings_autoGenerateSlug2,
@@ -118282,6 +118534,8 @@ var zh_cn_default = {
   notice_imageTooLarge: notice_imageTooLarge2,
   notice_imageLoadFailed: notice_imageLoadFailed2,
   notice_imageCompressed: notice_imageCompressed2,
+  notice_featuredImageUploadRetrying: notice_featuredImageUploadRetrying2,
+  notice_featuredImageUploadRetrySuccess: notice_featuredImageUploadRetrySuccess2,
   notice_aiConfigValid: notice_aiConfigValid2,
   notice_aiConfigInvalid: notice_aiConfigInvalid2,
   notice_imageAIConfigRequired: notice_imageAIConfigRequired2,
@@ -118408,6 +118662,7 @@ var zh_cn_default = {
   error_userCancelledPublish: error_userCancelledPublish2,
   error_categoriesCreationFailed: error_categoriesCreationFailed2,
   error_noCategoriesAvailable: error_noCategoriesAvailable2,
+  error_featuredImageUploadFailedAfterRetries: error_featuredImageUploadFailedAfterRetries2,
   frontmatter_defaultCategory: frontmatter_defaultCategory2,
   publishModal_basicSettings: publishModal_basicSettings2,
   publishModal_statusDraft: publishModal_statusDraft2,

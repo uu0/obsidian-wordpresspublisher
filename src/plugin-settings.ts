@@ -35,6 +35,14 @@ export const enum TagFormat {
   Inline = 'inline'
 }
 
+export const enum AuthCacheDuration {
+  OneDay = '1d',
+  OneWeek = '1w',
+  OneMonth = '1m',
+  SixMonths = '6m',
+  Forever = 'forever'
+}
+
 export interface WordpressPluginSettings {
 
   version?: SettingsVersion;
@@ -155,6 +163,12 @@ export interface WordpressPluginSettings {
    * Tag format preference: YAML array or inline tags (#tag).
    */
   tagFormat: TagFormat;
+
+  /**
+   * Authentication cache duration for WordPress REST API.
+   * Options: 1 day, 1 week, 1 month, 6 months, forever.
+   */
+  authCacheDuration: AuthCacheDuration;
 }
 
 export const DEFAULT_SETTINGS: WordpressPluginSettings = {
@@ -177,6 +191,7 @@ export const DEFAULT_SETTINGS: WordpressPluginSettings = {
   imageMaxSizeKB: 500,
   imageMinQuality: 0.6,
   tagFormat: TagFormat.YAML,
+  authCacheDuration: AuthCacheDuration.OneMonth,
 }
 
 export async function upgradeSettings(

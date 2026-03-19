@@ -217,3 +217,12 @@ export async function processFile(file: TFile, app: App): Promise<{ content: str
     matter: frontmatter ?? {}
   };
 }
+
+/**
+ * Sleep/delay utility for async operations
+ * @param ms - Milliseconds to sleep
+ * @returns Promise that resolves after the specified delay
+ */
+export function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
