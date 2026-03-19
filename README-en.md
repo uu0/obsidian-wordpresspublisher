@@ -1,8 +1,8 @@
 # WordPress Publisher - Obsidian WordPress Plugin
 
-**Version**: 1.2.1
+**Version**: 2.1.1
 **Author**: uu0
-**Updated**: 2026-03-14
+**Updated**: 2026-03-19
 
 ## Project Background
 
@@ -166,9 +166,23 @@ Thanks to all open source community contributors!
 
 ### 2.1.1 (2026-03-19)
 
-**Category Management UI Improvements**
+**Smart Error Handling & Auth Cache Configuration**
 
-This release focuses on fixing category selection UI issues and improving mobile layout responsiveness.
+This release adds intelligent retry logic for featured image uploads and configurable authentication cache duration, improving reliability and user experience.
+
+**New Features**
+
+- **Smart Error Handling for Featured Image Upload (P0)**
+  - Automatic retry for transient server errors (502, 503, 504, timeout, network issues)
+  - Maximum 2 retries with 2-second delay between attempts
+  - User-friendly notifications during retry process
+  - Detailed error logging for troubleshooting
+
+- **Auth Cache Duration Configuration (P1)**
+  - Configurable authentication cache duration: 1 day / 1 week / 1 month / 6 months / forever
+  - Reduces repeated login prompts for long sessions
+  - Global cache shared across all client instances
+  - Automatic cache invalidation on authentication failure
 
 **Bug Fixes**
 
