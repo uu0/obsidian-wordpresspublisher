@@ -734,6 +734,74 @@ export class WpPublishModalV2 extends AbstractModal {
     }
   }
 
+  /**
+   * 保存发布参数到 frontmatter（手动保存按钮调用）
+   * 将当前的发布参数（slug、分类、标签、摘要）保存到笔记的 frontmatter
+   */
+  private async saveParamsToFrontmatter(params: WordPressPostParams): Promise<void> {
+    if (!this.notePath) {
+      new Notice(this.t('publishModal_saveParamsFailed') || '无法保存：笔记路径不存在');
+      return;
+    }
+
+    const file = this.plugin.app.vault.getAbstractFileByPath(this.notePath);
+    if (!file || !(file instanceof TFile)) {
+      new Notice(this.t('publishModal_saveParamsFailed') || '无法保存：文件不存在');
+      return;
+    }
+
+    try {
+      await this.plugin.app.fileManager.processFrontMatter(file, (fm) => {
+        // 保存 slug
+        if (params.slug) {
+          fm.slug = params.slug;
+          log.info('Saved slug to frontmatter:', params.slug);
+        }
+
+        // 保存分类（转换为名称格式）
+        if (params.categories && params.categories.length > 0) {
+          const categoryNames: string[] = [];
+          for (const catId of params.categories) {
+            if (catId > 0) {
+              // 正数 ID，查找对应分类名称
+              const cat = this.categories.items.find(c => Number(c.id) === catId);
+              if (cat) {
+                categoryNames.push(cat.name);
+              }
+            } else {
+              // 负数 ID，是本地临时分类，使用名称
+              const tempCat = this.categories.items.find(c => Number(c.id) === catId);
+              if (tempCat) {
+                categoryNames.push(tempCat.name);
+              }
+            }
+          }
+          if (categoryNames.length > 0) {
+            fm.categories = categoryNames;
+            log.info('Saved categories to frontmatter:', categoryNames);
+          }
+        }
+
+        // 保存标签
+        if (params.tags && params.tags.length > 0) {
+          fm.tags = TagFormatter.formatTags(params.tags, this.plugin.settings.tagFormat);
+          log.info('Saved tags to frontmatter:', params.tags);
+        }
+
+        // 保存摘要
+        if (params.excerpt) {
+          fm.excerpt = params.excerpt;
+          log.info('Saved excerpt to frontmatter');
+        }
+      });
+
+      new Notice(this.t('publishModal_saveParamsSuccess') || '✅ 参数已保存到 frontmatter');
+    } catch (error) {
+      log.error('Failed to save params to frontmatter:', error);
+      new Notice(this.t('publishModal_saveParamsFailed') || `❌ 保存参数失败: ${error}`);
+    }
+  }
+
   private display(params: WordPressPostParams): void {
     const { contentEl } = this;
 
@@ -1984,6 +2052,16 @@ export class WpPublishModalV2 extends AbstractModal {
       if (contentSection?.__enterContentEdit) contentSection.__enterContentEdit();
     };
 
+    // 💾 保存参数按钮（保存到 frontmatter，非内容编辑）
+    const saveParamsBtn = footer.createEl('button', {
+      cls: 'wp-v3-save-params-btn'
+    });
+    saveParamsBtn.textContent = isMobile ? '💾' : ('💾 ' + (this.t('publishModal_saveParams') || '保存参数'));
+    saveParamsBtn.title = this.t('publishModal_saveParams') || '保存参数到 frontmatter'; // 添加 tooltip
+    saveParamsBtn.onclick = async () => {
+      await this.saveParamsToFrontmatter(params);
+    };
+
     const cancelBtn = footer.createEl('button', {
       cls: 'wp-v3-cancel-footer-btn'
     });
@@ -2003,6 +2081,7 @@ export class WpPublishModalV2 extends AbstractModal {
     const resizeObserver = new ResizeObserver(() => {
       const currentIsMobile = window.innerWidth <= 480;
       editBtn.textContent = currentIsMobile ? '✏️' : (this.t('publishModal_editButton') || '✏️ 编辑');
+      saveParamsBtn.textContent = currentIsMobile ? '💾' : ('💾 ' + (this.t('publishModal_saveParams') || '保存参数'));
       cancelBtn.textContent = currentIsMobile ? '❌' : ('❌ ' + (this.t('publishModal_cancel') || '取消'));
       publishBtn.textContent = currentIsMobile ? '🚀' : (this.t('publishModal_publishButton') || '🚀 发布');
     });

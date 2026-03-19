@@ -107721,6 +107721,61 @@ var init_wp_publish_modal_v2 = __esm({
           log4.error("Failed to save generated content to frontmatter:", error2);
         }
       }
+      /**
+       * 保存发布参数到 frontmatter（手动保存按钮调用）
+       * 将当前的发布参数（slug、分类、标签、摘要）保存到笔记的 frontmatter
+       */
+      async saveParamsToFrontmatter(params) {
+        if (!this.notePath) {
+          new import_obsidian9.Notice(this.t("publishModal_saveParamsFailed") || "\u65E0\u6CD5\u4FDD\u5B58\uFF1A\u7B14\u8BB0\u8DEF\u5F84\u4E0D\u5B58\u5728");
+          return;
+        }
+        const file = this.plugin.app.vault.getAbstractFileByPath(this.notePath);
+        if (!file || !(file instanceof import_obsidian9.TFile)) {
+          new import_obsidian9.Notice(this.t("publishModal_saveParamsFailed") || "\u65E0\u6CD5\u4FDD\u5B58\uFF1A\u6587\u4EF6\u4E0D\u5B58\u5728");
+          return;
+        }
+        try {
+          await this.plugin.app.fileManager.processFrontMatter(file, (fm) => {
+            if (params.slug) {
+              fm.slug = params.slug;
+              log4.info("Saved slug to frontmatter:", params.slug);
+            }
+            if (params.categories && params.categories.length > 0) {
+              const categoryNames = [];
+              for (const catId of params.categories) {
+                if (catId > 0) {
+                  const cat = this.categories.items.find((c) => Number(c.id) === catId);
+                  if (cat) {
+                    categoryNames.push(cat.name);
+                  }
+                } else {
+                  const tempCat = this.categories.items.find((c) => Number(c.id) === catId);
+                  if (tempCat) {
+                    categoryNames.push(tempCat.name);
+                  }
+                }
+              }
+              if (categoryNames.length > 0) {
+                fm.categories = categoryNames;
+                log4.info("Saved categories to frontmatter:", categoryNames);
+              }
+            }
+            if (params.tags && params.tags.length > 0) {
+              fm.tags = TagFormatter.formatTags(params.tags, this.plugin.settings.tagFormat);
+              log4.info("Saved tags to frontmatter:", params.tags);
+            }
+            if (params.excerpt) {
+              fm.excerpt = params.excerpt;
+              log4.info("Saved excerpt to frontmatter");
+            }
+          });
+          new import_obsidian9.Notice(this.t("publishModal_saveParamsSuccess") || "\u2705 \u53C2\u6570\u5DF2\u4FDD\u5B58\u5230 frontmatter");
+        } catch (error2) {
+          log4.error("Failed to save params to frontmatter:", error2);
+          new import_obsidian9.Notice(this.t("publishModal_saveParamsFailed") || `\u274C \u4FDD\u5B58\u53C2\u6570\u5931\u8D25: ${error2}`);
+        }
+      }
       display(params) {
         const { contentEl } = this;
         this.currentParams = params;
@@ -108802,6 +108857,14 @@ var init_wp_publish_modal_v2 = __esm({
           const contentSection = container.querySelector('[data-content-section="true"]');
           if (contentSection == null ? void 0 : contentSection.__enterContentEdit) contentSection.__enterContentEdit();
         };
+        const saveParamsBtn = footer.createEl("button", {
+          cls: "wp-v3-save-params-btn"
+        });
+        saveParamsBtn.textContent = isMobile ? "\u{1F4BE}" : "\u{1F4BE} " + (this.t("publishModal_saveParams") || "\u4FDD\u5B58\u53C2\u6570");
+        saveParamsBtn.title = this.t("publishModal_saveParams") || "\u4FDD\u5B58\u53C2\u6570\u5230 frontmatter";
+        saveParamsBtn.onclick = async () => {
+          await this.saveParamsToFrontmatter(params);
+        };
         const cancelBtn = footer.createEl("button", {
           cls: "wp-v3-cancel-footer-btn"
         });
@@ -108818,6 +108881,7 @@ var init_wp_publish_modal_v2 = __esm({
         const resizeObserver = new ResizeObserver(() => {
           const currentIsMobile = window.innerWidth <= 480;
           editBtn.textContent = currentIsMobile ? "\u270F\uFE0F" : this.t("publishModal_editButton") || "\u270F\uFE0F \u7F16\u8F91";
+          saveParamsBtn.textContent = currentIsMobile ? "\u{1F4BE}" : "\u{1F4BE} " + (this.t("publishModal_saveParams") || "\u4FDD\u5B58\u53C2\u6570");
           cancelBtn.textContent = currentIsMobile ? "\u274C" : "\u274C " + (this.t("publishModal_cancel") || "\u53D6\u6D88");
           publishBtn.textContent = currentIsMobile ? "\u{1F680}" : this.t("publishModal_publishButton") || "\u{1F680} \u53D1\u5E03";
         });
@@ -116078,6 +116142,9 @@ __export(en_exports, {
   publishModal_save: () => publishModal_save,
   publishModal_saveAndUseButton: () => publishModal_saveAndUseButton,
   publishModal_saveButton: () => publishModal_saveButton,
+  publishModal_saveParams: () => publishModal_saveParams,
+  publishModal_saveParamsFailed: () => publishModal_saveParamsFailed,
+  publishModal_saveParamsSuccess: () => publishModal_saveParamsSuccess,
   publishModal_saveSettings: () => publishModal_saveSettings,
   publishModal_selectCategory: () => publishModal_selectCategory,
   publishModal_selectFeaturedImage: () => publishModal_selectFeaturedImage,
@@ -116586,6 +116653,9 @@ var publishModal_advancedTab = "\u{1F527} Advanced";
 var publishModal_previewTitle = "Post Preview";
 var publishModal_previewEditPlaceholder = "Edit Markdown content here...";
 var publishModal_save = "Save";
+var publishModal_saveParams = "Save Params";
+var publishModal_saveParamsSuccess = "\u2705 Parameters saved to frontmatter";
+var publishModal_saveParamsFailed = "\u274C Failed to save parameters: <%= error %>";
 var publishModal_cancel = "Cancel";
 var publishModal_previewFeaturedImage = "Featured Image";
 var publishModal_previewFeaturedImageUploaded = "Featured Image (Uploaded to WordPress)";
@@ -116994,6 +117064,9 @@ var en_default = {
   publishModal_previewTitle,
   publishModal_previewEditPlaceholder,
   publishModal_save,
+  publishModal_saveParams,
+  publishModal_saveParamsSuccess,
+  publishModal_saveParamsFailed,
   publishModal_cancel,
   publishModal_previewFeaturedImage,
   publishModal_previewFeaturedImageUploaded,
@@ -117307,6 +117380,9 @@ __export(zh_cn_exports, {
   publishModal_save: () => publishModal_save2,
   publishModal_saveAndUseButton: () => publishModal_saveAndUseButton2,
   publishModal_saveButton: () => publishModal_saveButton2,
+  publishModal_saveParams: () => publishModal_saveParams2,
+  publishModal_saveParamsFailed: () => publishModal_saveParamsFailed2,
+  publishModal_saveParamsSuccess: () => publishModal_saveParamsSuccess2,
   publishModal_saveSettings: () => publishModal_saveSettings2,
   publishModal_selectCategory: () => publishModal_selectCategory2,
   publishModal_selectFeaturedImage: () => publishModal_selectFeaturedImage2,
@@ -117815,6 +117891,9 @@ var publishModal_advancedTab2 = "\u{1F527} \u9AD8\u7EA7\u8BBE\u7F6E";
 var publishModal_previewTitle2 = "\u6587\u7AE0\u9884\u89C8";
 var publishModal_previewEditPlaceholder2 = "\u5728\u6B64\u7F16\u8F91 Markdown \u5185\u5BB9...";
 var publishModal_save2 = "\u4FDD\u5B58";
+var publishModal_saveParams2 = "\u4FDD\u5B58\u53C2\u6570";
+var publishModal_saveParamsSuccess2 = "\u2705 \u53C2\u6570\u5DF2\u4FDD\u5B58\u5230 frontmatter";
+var publishModal_saveParamsFailed2 = "\u274C \u4FDD\u5B58\u53C2\u6570\u5931\u8D25: <%= error %>";
 var publishModal_cancel2 = "\u53D6\u6D88";
 var publishModal_previewFeaturedImage2 = "\u7279\u8272\u56FE\u7247";
 var publishModal_previewFeaturedImageUploaded2 = "\u7279\u8272\u56FE\u7247\uFF08\u5DF2\u4E0A\u4F20\u5230 WordPress\uFF09";
@@ -118223,6 +118302,9 @@ var zh_cn_default = {
   publishModal_previewTitle: publishModal_previewTitle2,
   publishModal_previewEditPlaceholder: publishModal_previewEditPlaceholder2,
   publishModal_save: publishModal_save2,
+  publishModal_saveParams: publishModal_saveParams2,
+  publishModal_saveParamsSuccess: publishModal_saveParamsSuccess2,
+  publishModal_saveParamsFailed: publishModal_saveParamsFailed2,
   publishModal_cancel: publishModal_cancel2,
   publishModal_previewFeaturedImage: publishModal_previewFeaturedImage2,
   publishModal_previewFeaturedImageUploaded: publishModal_previewFeaturedImageUploaded2,

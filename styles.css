@@ -1209,6 +1209,26 @@
   background: var(--background-modifier-hover);
 }
 
+/* 保存参数按钮 */
+.wp-v3-save-params-btn {
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  margin-left: 8px; /* 与编辑按钮间距 */
+}
+
+.wp-v3-save-params-btn:hover {
+  border-color: var(--interactive-accent);
+  color: var(--interactive-accent);
+  background: var(--background-modifier-hover);
+}
+
 .wp-v3-cancel-footer-btn {
   padding: 8px 20px;
   border-radius: 6px;
@@ -1340,11 +1360,17 @@
   }
 
   .wp-v3-edit-footer-btn,
+  .wp-v3-save-params-btn,
   .wp-v3-cancel-footer-btn,
   .wp-v3-publish-footer-btn {
     padding: 6px 12px !important;
     font-size: 13px !important;
     min-height: 36px;
+  }
+
+  /* 移动端保存参数按钮不需要额外的左边距 */
+  .wp-v3-save-params-btn {
+    margin-left: 0 !important;
   }
 }
 
@@ -2976,10 +3002,12 @@
   }
 
   .wp-v3-edit-footer-btn,
+  .wp-v3-save-params-btn,
   .wp-v3-cancel-footer-btn,
   .wp-v3-publish-footer-btn {
     width: 100% !important;
     margin-right: 0 !important;
+    margin-left: 0 !important;
     padding: 10px 16px !important;
     font-size: 14px !important;
     min-height: 44px; /* iOS 推荐最小触摸区域 */
@@ -2995,6 +3023,7 @@
   .wp-tag-item,
   .wp-category-add-btn,
   .wp-v3-edit-footer-btn,
+  .wp-v3-save-params-btn,
   .wp-v3-cancel-footer-btn,
   .wp-v3-publish-footer-btn {
     min-height: 44px; /* iOS 推荐最小触摸区域 */
