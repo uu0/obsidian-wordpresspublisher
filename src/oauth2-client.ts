@@ -9,6 +9,7 @@ import {
   WP_OAUTH2_TOKEN_ENDPOINT,
   WP_OAUTH2_VALIDATE_TOKEN_ENDPOINT
 } from './consts';
+import { logger } from './utils/logger';
 
 export interface OAuth2Token {
   accessToken: string;
@@ -62,7 +63,6 @@ export class OAuth2Client {
     private readonly options: OAuth2Options,
     private readonly plugin: WordpressPlugin
   ) {
-    console.log(options);
   }
 
   async getAuthorizeCode(params: GetAuthorizeCodeParams): Promise<void> {
@@ -114,7 +114,7 @@ export class OAuth2Client {
       body: generateQueryString(body)
     })
       .then(response => {
-        console.log('getToken response', response);
+        logger.debug('OAuth2Client', 'getToken response received', { status: response.status });
         const resp = response.json;
         return {
           accessToken: resp.access_token,
@@ -139,7 +139,7 @@ export class OAuth2Client {
           'User-Agent': 'obsidian.md'
         }
       });
-      console.log('validateToken response', response);
+      logger.debug('OAuth2Client', 'validateToken response received', { status: response.status });
       return {
         code: WordPressClientReturnCode.OK,
         data: 'done',

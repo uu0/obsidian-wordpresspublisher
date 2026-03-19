@@ -49,7 +49,12 @@ export class PassCrypto {
   async decrypt(encrypted: string, key?: string, vector?: string): Promise<string> {
     if (this.canUse()) {
       if (key && vector) {
-        const keyObject = JSON.parse(key);
+        let keyObject: JsonWebKey;
+        try {
+          keyObject = JSON.parse(key);
+        } catch {
+          throw new Error('Decryption failed: stored key is corrupted');
+        }
         const thisKey = await crypto.subtle.importKey(FORMAT_JWK, keyObject, {
             name: AES_GCM
           },
@@ -63,7 +68,7 @@ export class PassCrypto {
           this.base64ToBuffer(encrypted));
         return new TextDecoder().decode(decrypted);
       }
-      return 'xx';
+      throw new Error('Decryption failed: missing key or vector');
     } else {
       return this.reverseString(this.base64ToString(this.reverseString(encrypted)));
     }

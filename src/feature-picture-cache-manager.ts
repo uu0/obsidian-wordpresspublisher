@@ -33,12 +33,13 @@ export class FeaturePictureCacheManager {
   private cache: FeaturePictureCache = {};
   private readonly CACHE_DURATION = 7 * 24 * 60 * 60 * 1000; // 7 days in ms
   private readonly CACHE_KEY = 'feature-picture-cache';
+  private readonly _ready: Promise<void>;
 
   constructor(
     private app: App,
     private plugin: WordpressPlugin
   ) {
-    this.loadCache();
+    this._ready = this.loadCache();
   }
 
   /**
@@ -105,6 +106,7 @@ export class FeaturePictureCacheManager {
    * @param featuredImageId - Featured image ID
    */
   async set(postId: string | number, url: string, featuredImageId: number): Promise<void> {
+    await this._ready;
     const key = String(postId);
     const now = Date.now();
 
@@ -124,6 +126,7 @@ export class FeaturePictureCacheManager {
    * @param postId - Post ID
    */
   async clear(postId: string | number): Promise<void> {
+    await this._ready;
     const key = String(postId);
     if (this.cache[key]) {
       delete this.cache[key];
@@ -137,6 +140,7 @@ export class FeaturePictureCacheManager {
    * Should be called on plugin load
    */
   async cleanExpired(): Promise<void> {
+    await this._ready;
     const now = Date.now();
     const keys = Object.keys(this.cache);
     let cleanedCount = 0;
@@ -158,6 +162,7 @@ export class FeaturePictureCacheManager {
    * Clear all cache
    */
   async clearAll(): Promise<void> {
+    await this._ready;
     this.cache = {};
     log.info('All cache cleared');
     await this.saveCache();

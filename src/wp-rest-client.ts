@@ -12,6 +12,7 @@ import { PostStatus, PostType, Term } from './wp-api';
 import { RestClient } from './rest-client';
 import { isArray, isFunction, isNumber, isObject, isString, template } from 'lodash-es';
 import { SafeAny } from './utils';
+import { logger } from './utils/logger';
 import { WpProfile } from './wp-profile';
 import { FormItemNameMapper, FormItems, Media } from './types';
 import { formatISO } from 'date-fns';
@@ -90,7 +91,7 @@ export class WpRestClient extends AbstractWordPressClient {
       {
         headers: this.context.getHeaders(certificate)
       });
-    console.log('WpRestClient response', resp);
+    logger.debug('WpRestClient', 'publish response', resp);
     try {
       const result = this.context.responseParser.toWordPressPublishResult(postParams, resp);
       return {
@@ -177,7 +178,7 @@ export class WpRestClient extends AbstractWordPressClient {
         {
           headers: this.context.getHeaders(certificate)
         });
-      console.log('WpRestClient newTag response', resp);
+      logger.debug('WpRestClient', 'newTag response', resp);
       return this.context.responseParser.toTerm(resp);
     } else {
       return exists[0];
@@ -191,7 +192,7 @@ export class WpRestClient extends AbstractWordPressClient {
       {
         headers: this.context.getHeaders(certificate)
       });
-    console.log('WpRestClient createCategory response', resp);
+    logger.debug('WpRestClient', 'createCategory response', resp);
     return this.context.responseParser.toTerm(resp);
   }
 
@@ -408,7 +409,7 @@ class WpRestClientCommonContext implements WpRestClientContext {
           categories: postParams.categories ?? response.categories
         }
       }
-      throw new Error('xx');
+      throw new Error(`Unexpected publish response: missing post id. Response: ${JSON.stringify(response)}`);
     },
     toWordPressMediaUploadResult: (response: SafeAny): WordPressMediaUploadResult => {
       return {
@@ -440,7 +441,7 @@ export class WpRestClientMiniOrangeContext extends WpRestClientCommonContext {
 
   constructor() {
     super();
-    console.log(`${this.name} loaded`);
+    logger.debug('WpRestClientMiniOrangeContext', 'loaded');
   }
 }
 
@@ -449,7 +450,7 @@ export class WpRestClientAppPasswordContext extends WpRestClientCommonContext {
 
   constructor() {
     super();
-    console.log(`${this.name} loaded`);
+    logger.debug('WpRestClientAppPasswordContext', 'loaded');
   }
 }
 
@@ -474,7 +475,7 @@ export class WpRestClientWpComOAuth2Context implements WpRestClientContext {
     private readonly site: string,
     private readonly accessToken: string
   ) {
-    console.log(`${this.name} loaded`);
+    logger.debug('WpRestClientWpComOAuth2Context', 'loaded');
   }
 
   formItemNameMapper(name: string, isArray: boolean): string {
@@ -498,7 +499,7 @@ export class WpRestClientWpComOAuth2Context implements WpRestClientContext {
           categories: postParams.categories ?? Object.values(response.categories).map((cat: SafeAny) => cat.ID)
         };
       }
-      throw new Error('xx');
+      throw new Error(`Unexpected WP.com publish response: missing post ID. Response: ${JSON.stringify(response)}`);
     },
     toWordPressMediaUploadResult: (response: SafeAny): WordPressMediaUploadResult => {
       if (response.media.length > 0) {
