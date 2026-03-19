@@ -3160,7 +3160,21 @@ export class WpPublishModalV2 extends AbstractModal {
                 params.categories.push(Number(select.value));
                 renderCategoryTags();
                 renderAddDropdown();
+              } else {
+                // 选择占位选项时，恢复 + 按钮
+                select.remove();
+                addBtn.style.display = '';
               }
+            };
+
+            // 失焦时恢复 + 按钮（用户点击外部取消选择）
+            select.onblur = () => {
+              setTimeout(() => {
+                if (select.parentElement) {
+                  select.remove();
+                  addBtn.style.display = '';
+                }
+              }, 100);
             };
 
             select.focus();
