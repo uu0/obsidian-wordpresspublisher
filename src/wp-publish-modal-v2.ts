@@ -1838,7 +1838,7 @@ export class WpPublishModalV2 extends AbstractModal {
     });
 
     // 分类（始终显示）
-    const validCategories = this.categories.items.filter(it => it.name && it.name.trim());
+    const getValidCategoriesV3 = () => this.categories.items.filter(it => it.name && it.name.trim());
     body.createDiv('wp-v3-divider');
     this.renderV3Field(body, this.t('publishModal_categoryName'), 'publishModal_categoryInfo', (fieldEl) => {
       const tagsWrap = fieldEl.createDiv();
@@ -1848,7 +1848,7 @@ export class WpPublishModalV2 extends AbstractModal {
 
       // 默认选中"未分类"
       if (params.categories.length === 0) {
-        const uncategorized = validCategories.find(it =>
+        const uncategorized = getValidCategoriesV3().find(it =>
           ['Uncategorized', '未分类', this.plugin.t('publishModal_uncategorized')].includes(it.name)
         );
         if (uncategorized) params.categories = [Number(uncategorized.id)];
@@ -1856,6 +1856,7 @@ export class WpPublishModalV2 extends AbstractModal {
 
       const renderCats = () => {
         tagsWrap.empty();
+        const validCategories = getValidCategoriesV3();
 
         // 已选分类标签
         params.categories.forEach(catId => {
@@ -2992,8 +2993,8 @@ export class WpPublishModalV2 extends AbstractModal {
     this.addInfoButton(slugSetting, 'publishModal_slugInfo');
 
     // 分类（始终显示，占满整行）
-    // 先过滤掉空值的分类项
-    const validCategories = this.categories.items.filter(it => it.name && it.name.trim());
+    // 每次渲染时重新过滤，确保新增分类可以被感知
+    const getValidCategories = () => this.categories.items.filter(it => it.name && it.name.trim());
 
     {
       const categoryWrapper = gridContainer.createDiv('wp-grid-full');
@@ -3019,7 +3020,7 @@ export class WpPublishModalV2 extends AbstractModal {
 
       // 可用分类列表（排除已选中的）
       const getAvailableCategories = () => {
-        return validCategories.filter(cat =>
+        return getValidCategories().filter(cat =>
           !params.categories.includes(Number(cat.id))
         );
       };
@@ -3036,7 +3037,7 @@ export class WpPublishModalV2 extends AbstractModal {
         // 将标签插入到按钮行前面
         const actionRow = tagsContainer.querySelector('.wp-category-action-row');
         params.categories.forEach(catId => {
-          const cat = validCategories.find(c => Number(c.id) === catId);
+          const cat = getValidCategories().find(c => Number(c.id) === catId);
           if (cat) {
             const tag = document.createElement('span');
             tag.className = 'wp-category-tag';
@@ -3131,7 +3132,7 @@ export class WpPublishModalV2 extends AbstractModal {
 
       // 默认选中"未分类"
       if (params.categories.length === 0) {
-        const uncategorized = validCategories.find(it =>
+        const uncategorized = getValidCategories().find(it =>
           it.name === this.plugin.t('publishModal_uncategorized') ||
           it.name === 'Uncategorized' ||
           it.name === '未分类'

@@ -108689,7 +108689,7 @@ var init_wp_publish_modal_v2 = __esm({
             params.contentFormat = select2.value;
           });
         });
-        const validCategories = this.categories.items.filter((it) => it.name && it.name.trim());
+        const getValidCategoriesV3 = () => this.categories.items.filter((it) => it.name && it.name.trim());
         body.createDiv("wp-v3-divider");
         this.renderV3Field(body, this.t("publishModal_categoryName"), "publishModal_categoryInfo", (fieldEl) => {
           const tagsWrap = fieldEl.createDiv();
@@ -108697,13 +108697,14 @@ var init_wp_publish_modal_v2 = __esm({
           tagsWrap.style.flexWrap = "wrap";
           tagsWrap.style.gap = "4px";
           if (params.categories.length === 0) {
-            const uncategorized = validCategories.find(
+            const uncategorized = getValidCategoriesV3().find(
               (it) => ["Uncategorized", "\u672A\u5206\u7C7B", this.plugin.t("publishModal_uncategorized")].includes(it.name)
             );
             if (uncategorized) params.categories = [Number(uncategorized.id)];
           }
           const renderCats = () => {
             tagsWrap.empty();
+            const validCategories = getValidCategoriesV3();
             params.categories.forEach((catId) => {
               const cat = validCategories.find((c) => Number(c.id) === catId);
               if (!cat) return;
@@ -109579,7 +109580,7 @@ var init_wp_publish_modal_v2 = __esm({
           }
         }
         this.addInfoButton(slugSetting, "publishModal_slugInfo");
-        const validCategories = this.categories.items.filter((it) => it.name && it.name.trim());
+        const getValidCategories = () => this.categories.items.filter((it) => it.name && it.name.trim());
         {
           const categoryWrapper = gridContainer.createDiv("wp-grid-full");
           const categoryHeader = categoryWrapper.createDiv("wp-category-header");
@@ -109595,7 +109596,7 @@ var init_wp_publish_modal_v2 = __esm({
           tagsContainer.className = "wp-category-tags-container";
           categoryHeader.appendChild(tagsContainer);
           const getAvailableCategories = () => {
-            return validCategories.filter(
+            return getValidCategories().filter(
               (cat) => !params.categories.includes(Number(cat.id))
             );
           };
@@ -109607,7 +109608,7 @@ var init_wp_publish_modal_v2 = __esm({
             });
             const actionRow = tagsContainer.querySelector(".wp-category-action-row");
             params.categories.forEach((catId) => {
-              const cat = validCategories.find((c) => Number(c.id) === catId);
+              const cat = getValidCategories().find((c) => Number(c.id) === catId);
               if (cat) {
                 const tag = document.createElement("span");
                 tag.className = "wp-category-tag";
@@ -109691,7 +109692,7 @@ var init_wp_publish_modal_v2 = __esm({
             tagsContainer.appendChild(actionRow);
           };
           if (params.categories.length === 0) {
-            const uncategorized = validCategories.find(
+            const uncategorized = getValidCategories().find(
               (it) => it.name === this.plugin.t("publishModal_uncategorized") || it.name === "Uncategorized" || it.name === "\u672A\u5206\u7C7B"
             );
             if (uncategorized) {
