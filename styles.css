@@ -2597,19 +2597,17 @@
 }
 
 .wp-category-tags-container {
-  display: flex;
+  display: inline-flex;
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
   padding: 8px 0;
   min-height: 36px;
-  width: 100%;
   box-sizing: border-box;
 }
 
 /* 分类选择器在 Setting 内部时，确保占据整行 */
-.setting-item + .wp-category-tags-container,
-.wp-category-tags-container {
+.setting-item + .wp-category-tags-container {
   display: flex;
   flex-wrap: wrap;
   width: 100%;

@@ -597,9 +597,19 @@ export abstract class AbstractWordPressClient implements WordPressClient {
           selectedCategories = fmCatArray as number[];
           console.log('[publishPost] Using numeric IDs from frontmatter:', selectedCategories);
         } else {
-          // No categories in frontmatter, use last selected or default
-          selectedCategories = this.profile.lastSelectedCategories ?? [1];
-          console.log('[publishPost] No categories in frontmatter, using lastSelectedCategories:', selectedCategories);
+          // No categories in frontmatter, use last selected or find "Uncategorized"
+          if (this.profile.lastSelectedCategories && this.profile.lastSelectedCategories.length > 0) {
+            selectedCategories = this.profile.lastSelectedCategories;
+          } else {
+            // Find "Uncategorized" category by name
+            const uncategorized = categories.find(cat =>
+              cat.name === 'Uncategorized' ||
+              cat.name === '未分类' ||
+              cat.name.toLowerCase() === 'uncategorized'
+            );
+            selectedCategories = uncategorized ? [Number(uncategorized.id)] : [1];
+          }
+          console.log('[publishPost] No categories in frontmatter, using default:', selectedCategories);
         }
         const postTypes = await this.getPostTypes(auth);
         if (postTypes.length === 0) {

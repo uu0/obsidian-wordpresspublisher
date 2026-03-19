@@ -109637,6 +109637,9 @@ var init_wp_publish_modal_v2 = __esm({
           const tagsContainer = document.createElement("div");
           tagsContainer.className = "wp-category-tags-container";
           categoryHeader.appendChild(tagsContainer);
+          const addControl = document.createElement("div");
+          addControl.className = "wp-category-add-control";
+          categoryHeader.appendChild(addControl);
           const getAvailableCategories = () => {
             return validCategories.filter(
               (cat) => !params.categories.includes(Number(cat.id))
@@ -109665,55 +109668,52 @@ var init_wp_publish_modal_v2 = __esm({
             });
           };
           const renderAddDropdown = () => {
-            const oldAddControl = tagsContainer.querySelector(".wp-category-add-control");
-            if (oldAddControl) oldAddControl.remove();
+            addControl.empty();
             const available = getAvailableCategories();
-            if (available.length > 0) {
-              const addControl = tagsContainer.createEl("div", {
-                cls: "wp-category-add-control"
+            const addBtn = addControl.createEl("button", {
+              cls: "wp-category-add-btn",
+              text: "+"
+            });
+            addBtn.onclick = () => {
+              const select2 = addControl.createEl("select", {
+                cls: "wp-category-dropdown"
               });
-              const addBtn = addControl.createEl("button", {
-                cls: "wp-category-add-btn",
-                text: "+"
+              select2.createEl("option", {
+                value: "",
+                text: this.t("publishModal_selectCategory") || "\u9009\u62E9\u5206\u7C7B..."
               });
-              addBtn.onclick = () => {
-                const select2 = addControl.createEl("select", {
-                  cls: "wp-category-dropdown"
-                });
+              available.forEach((cat) => {
                 select2.createEl("option", {
-                  value: "",
-                  text: this.t("publishModal_selectCategory") || "\u9009\u62E9\u5206\u7C7B..."
+                  value: String(cat.id),
+                  text: cat.name
                 });
-                available.forEach((cat) => {
-                  select2.createEl("option", {
-                    value: String(cat.id),
-                    text: cat.name
-                  });
-                });
-                select2.onchange = () => {
-                  if (select2.value) {
-                    params.categories.push(Number(select2.value));
-                    renderCategoryTags();
-                    renderAddDropdown();
-                  }
-                };
-                select2.focus();
-                addBtn.style.display = "none";
+              });
+              select2.onchange = () => {
+                if (select2.value) {
+                  params.categories.push(Number(select2.value));
+                  renderCategoryTags();
+                  renderAddDropdown();
+                }
               };
-            }
+              select2.onblur = () => {
+                setTimeout(() => {
+                  renderAddDropdown();
+                }, 100);
+              };
+              select2.focus();
+              addBtn.style.display = "none";
+            };
           };
-          renderCategoryTags();
-          renderAddDropdown();
           if (params.categories.length === 0) {
             const uncategorized = validCategories.find(
               (it) => it.name === this.plugin.t("publishModal_uncategorized") || it.name === "Uncategorized" || it.name === "\u672A\u5206\u7C7B"
             );
             if (uncategorized) {
               params.categories = [Number(uncategorized.id)];
-              renderCategoryTags();
-              renderAddDropdown();
             }
           }
+          renderCategoryTags();
+          renderAddDropdown();
         }
         const statusWrapper = gridContainer.createDiv();
         new import_obsidian9.Setting(statusWrapper).setName(this.t("publishModal_statusName")).setDesc(this.t("publishModal_statusDesc")).addDropdown((dropdown) => {
@@ -113558,7 +113558,7 @@ var init_abstract_wp_client = __esm({
         }
       }
       async publishPost(defaultPostParams) {
-        var _a5, _b;
+        var _a5;
         try {
           if (!this.profile.endpoint || this.profile.endpoint.length === 0) {
             throw new Error(this.plugin.i18n.t("error_noEndpoint"));
@@ -113663,14 +113663,21 @@ var init_abstract_wp_client = __esm({
               selectedCategories = fmCatArray;
               console.log("[publishPost] Using numeric IDs from frontmatter:", selectedCategories);
             } else {
-              selectedCategories = (_a5 = this.profile.lastSelectedCategories) != null ? _a5 : [1];
-              console.log("[publishPost] No categories in frontmatter, using lastSelectedCategories:", selectedCategories);
+              if (this.profile.lastSelectedCategories && this.profile.lastSelectedCategories.length > 0) {
+                selectedCategories = this.profile.lastSelectedCategories;
+              } else {
+                const uncategorized = categories.find(
+                  (cat) => cat.name === "Uncategorized" || cat.name === "\u672A\u5206\u7C7B" || cat.name.toLowerCase() === "uncategorized"
+                );
+                selectedCategories = uncategorized ? [Number(uncategorized.id)] : [1];
+              }
+              console.log("[publishPost] No categories in frontmatter, using default:", selectedCategories);
             }
             const postTypes = await this.getPostTypes(auth);
             if (postTypes.length === 0) {
               postTypes.push("post" /* Post */);
             }
-            const selectedPostType = (_b = matterData.postType) != null ? _b : "post" /* Post */;
+            const selectedPostType = (_a5 = matterData.postType) != null ? _a5 : "post" /* Post */;
             result = await new Promise((resolve) => {
               console.log("[WpPublishModalV2] Creating modal instance...");
               const publishModal = new WpPublishModalV2(
@@ -117891,7 +117898,7 @@ var publishModal_advancedTab2 = "\u{1F527} \u9AD8\u7EA7\u8BBE\u7F6E";
 var publishModal_previewTitle2 = "\u6587\u7AE0\u9884\u89C8";
 var publishModal_previewEditPlaceholder2 = "\u5728\u6B64\u7F16\u8F91 Markdown \u5185\u5BB9...";
 var publishModal_save2 = "\u4FDD\u5B58";
-var publishModal_saveParams2 = "\u4FDD\u5B58\u53C2\u6570";
+var publishModal_saveParams2 = "\u4FDD\u5B58";
 var publishModal_saveParamsSuccess2 = "\u2705 \u53C2\u6570\u5DF2\u4FDD\u5B58\u5230 frontmatter";
 var publishModal_saveParamsFailed2 = "\u274C \u4FDD\u5B58\u53C2\u6570\u5931\u8D25: <%= error %>";
 var publishModal_cancel2 = "\u53D6\u6D88";
