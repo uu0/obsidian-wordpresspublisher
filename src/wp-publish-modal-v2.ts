@@ -3079,10 +3079,15 @@ export class WpPublishModalV2 extends AbstractModal {
         new Notice(this.t('publishModal_categoryInfo'), 5000);
       });
 
-      // 创建分类标签容器
+      // 创建分类标签容器（用于显示已选分类）
       const tagsContainer = document.createElement('div');
       tagsContainer.className = 'wp-category-tags-container';
       categoryHeader.appendChild(tagsContainer);
+
+      // 创建添加控件容器（用于显示 + 按钮/下拉框）
+      const addControl = document.createElement('div');
+      addControl.className = 'wp-category-add-control';
+      categoryHeader.appendChild(addControl);
 
       // 可用分类列表（排除已选中的）
       const getAvailableCategories = () => {
@@ -3119,73 +3124,58 @@ export class WpPublishModalV2 extends AbstractModal {
         });
       };
 
-      // 渲染添加下拉框
+      // 渲染添加下拉框（+ 按钮）
       const renderAddDropdown = () => {
-        // 移除旧的添加控件
-        const oldAddControl = tagsContainer.querySelector('.wp-category-add-control');
-        if (oldAddControl) oldAddControl.remove();
+        addControl.empty();
 
         const available = getAvailableCategories();
-        if (available.length > 0) {
-          const addControl = tagsContainer.createEl('div', {
-            cls: 'wp-category-add-control'
+
+        // 始终显示 + 按钮
+        const addBtn = addControl.createEl('button', {
+          cls: 'wp-category-add-btn',
+          text: '+'
+        });
+
+        addBtn.onclick = () => {
+          // 创建下拉选择
+          const select = addControl.createEl('select', {
+            cls: 'wp-category-dropdown'
           });
 
-          const addBtn = addControl.createEl('button', {
-            cls: 'wp-category-add-btn',
-            text: '+'
+          // 添加占位选项
+          select.createEl('option', {
+            value: '',
+            text: available.length > 0
+              ? (this.t('publishModal_selectCategory') || '选择分类...')
+              : '（无更多分类）'
           });
 
-          addBtn.onclick = () => {
-            // 创建下拉选择
-            const select = addControl.createEl('select', {
-              cls: 'wp-category-dropdown'
-            });
-
-            // 添加占位选项
+          available.forEach(cat => {
             select.createEl('option', {
-              value: '',
-              text: this.t('publishModal_selectCategory') || '选择分类...'
+              value: String(cat.id),
+              text: cat.name
             });
+          });
 
-            available.forEach(cat => {
-              select.createEl('option', {
-                value: String(cat.id),
-                text: cat.name
-              });
-            });
-
-            select.onchange = () => {
-              if (select.value) {
-                params.categories.push(Number(select.value));
-                renderCategoryTags();
-                renderAddDropdown();
-              } else {
-                // 选择占位选项时，恢复 + 按钮
-                select.remove();
-                addBtn.style.display = '';
-              }
-            };
-
-            // 失焦时恢复 + 按钮（用户点击外部取消选择）
-            select.onblur = () => {
-              setTimeout(() => {
-                if (select.parentElement) {
-                  select.remove();
-                  addBtn.style.display = '';
-                }
-              }, 100);
-            };
-
-            select.focus();
-            addBtn.style.display = 'none';
+          select.onchange = () => {
+            if (select.value) {
+              params.categories.push(Number(select.value));
+              renderCategoryTags();
+              renderAddDropdown();
+            }
           };
-        }
-      };
 
-      // 初始渲染
-      renderCategoryTags();
-      renderAddDropdown();
+          // 失焦时恢复 + 按钮（用户点击外部取消选择）
+          select.onblur = () => {
+            setTimeout(() => {
+              renderAddDropdown();
+            }, 100);
+          };
+
+          select.focus();
+          addBtn.style.display = 'none';
+        };
+      };
 
       // 如果没有选择分类，默认选中"未分类"
       if (params.categories.length === 0) {
@@ -3196,10 +3186,12 @@ export class WpPublishModalV2 extends AbstractModal {
         );
         if (uncategorized) {
           params.categories = [Number(uncategorized.id)];
-          renderCategoryTags();
-          renderAddDropdown();
         }
       }
+
+      // 初始渲染
+      renderCategoryTags();
+      renderAddDropdown();
     }
 
     // 发布状态（左列）
