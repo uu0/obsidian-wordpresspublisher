@@ -936,7 +936,7 @@ export class WpPublishModalV2 extends AbstractModal {
 
     /** 更新 header 右侧区域 */
     const updateHeaderActions = (opts: {
-      sourceLabel?: string;      // 来源标签文字，例如 '💾 Local' / '☁️ WordPress'
+      sourceLabel?: string;      // 来源标签文字，例如 '📂 Local' / '☁️ WordPress'
       sourceCls?: string;        // 来源标签附加 CSS class
       fileName?: string;         // 文件名（完整），显示时中间截断
       showDelete?: boolean;      // 显示 ❌ 删除按钮
@@ -1017,7 +1017,7 @@ export class WpPublishModalV2 extends AbstractModal {
         if (isLocalNew) {
           // ── 本次新选的本地图片，尚未上传 ──
           updateHeaderActions({
-            sourceLabel: '💾 Local',
+            sourceLabel: '📂 Local',
             sourceCls: 'wp-v3-source-local',
             fileName: `${imageToDisplay.fileName} (${this.formatFileSize(imageToDisplay.content.byteLength)})`,
             showDelete: true
@@ -1063,7 +1063,7 @@ export class WpPublishModalV2 extends AbstractModal {
       const btnRow = setup.createDiv('wp-v3-featured-btn-row');
 
       const localBtn = btnRow.createEl('button', {
-        text: '💾 ' + this.t('publishModal_selectFromLocal'),
+        text: '📂 ' + this.t('publishModal_selectFromLocal'),
         cls: 'wp-v3-feature-btn'
       });
       localBtn.onclick = () => this.selectLocalFile(params);
@@ -1335,7 +1335,7 @@ export class WpPublishModalV2 extends AbstractModal {
         // 空状态：完整文字按钮行
         const row = body.createDiv('wp-v3-empty-action-row');
         const addTagBtn = row.createEl('button', {
-          text: '+ ' + this.t('publishModal_addTag'),
+          text: this.t('publishModal_addTag'),
           cls: 'wp-v3-empty-action-btn'
         });
         addTagBtn.onclick = () => {
@@ -1615,7 +1615,7 @@ export class WpPublishModalV2 extends AbstractModal {
           const emptyRow = tagsWrap.createDiv('wp-v3-tags-empty-row');
 
           const addBtn = emptyRow.createEl('button', {
-            text: '+ ' + this.t('publishModal_addTag'),
+            text: this.t('publishModal_addTag'),
             cls: 'wp-v3-placeholder-btn'
           });
           addBtn.onclick = () => {
@@ -2055,13 +2055,13 @@ export class WpPublishModalV2 extends AbstractModal {
 
     // 💾 保存按钮（将参数保存到 frontmatter，不发布）
     const saveBtn = footer.createEl('button', {
-      text: this.t('publishModal_save') || '保存',
+      text: this.t('publishModal_save') || '💾 Save',
       cls: 'wp-v3-save-footer-btn'
     }) as HTMLButtonElement;
     saveBtn.onclick = () => this.saveParamsToFrontmatter(params);
 
     const cancelBtn = footer.createEl('button', {
-      text: this.t('publishModal_cancel') || '取消',
+      text: this.t('publishModal_cancel') || '❌ Close',
       cls: 'wp-v3-cancel-footer-btn'
     });
     cancelBtn.onclick = () => this.close();
@@ -3438,7 +3438,7 @@ export class WpPublishModalV2 extends AbstractModal {
 
     // 本地文件
     const localBtn = btnRow.createEl('button', {
-      text: '💾 ' + this.t('publishModal_selectFromLocal'),
+      text: '📂 ' + this.t('publishModal_selectFromLocal'),
       cls: 'feature-btn'
     });
     localBtn.onclick = () => this.selectLocalFile(params);

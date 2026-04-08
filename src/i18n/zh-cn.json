@@ -344,11 +344,11 @@
   "publishModal_advancedTab": "🔧 高级设置",
   "publishModal_previewTitle": "文章预览",
   "publishModal_previewEditPlaceholder": "在此编辑 Markdown 内容...",
-  "publishModal_save": "保存",
+  "publishModal_save": "💾 保存",
   "publishModal_saveParams": "保存",
   "publishModal_saveParamsSuccess": "✅ 参数已保存到 frontmatter",
   "publishModal_saveParamsFailed": "❌ 保存参数失败: <%= error %>",
-  "publishModal_cancel": "取消",
+  "publishModal_cancel": "❌ 关闭",
   "publishModal_previewFeaturedImage": "特色图片",
   "publishModal_previewFeaturedImageUploaded": "特色图片（已上传到 WordPress）",
   "publishModal_previewInconsistencyWarning": "检测到特色图片不一致",
@@ -429,6 +429,6 @@
   "error_imageLoadFailed": "图片加载失败",
   "publishModal_aiGenerateSummary": "🤖 生成摘要",
   "publishModal_manualInput": "📝 手动输入",
-  "publishModal_addTag": "添加标签",
+  "publishModal_addTag": "🏷️ 添加标签",
   "publishModal_aiGenerateTags": "🤖 生成标签"
 }
