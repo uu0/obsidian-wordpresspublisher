@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-wordpresspublisher",
-	"version": "2.1.1",
+	"version": "2.1.2",
 	"description": "Publish Obsidian notes to WordPress with one click. Supports post/page publishing, smart slug generation, featured image selection, AI integration, and intelligent error handling.",
 	"main": "main.js",
 	"scripts": {

@@ -2,9 +2,9 @@
 
 [English](README.md) | [简体中文](README_zh.md)
 
-**版本**: 2.1.1
+**版本**: 2.1.2
 **作者**: uu0
-**更新日期**: 2026-03-19
+**更新日期**: 2026-04-08
 
 ## 项目说明
 
@@ -21,6 +21,8 @@
 ## 简介
 
 WordPress Publisher 是一款功能强大的 Obsidian 插件，让你能够一键将 Markdown 笔记发布到 WordPress 网站。支持文章和页面两种发布类型，内置智能 Slug 生成、特色图片选择和 AI 功能集成，大幅提升内容发布效率。
+
+![WordPress Publisher 截图](docs/screenshot-cn.png)
 
 ## 核心功能
 
