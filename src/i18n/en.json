@@ -421,5 +421,14 @@
   "publishModal_aiGenerate": "AI Generate",
   "publishModal_settingsPanel": "Settings",
   "publishModal_historyPanel": "History",
-  "publishModal_noHistory": "No history yet"
+  "publishModal_noHistory": "No history yet",
+  "common_unknownError": "Unknown error",
+  "error_clientNotSupported": "Client does not support fetching posts",
+  "error_connectionFailed": "Failed to connect to <%= profileName %>: <%= error %>",
+  "error_saveFailed": "Save failed: <%= error %>",
+  "error_imageLoadFailed": "Image load failed",
+  "publishModal_aiGenerateSummary": "🤖 AI Generate",
+  "publishModal_manualInput": "📝 Manual Input",
+  "publishModal_addTag": "Add Tag",
+  "publishModal_aiGenerateTags": "🤖 AI Generate"
 }

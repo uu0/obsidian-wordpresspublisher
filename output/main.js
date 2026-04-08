@@ -107447,7 +107447,7 @@ var init_wp_publish_modal_v2 = __esm({
           }
           if (!("getPost" in client)) {
             log4.warn("Client does not support getPost method");
-            this.remoteImageError = "\u5BA2\u6237\u7AEF\u4E0D\u652F\u6301\u83B7\u53D6\u6587\u7AE0";
+            this.remoteImageError = this.plugin.t("error_clientNotSupported");
             return false;
           }
           const auth = {
@@ -107478,9 +107478,9 @@ var init_wp_publish_modal_v2 = __esm({
           log4.error("Failed to load featured image from remote:", e);
           this.remoteImageLoadFailed = true;
           const profile = this.plugin.settings.profiles.find((p) => p.isDefault);
-          const profileName = (profile == null ? void 0 : profile.name) || "\u9ED8\u8BA4\u914D\u7F6E";
+          const profileName = (profile == null ? void 0 : profile.name) || this.plugin.t("profiles_default");
           const errorMessage = e instanceof Error ? e.message : String(e);
-          this.remoteImageError = `\u8FDE\u63A5 ${profileName} \u5931\u8D25\uFF1A${errorMessage}`;
+          this.remoteImageError = this.plugin.t("error_connectionFailed", { profileName, error: errorMessage });
           return false;
         } finally {
           this.isLoadingRemoteImage = false;
@@ -107781,11 +107781,11 @@ var init_wp_publish_modal_v2 = __esm({
             }
             if (params.excerpt) fm.excerpt = params.excerpt;
           });
-          new import_obsidian9.Notice(this.t("publishModal_settingsSaved") || "\u8BBE\u7F6E\u5DF2\u4FDD\u5B58");
+          new import_obsidian9.Notice(this.t("publishModal_settingsSaved") || "Settings saved");
           this.close();
         } catch (error2) {
           log4.error("Failed to save params to frontmatter:", error2);
-          new import_obsidian9.Notice("\u4FDD\u5B58\u5931\u8D25: " + (error2 instanceof Error ? error2.message : String(error2)));
+          new import_obsidian9.Notice(this.plugin.t("error_saveFailed", { error: error2 instanceof Error ? error2.message : String(error2) }));
         }
       }
       /**
@@ -108129,7 +108129,7 @@ var init_wp_publish_modal_v2 = __esm({
             };
             this.display(params);
           } catch (err) {
-            new import_obsidian9.Notice("\u56FE\u7247\u52A0\u8F7D\u5931\u8D25");
+            new import_obsidian9.Notice(this.plugin.t("error_imageLoadFailed"));
           }
         });
       }
@@ -108286,7 +108286,7 @@ var init_wp_publish_modal_v2 = __esm({
           } else {
             const row = body.createDiv("wp-v3-empty-action-row");
             const addTagBtn = row.createEl("button", {
-              text: "+ \u6DFB\u52A0\u6807\u7B7E",
+              text: "+ " + this.t("publishModal_addTag"),
               cls: "wp-v3-empty-action-btn"
             });
             addTagBtn.onclick = () => {
@@ -108446,12 +108446,12 @@ var init_wp_publish_modal_v2 = __esm({
             const placeholder = excerptWrap.createDiv("wp-v3-excerpt-placeholder");
             const btnRow = placeholder.createDiv("wp-v3-placeholder-btn-row");
             const aiBtn = btnRow.createEl("button", {
-              text: "\u{1F916}\u751F\u6210\u6458\u8981",
+              text: this.t("publishModal_aiGenerateSummary"),
               cls: "wp-v3-placeholder-btn"
             });
             aiBtn.onclick = () => this.generateSummary(p);
             const manualBtn = btnRow.createEl("button", {
-              text: "\u{1F4DD}\u624B\u52A8\u8F93\u5165",
+              text: this.t("publishModal_manualInput"),
               cls: "wp-v3-placeholder-btn"
             });
             manualBtn.onclick = () => openExcerptModal(p);
@@ -108515,7 +108515,7 @@ var init_wp_publish_modal_v2 = __esm({
                     renderTagsContent();
                   });
                 });
-                const addBtn = tagsContainer.createEl("button", { cls: "wp-v3-tag-action-btn", text: "+", attr: { title: "\u6DFB\u52A0\u6807\u7B7E" } });
+                const addBtn = tagsContainer.createEl("button", { cls: "wp-v3-tag-action-btn", text: "+", attr: { title: this.t("publishModal_addTag") } });
                 addBtn.onclick = () => showInlineTagInput(tagsContainer, addBtn, p, renderTagsContent);
                 this.enableTagDragSort(tagsContainer, p, renderTagsContent);
                 const actionsRow = tagsWrap.createDiv("wp-v3-tags-editing-actions");
@@ -108546,7 +108546,7 @@ var init_wp_publish_modal_v2 = __esm({
             } else {
               const emptyRow = tagsWrap.createDiv("wp-v3-tags-empty-row");
               const addBtn = emptyRow.createEl("button", {
-                text: "+ \u6DFB\u52A0\u6807\u7B7E",
+                text: "+ " + this.t("publishModal_addTag"),
                 cls: "wp-v3-placeholder-btn"
               });
               addBtn.onclick = () => {
@@ -108554,12 +108554,12 @@ var init_wp_publish_modal_v2 = __esm({
                 tagsWrap.empty();
                 const tagsContainer = tagsWrap.createDiv("wp-v3-tags-container");
                 const btnArea = tagsWrap.createDiv("wp-v3-tags-btn-area");
-                const plusBtn = btnArea.createEl("button", { cls: "wp-v3-tag-action-btn", text: "+", attr: { title: "\u6DFB\u52A0\u6807\u7B7E" } });
+                const plusBtn = btnArea.createEl("button", { cls: "wp-v3-tag-action-btn", text: "+", attr: { title: this.t("publishModal_addTag") } });
                 plusBtn.onclick = () => showInlineTagInput(tagsContainer, plusBtn, p, renderTagsContent);
                 showInlineTagInput(tagsContainer, plusBtn, p, renderTagsContent);
               };
               const aiBtn = emptyRow.createEl("button", {
-                text: "\u{1F916}\u751F\u6210\u6807\u7B7E",
+                text: this.t("publishModal_aiGenerateTags"),
                 cls: "wp-v3-placeholder-btn"
               });
               aiBtn.onclick = () => this.generateTags(p);
@@ -116220,6 +116220,7 @@ __export(en_exports, {
   command_publish: () => command_publish,
   command_publishWithDefault: () => command_publishWithDefault,
   common_back: () => common_back,
+  common_unknownError: () => common_unknownError,
   confirmModal_cancel: () => confirmModal_cancel,
   confirmModal_confirm: () => confirmModal_confirm,
   confirmModal_title: () => confirmModal_title,
@@ -116253,7 +116254,10 @@ __export(en_exports, {
   defaultPrompt_tagsEn: () => defaultPrompt_tagsEn,
   error_cannotParseResponse: () => error_cannotParseResponse,
   error_categoriesCreationFailed: () => error_categoriesCreationFailed,
+  error_clientNotSupported: () => error_clientNotSupported,
+  error_connectionFailed: () => error_connectionFailed,
   error_featuredImageUploadFailedAfterRetries: () => error_featuredImageUploadFailedAfterRetries,
+  error_imageLoadFailed: () => error_imageLoadFailed,
   error_invalidUrl: () => error_invalidUrl,
   error_invalidUser: () => error_invalidUser,
   error_invalidWpComToken: () => error_invalidWpComToken,
@@ -116271,6 +116275,7 @@ __export(en_exports, {
   error_notWpCom: () => error_notWpCom,
   error_profileNotMatch: () => error_profileNotMatch,
   error_publishFailed: () => error_publishFailed,
+  error_saveFailed: () => error_saveFailed,
   error_userCancelledPublish: () => error_userCancelledPublish,
   error_wpComAuthFailed: () => error_wpComAuthFailed,
   featuredImageModal_aiServiceRequired: () => featuredImageModal_aiServiceRequired,
@@ -116337,6 +116342,7 @@ __export(en_exports, {
   profilesManageModal_title: () => profilesManageModal_title,
   profiles_default: () => profiles_default,
   publishModal_addCategory: () => publishModal_addCategory,
+  publishModal_addTag: () => publishModal_addTag,
   publishModal_advancedNotice: () => publishModal_advancedNotice,
   publishModal_advancedTab: () => publishModal_advancedTab,
   publishModal_advancedTitle: () => publishModal_advancedTitle,
@@ -116346,6 +116352,8 @@ __export(en_exports, {
   publishModal_aiGenerateImage: () => publishModal_aiGenerateImage,
   publishModal_aiGenerateImageButton: () => publishModal_aiGenerateImageButton,
   publishModal_aiGenerateImageTitle: () => publishModal_aiGenerateImageTitle,
+  publishModal_aiGenerateSummary: () => publishModal_aiGenerateSummary,
+  publishModal_aiGenerateTags: () => publishModal_aiGenerateTags,
   publishModal_aiGeneratingImage: () => publishModal_aiGeneratingImage,
   publishModal_aiImageGenerateFailed: () => publishModal_aiImageGenerateFailed,
   publishModal_aiImageGenerated: () => publishModal_aiImageGenerated,
@@ -116403,6 +116411,7 @@ __export(en_exports, {
   publishModal_loadingRemoteImage: () => publishModal_loadingRemoteImage,
   publishModal_localImage: () => publishModal_localImage,
   publishModal_localImageButton: () => publishModal_localImageButton,
+  publishModal_manualInput: () => publishModal_manualInput,
   publishModal_newCategoryPlaceholder: () => publishModal_newCategoryPlaceholder,
   publishModal_noExcerpt: () => publishModal_noExcerpt,
   publishModal_noFeaturedImage: () => publishModal_noFeaturedImage,
@@ -117058,6 +117067,15 @@ var publishModal_aiGenerate = "AI Generate";
 var publishModal_settingsPanel = "Settings";
 var publishModal_historyPanel = "History";
 var publishModal_noHistory = "No history yet";
+var common_unknownError = "Unknown error";
+var error_clientNotSupported = "Client does not support fetching posts";
+var error_connectionFailed = "Failed to connect to <%= profileName %>: <%= error %>";
+var error_saveFailed = "Save failed: <%= error %>";
+var error_imageLoadFailed = "Image load failed";
+var publishModal_aiGenerateSummary = "\u{1F916} AI Generate";
+var publishModal_manualInput = "\u{1F4DD} Manual Input";
+var publishModal_addTag = "Add Tag";
+var publishModal_aiGenerateTags = "\u{1F916} AI Generate";
 var en_default = {
   error_noEndpoint,
   error_notWpCom,
@@ -117481,7 +117499,16 @@ var en_default = {
   publishModal_aiGenerate,
   publishModal_settingsPanel,
   publishModal_historyPanel,
-  publishModal_noHistory
+  publishModal_noHistory,
+  common_unknownError,
+  error_clientNotSupported,
+  error_connectionFailed,
+  error_saveFailed,
+  error_imageLoadFailed,
+  publishModal_aiGenerateSummary,
+  publishModal_manualInput,
+  publishModal_addTag,
+  publishModal_aiGenerateTags
 };
 
 // src/i18n/zh-cn.json
@@ -117497,6 +117524,7 @@ __export(zh_cn_exports, {
   command_publish: () => command_publish2,
   command_publishWithDefault: () => command_publishWithDefault2,
   common_back: () => common_back2,
+  common_unknownError: () => common_unknownError2,
   confirmModal_cancel: () => confirmModal_cancel2,
   confirmModal_confirm: () => confirmModal_confirm2,
   confirmModal_title: () => confirmModal_title2,
@@ -117530,7 +117558,10 @@ __export(zh_cn_exports, {
   defaultPrompt_tagsEn: () => defaultPrompt_tagsEn2,
   error_cannotParseResponse: () => error_cannotParseResponse2,
   error_categoriesCreationFailed: () => error_categoriesCreationFailed2,
+  error_clientNotSupported: () => error_clientNotSupported2,
+  error_connectionFailed: () => error_connectionFailed2,
   error_featuredImageUploadFailedAfterRetries: () => error_featuredImageUploadFailedAfterRetries2,
+  error_imageLoadFailed: () => error_imageLoadFailed2,
   error_invalidUrl: () => error_invalidUrl2,
   error_invalidUser: () => error_invalidUser2,
   error_invalidWpComToken: () => error_invalidWpComToken2,
@@ -117548,6 +117579,7 @@ __export(zh_cn_exports, {
   error_notWpCom: () => error_notWpCom2,
   error_profileNotMatch: () => error_profileNotMatch2,
   error_publishFailed: () => error_publishFailed2,
+  error_saveFailed: () => error_saveFailed2,
   error_userCancelledPublish: () => error_userCancelledPublish2,
   error_wpComAuthFailed: () => error_wpComAuthFailed2,
   featuredImageModal_aiServiceRequired: () => featuredImageModal_aiServiceRequired2,
@@ -117614,6 +117646,7 @@ __export(zh_cn_exports, {
   profilesManageModal_title: () => profilesManageModal_title2,
   profiles_default: () => profiles_default2,
   publishModal_addCategory: () => publishModal_addCategory2,
+  publishModal_addTag: () => publishModal_addTag2,
   publishModal_advancedNotice: () => publishModal_advancedNotice2,
   publishModal_advancedTab: () => publishModal_advancedTab2,
   publishModal_advancedTitle: () => publishModal_advancedTitle2,
@@ -117623,6 +117656,8 @@ __export(zh_cn_exports, {
   publishModal_aiGenerateImage: () => publishModal_aiGenerateImage2,
   publishModal_aiGenerateImageButton: () => publishModal_aiGenerateImageButton2,
   publishModal_aiGenerateImageTitle: () => publishModal_aiGenerateImageTitle2,
+  publishModal_aiGenerateSummary: () => publishModal_aiGenerateSummary2,
+  publishModal_aiGenerateTags: () => publishModal_aiGenerateTags2,
   publishModal_aiGeneratingImage: () => publishModal_aiGeneratingImage2,
   publishModal_aiImageGenerateFailed: () => publishModal_aiImageGenerateFailed2,
   publishModal_aiImageGenerated: () => publishModal_aiImageGenerated2,
@@ -117680,6 +117715,7 @@ __export(zh_cn_exports, {
   publishModal_loadingRemoteImage: () => publishModal_loadingRemoteImage2,
   publishModal_localImage: () => publishModal_localImage2,
   publishModal_localImageButton: () => publishModal_localImageButton2,
+  publishModal_manualInput: () => publishModal_manualInput2,
   publishModal_newCategoryPlaceholder: () => publishModal_newCategoryPlaceholder2,
   publishModal_noExcerpt: () => publishModal_noExcerpt2,
   publishModal_noFeaturedImage: () => publishModal_noFeaturedImage2,
@@ -118335,6 +118371,15 @@ var publishModal_aiGenerate2 = "AI \u751F\u6210";
 var publishModal_settingsPanel2 = "\u8BBE\u7F6E";
 var publishModal_historyPanel2 = "\u5386\u53F2\u8BB0\u5F55";
 var publishModal_noHistory2 = "\u6682\u65E0\u5386\u53F2\u8BB0\u5F55";
+var common_unknownError2 = "\u672A\u77E5\u9519\u8BEF";
+var error_clientNotSupported2 = "\u5BA2\u6237\u7AEF\u4E0D\u652F\u6301\u83B7\u53D6\u6587\u7AE0";
+var error_connectionFailed2 = "\u8FDE\u63A5 <%= profileName %> \u5931\u8D25\uFF1A<%= error %>";
+var error_saveFailed2 = "\u4FDD\u5B58\u5931\u8D25: <%= error %>";
+var error_imageLoadFailed2 = "\u56FE\u7247\u52A0\u8F7D\u5931\u8D25";
+var publishModal_aiGenerateSummary2 = "\u{1F916} \u751F\u6210\u6458\u8981";
+var publishModal_manualInput2 = "\u{1F4DD} \u624B\u52A8\u8F93\u5165";
+var publishModal_addTag2 = "\u6DFB\u52A0\u6807\u7B7E";
+var publishModal_aiGenerateTags2 = "\u{1F916} \u751F\u6210\u6807\u7B7E";
 var zh_cn_default = {
   error_noEndpoint: error_noEndpoint2,
   error_notWpCom: error_notWpCom2,
@@ -118758,7 +118803,16 @@ var zh_cn_default = {
   publishModal_aiGenerate: publishModal_aiGenerate2,
   publishModal_settingsPanel: publishModal_settingsPanel2,
   publishModal_historyPanel: publishModal_historyPanel2,
-  publishModal_noHistory: publishModal_noHistory2
+  publishModal_noHistory: publishModal_noHistory2,
+  common_unknownError: common_unknownError2,
+  error_clientNotSupported: error_clientNotSupported2,
+  error_connectionFailed: error_connectionFailed2,
+  error_saveFailed: error_saveFailed2,
+  error_imageLoadFailed: error_imageLoadFailed2,
+  publishModal_aiGenerateSummary: publishModal_aiGenerateSummary2,
+  publishModal_manualInput: publishModal_manualInput2,
+  publishModal_addTag: publishModal_addTag2,
+  publishModal_aiGenerateTags: publishModal_aiGenerateTags2
 };
 
 // src/i18n/langs.ts
