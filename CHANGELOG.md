@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [2.1.2] (2026-04-08)
+
+### Internationalization
+
+* Fixed hardcoded Chinese text in English language mode by replacing all Chinese strings with i18n translation keys
+* Added 9 new translation keys to both `en.json` and `zh-cn.json` for error messages and button labels
+* English interface now displays correctly without any Chinese text remaining
+
+### UI Improvements
+
+* **Icon Updates**:
+  - Select local file button: 💾 → 📂 (more intuitive for file selection)
+  - Add tag button: added 🏷️ prefix for better visual identification
+  - Footer save button: added 💾 prefix for consistency
+  - Footer cancel button: renamed to "Close" with ❌ prefix for clearer action
+
 ## [1.2.2] (2026-03-14)
 
 ### Security

@@ -300,7 +300,7 @@ export class FeaturedImageModal extends Modal {
           this.showPreview(url);
           new Notice(this.plugin.t('featuredImageModal_imageSelectedSimple'));
         } catch (error) {
-          new Notice(this.plugin.t('featuredImageModal_imageSelectFailed', { error: error instanceof Error ? error.message : '未知错误' }));
+          new Notice(this.plugin.t('featuredImageModal_imageSelectFailed', { error: error instanceof Error ? error.message : this.plugin.t('common_unknownError') }));
         }
       }
     };

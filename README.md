@@ -2,9 +2,9 @@
 
 [English](README.md) | [简体中文](README_zh.md)
 
-**Version**: 2.1.1
+**Version**: 2.1.2
 **Author**: uu0
-**Last Updated**: 2026-03-19
+**Last Updated**: 2026-04-08
 
 ## About This Project
 
@@ -21,6 +21,8 @@ This project is a deep refactor and feature extension based on [obsidian-wordpre
 ## Overview
 
 WordPress Publisher is a powerful Obsidian plugin that enables one-click publishing of Markdown notes to WordPress sites. It supports both posts and pages, with built-in intelligent slug generation, featured image selection, and AI integration to dramatically improve content publishing efficiency.
+
+![WordPress Publisher Screenshot](docs/screenshot-en.png)
 
 ## Core Features
 
