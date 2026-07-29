@@ -200,6 +200,18 @@ export class WpRestClient extends AbstractWordPressClient {
     try {
       const formItems = new FormItems();
       formItems.append('file', media);
+      if (media.altText?.trim()) {
+        formItems.append('alt_text', media.altText.trim());
+      }
+      if (media.title?.trim()) {
+        formItems.append('title', media.title.trim());
+      }
+      if (media.caption?.trim()) {
+        formItems.append('caption', media.caption.trim());
+      }
+      if (media.description?.trim()) {
+        formItems.append('description', media.description.trim());
+      }
 
       const response: SafeAny = await this.client.httpPost(
         getUrl(this.context.endpoints?.uploadFile, 'wp-json/wp/v2/media'),
