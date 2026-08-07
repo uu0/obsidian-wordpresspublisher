@@ -11,6 +11,7 @@ import {
 } from './wp-types';
 import { WpPublishModalV2 } from './wp-publish-modal-v2';
 import { compressImage } from './featured-image-modal';
+import { sanitizeHtml } from './html-sanitizer';
 import { PostType, PostTypeConst, Term } from './wp-api';
 import { ERROR_NOTICE_TIMEOUT, WP_DEFAULT_PROFILE_NAME, FEATURED_IMAGE_UPLOAD_MAX_RETRIES, FEATURED_IMAGE_UPLOAD_RETRY_DELAY_MS, AUTH_CACHE_DURATION_MS } from './consts';
 import { isPromiseFulfilledResult, isValidUrl, openWithBrowser, processFile, SafeAny, showError, sleep } from './utils';
@@ -359,6 +360,7 @@ export abstract class AbstractWordPressClient implements WordPressClient {
       postParams
     });
     const html = AppState.markdownParser.render(postParams.content);
+    const safeHtml = sanitizeHtml(html);
     const result = await this.publish(
       postParams.title ?? 'A post from Obsidian!',
       html,

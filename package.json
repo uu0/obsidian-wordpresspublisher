@@ -59,6 +59,7 @@
 		"typescript": "5.8.3"
 	},
 	"dependencies": {
+		"dompurify": "^3.4.13",
 		"pinyin-pro": "^3.28.0",
 		"unsplash-js": "^7.0.20"
 	}

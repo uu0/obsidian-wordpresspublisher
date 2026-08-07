@@ -18,6 +18,7 @@ import { AppState } from './app-state';
 import { ImageCacheManager, CachedFeaturedImage } from './image-cache-manager';
 import { createModuleLogger } from './utils/logger';
 import { TagFormatter } from './tag-formatter';
+import { sanitizeHtml } from './html-sanitizer';
 import { getApiCapabilities, getApiLimitations, getApiRecommendation } from './api-capability';
 import { TranslateKey } from './i18n';
 
@@ -1447,7 +1448,7 @@ export class WpPublishModalV2 extends AbstractModal {
 
       const previewDiv = body.createDiv('wp-v3-content-preview');
       const html = AppState.markdownParser.render(this.editableContent);
-      previewDiv.innerHTML = html;
+      previewDiv.innerHTML = sanitizeHtml(html);
     };
 
     // ── 文章内容编辑模式 ──
@@ -2550,7 +2551,7 @@ export class WpPublishModalV2 extends AbstractModal {
     const renderDisplay = () => {
       content.empty();
       const previewDiv = content.createDiv('wp-preview-html-content');
-      previewDiv.innerHTML = this.editableContent;
+      previewDiv.innerHTML = sanitizeHtml(this.editableContent);
     };
 
     renderDisplay();
@@ -3994,7 +3995,7 @@ export class WpPublishModalV2 extends AbstractModal {
   private renderArticlePreview(card: HTMLElement): void {
     const previewContent = card.createDiv('wp-preview-rendered');
     const html = AppState.markdownParser.render(this.editableContent);
-    previewContent.innerHTML = html;
+    previewContent.innerHTML = sanitizeHtml(html);
 
     const style = document.createElement('style');
     style.textContent = `
