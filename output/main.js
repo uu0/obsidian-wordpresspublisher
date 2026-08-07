@@ -100757,7 +100757,7 @@ var init_ai_service = __esm({
        * Generate text content with retry and timeout
        */
       async generateText(prompt, options) {
-        var _a5, _b, _c, _d, _e;
+        var _a5, _b, _c, _d, _e, _f, _g;
         const opts = { ...this.options, ...options };
         const config2 = this.config.textAI;
         const baseURL = config2.baseURL.replace(/\/+$/, "");
@@ -100775,7 +100775,7 @@ var init_ai_service = __esm({
               },
               opts
             );
-            const result = ((_d = (_c = (_b = data2 == null ? void 0 : data2.choices) == null ? void 0 : _b[0]) == null ? void 0 : _c.message) == null ? void 0 : _d.content) || "";
+            const result = (_e = (_d = (_c = (_b = data2.choices) == null ? void 0 : _b[0]) == null ? void 0 : _c.message) == null ? void 0 : _d.content) != null ? _e : "";
             if (!result || result.trim().length === 0) {
               throw new AIServiceError(
                 "Empty response from AI",
@@ -100800,8 +100800,8 @@ var init_ai_service = __esm({
               },
               opts
             );
-            const textContent2 = (_e = data2 == null ? void 0 : data2.content) == null ? void 0 : _e.find((c) => c.type === "text");
-            const result = (textContent2 == null ? void 0 : textContent2.text) || "";
+            const textContent2 = (_f = data2.content) == null ? void 0 : _f.find((c) => c.type === "text");
+            const result = (_g = textContent2 == null ? void 0 : textContent2.text) != null ? _g : "";
             if (!result || result.trim().length === 0) {
               throw new AIServiceError(
                 "Empty response from AI",
@@ -100848,7 +100848,7 @@ var init_ai_service = __esm({
               },
               opts
             );
-            if (!(data2 == null ? void 0 : data2.data) || data2.data.length === 0) {
+            if (!data2.data || data2.data.length === 0) {
               throw new AIServiceError(
                 "No image generated",
                 "NO_IMAGE",
@@ -108833,60 +108833,89 @@ var init_api_capability = __esm({
 });
 
 // src/api-info-modal.ts
-function showApiInfoModal(app, apiType) {
-  var _a5, _b, _c, _d;
-  const capabilities = getApiCapabilities(apiType);
-  const limitations = getApiLimitations(apiType);
-  const recommendation = getApiRecommendation(apiType);
-  const message2 = `
-# API Capabilities: ${apiType}
-
-## Supported Features
-${capabilities.supportsCategoryCreation ? "\u2705 Category Creation" : "\u274C Category Creation"}
-${capabilities.supportsTagCreation ? "\u2705 Tag Creation" : "\u274C Tag Creation"}
-${capabilities.supportsRichCategoryProperties ? "\u2705 Rich Category Properties" : "\u274C Rich Category Properties"}
-${capabilities.supportsBatchOperations ? "\u2705 Batch Operations" : "\u274C Batch Operations"}
-${capabilities.supportsCustomPostTypes ? "\u2705 Custom Post Types" : "\u274C Custom Post Types"}
-
-## Limitations
-${limitations.map((l) => `\u2022 ${l}`).join("\n")}
-
-## Recommendation
-${recommendation}
-
-## Security Note
-XML-RPC uses basic authentication which may be less secure than REST API with Application Passwords.
-Consider migrating to REST API for better security and feature support.
-  `;
-  const modal = (_a5 = app.workspace.activeLeaf) == null ? void 0 : _a5.view.containerEl.createEl("div");
-  if (modal) {
-    modal.innerHTML = `
-      <div class="modal-bg" style="position:fixed;top:0;left:0;width:100%;height:100%;background:var(--wp-modal-overlay);z-index:9999;">
-        <div class="modal" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--background-primary);padding:20px;border-radius:8px;max-width:600px;max-height:80vh;overflow:auto;">
-          <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
-            <h3 style="margin:0;">API Information</h3>
-            <button class="modal-close" style="background:none;border:none;font-size:20px;cursor:pointer;">\xD7</button>
-          </div>
-          <div class="modal-content">${message2}</div>
-          <div class="modal-footer" style="margin-top:15px;text-align:right;">
-            <button class="mod-cta" style="padding:5px 15px;">Close</button>
-          </div>
-        </div>
-      </div>
-    `;
-    (_b = modal.querySelector(".modal-close")) == null ? void 0 : _b.addEventListener("click", () => modal.remove());
-    (_c = modal.querySelector(".mod-cta")) == null ? void 0 : _c.addEventListener("click", () => modal.remove());
-    (_d = modal.querySelector(".modal-bg")) == null ? void 0 : _d.addEventListener("click", (e) => {
-      if (e.target === modal.querySelector(".modal-bg")) {
-        modal.remove();
-      }
-    });
-  }
+function showApiInfoModal(plugin4, apiType) {
+  new ApiInfoModal(plugin4.app, apiType, plugin4.i18n).open();
 }
+var import_obsidian9, ApiInfoModal;
 var init_api_info_modal = __esm({
   "src/api-info-modal.ts"() {
     "use strict";
+    import_obsidian9 = require("obsidian");
     init_api_capability();
+    ApiInfoModal = class extends import_obsidian9.Modal {
+      constructor(app, apiType, i18n) {
+        super(app);
+        this.apiType = apiType;
+        this.i18n = i18n;
+      }
+      onOpen() {
+        const { contentEl } = this;
+        contentEl.empty();
+        contentEl.addClass("wp-api-info-modal");
+        const header = contentEl.createDiv("wp-api-info-modal-header");
+        header.createEl("h3", { text: this.i18n.t("apiInfo_title") });
+        const closeButton = header.createEl("button", {
+          cls: "wp-api-info-modal-close",
+          text: "\xD7"
+        });
+        closeButton.addEventListener("click", () => this.close());
+        const body = contentEl.createDiv("wp-api-info-modal-body");
+        this.renderCapabilities(body);
+        this.renderSection(body, "Limitations", this.renderLimitations);
+        this.renderRecommendation(body);
+        this.renderSecurityNote(body);
+        const footer = contentEl.createDiv("wp-api-info-footer");
+        const close = footer.createEl("button", {
+          cls: "mod-cta",
+          text: this.i18n.t("apiInfo_close")
+        });
+        close.addEventListener("click", () => this.close());
+      }
+      onClose() {
+        this.contentEl.empty();
+      }
+      renderCapabilities(container) {
+        const capabilities = getApiCapabilities(this.apiType);
+        container.createEl("h4", { text: "Supported Features" });
+        const list3 = container.createEl("ul", { cls: "wp-api-info-features" });
+        const rows = [
+          [capabilities.supportsCategoryCreation, "Category Creation"],
+          [capabilities.supportsTagCreation, "Tag Creation"],
+          [capabilities.supportsRichCategoryProperties, "Rich Category Properties"],
+          [capabilities.supportsBatchOperations, "Batch Operations"],
+          [capabilities.supportsCustomPostTypes, "Custom Post Types"]
+        ];
+        for (const [supported, label] of rows) {
+          list3.createEl("li", { text: `${supported ? "\u2705" : "\u274C"} ${label}` });
+        }
+      }
+      renderSection(container, title, render3) {
+        container.createEl("h4", { text: title });
+        render3(container);
+      }
+      renderLimitations(container) {
+        const limitations = getApiLimitations(this.apiType);
+        if (limitations.length === 0) {
+          container.createEl("p", { text: "\u2014" });
+          return;
+        }
+        const list3 = container.createEl("ul", { cls: "wp-api-info-limitations" });
+        for (const limitation of limitations) {
+          list3.createEl("li", { text: limitation });
+        }
+      }
+      renderRecommendation(container) {
+        const recommendation = getApiRecommendation(this.apiType);
+        container.createEl("h4", { text: "Recommendation" });
+        container.createEl("p", { text: recommendation });
+      }
+      renderSecurityNote(container) {
+        container.createEl("h4", { text: "Security Note" });
+        container.createEl("p", {
+          text: "XML-RPC uses basic authentication which may be less secure than REST API with Application Passwords. Consider migrating to REST API for better security and feature support."
+        });
+      }
+    };
   }
 });
 
@@ -108990,11 +109019,11 @@ var init_modal_helpers = __esm({
 });
 
 // src/wp-publish-modal-v2.ts
-var import_obsidian9, log5, WpPublishModalV2;
+var import_obsidian10, log5, WpPublishModalV2;
 var init_wp_publish_modal_v2 = __esm({
   "src/wp-publish-modal-v2.ts"() {
     "use strict";
-    import_obsidian9 = require("obsidian");
+    import_obsidian10 = require("obsidian");
     init_date_fns();
     init_esm10();
     init_wp_api();
@@ -109197,7 +109226,7 @@ var init_wp_publish_modal_v2 = __esm({
       async loadFeaturePictureFromUrl(url) {
         try {
           log5.info("Loading featured image from URL:", url);
-          const response = await (0, import_obsidian9.requestUrl)({
+          const response = await (0, import_obsidian10.requestUrl)({
             url,
             method: "GET"
           });
@@ -109318,7 +109347,7 @@ var init_wp_publish_modal_v2 = __esm({
       }
       async loadLocalImage(imagePath) {
         const file = this.app.metadataCache.getFirstLinkpathDest(imagePath, this.noteTitle);
-        if (file instanceof import_obsidian9.TFile) {
+        if (file instanceof import_obsidian10.TFile) {
           const binaryContent = await this.app.vault.readBinary(file);
           this.autoFeaturedImage = {
             fileName: file.name,
@@ -109334,7 +109363,7 @@ var init_wp_publish_modal_v2 = __esm({
       }
       async loadOnlineImage(imagePath) {
         try {
-          const response = await (0, import_obsidian9.requestUrl)({
+          const response = await (0, import_obsidian10.requestUrl)({
             url: imagePath,
             method: "GET"
           });
@@ -109357,7 +109386,7 @@ var init_wp_publish_modal_v2 = __esm({
       async loadEmptyImage() {
         try {
           const emptyFile = this.app.vault.getAbstractFileByPath("empty.png");
-          if (emptyFile instanceof import_obsidian9.TFile) {
+          if (emptyFile instanceof import_obsidian10.TFile) {
             const content = await this.app.vault.readBinary(emptyFile);
             this.autoFeaturedImage = {
               fileName: "empty.png",
@@ -109433,7 +109462,7 @@ var init_wp_publish_modal_v2 = __esm({
       async saveParamsToFrontmatter(params) {
         if (!this.notePath) return;
         const file = this.plugin.app.vault.getAbstractFileByPath(this.notePath);
-        if (!file || !(file instanceof import_obsidian9.TFile)) return;
+        if (!file || !(file instanceof import_obsidian10.TFile)) return;
         try {
           await this.plugin.app.fileManager.processFrontMatter(file, (fm) => {
             if (params.slug) fm.slug = params.slug;
@@ -109444,11 +109473,11 @@ var init_wp_publish_modal_v2 = __esm({
             }
             if (params.excerpt) fm.excerpt = params.excerpt;
           });
-          new import_obsidian9.Notice(this.t("publishModal_settingsSaved") || "Settings saved");
+          new import_obsidian10.Notice(this.t("publishModal_settingsSaved") || "Settings saved");
           this.close();
         } catch (error2) {
           log5.error("Failed to save params to frontmatter:", error2);
-          new import_obsidian9.Notice(this.plugin.t("error_saveFailed", { error: error2 instanceof Error ? error2.message : String(error2) }));
+          new import_obsidian10.Notice(this.plugin.t("error_saveFailed", { error: error2 instanceof Error ? error2.message : String(error2) }));
         }
       }
       /**
@@ -109460,7 +109489,7 @@ var init_wp_publish_modal_v2 = __esm({
           return;
         }
         const file = this.plugin.app.vault.getAbstractFileByPath(this.notePath);
-        if (!file || !(file instanceof import_obsidian9.TFile)) {
+        if (!file || !(file instanceof import_obsidian10.TFile)) {
           return;
         }
         try {
@@ -109734,7 +109763,7 @@ var init_wp_publish_modal_v2 = __esm({
               text: "\u{1F916} " + this.t("publishModal_aiGenerate"),
               cls: "wp-v3-feature-btn disabled"
             });
-            aiBtn.onclick = () => new import_obsidian9.Notice(this.t("notice_imageAIApiKeyRequired"));
+            aiBtn.onclick = () => new import_obsidian10.Notice(this.t("notice_imageAIApiKeyRequired"));
           }
           updateHeaderActions();
         };
@@ -109792,7 +109821,7 @@ var init_wp_publish_modal_v2 = __esm({
             };
             this.display(params);
           } catch (err) {
-            new import_obsidian9.Notice(this.plugin.t("error_imageLoadFailed"));
+            new import_obsidian10.Notice(this.plugin.t("error_imageLoadFailed"));
           }
         });
       }
@@ -110690,7 +110719,7 @@ var init_wp_publish_modal_v2 = __esm({
       renderCollapsiblePanel(container, title, panelId, renderContent) {
         const header = container.createDiv("wp-panel-header");
         const collapseIcon = header.createSpan("wp-panel-collapse-icon");
-        (0, import_obsidian9.setIcon)(collapseIcon, "chevron-down");
+        (0, import_obsidian10.setIcon)(collapseIcon, "chevron-down");
         header.createSpan({ text: title, cls: "wp-panel-title" });
         const content = container.createDiv("wp-panel-content");
         renderContent(content);
@@ -110699,10 +110728,10 @@ var init_wp_publish_modal_v2 = __esm({
           isCollapsed = !isCollapsed;
           if (isCollapsed) {
             container.addClass("collapsed");
-            (0, import_obsidian9.setIcon)(collapseIcon, "chevron-right");
+            (0, import_obsidian10.setIcon)(collapseIcon, "chevron-right");
           } else {
             container.removeClass("collapsed");
-            (0, import_obsidian9.setIcon)(collapseIcon, "chevron-down");
+            (0, import_obsidian10.setIcon)(collapseIcon, "chevron-down");
           }
         };
         this.setupPanelResize(container);
@@ -111038,9 +111067,9 @@ var init_wp_publish_modal_v2 = __esm({
               this.imageSource = "local";
               await this.saveImageToCache(arrayBuffer, file.name, file.type, "local");
               this.display(params);
-              new import_obsidian9.Notice(this.t("publishModal_imageSelected_simple"));
+              new import_obsidian10.Notice(this.t("publishModal_imageSelected_simple"));
             } catch (error2) {
-              new import_obsidian9.Notice(this.t("publishModal_imageSelectFailed", { error: error2 instanceof Error ? error2.message : "Unknown error" }));
+              new import_obsidian10.Notice(this.t("publishModal_imageSelectFailed", { error: error2 instanceof Error ? error2.message : "Unknown error" }));
             }
           }
         };
@@ -111048,7 +111077,7 @@ var init_wp_publish_modal_v2 = __esm({
       }
       selectUnsplashImage(params) {
         if (!this.unsplashService) {
-          new import_obsidian9.Notice(this.t("publishModal_unsplashKeyRequiredSimple"));
+          new import_obsidian10.Notice(this.t("publishModal_unsplashKeyRequiredSimple"));
           return;
         }
         const tagsQuery = this.getSearchQuery(params);
@@ -111071,7 +111100,7 @@ var init_wp_publish_modal_v2 = __esm({
             this.imageSource = "unsplash";
             await this.saveImageToCache(finalBuffer, fileName, "image/jpeg", "unsplash");
             this.display(params);
-            new import_obsidian9.Notice(this.t("publishModal_imageSelected_simple"));
+            new import_obsidian10.Notice(this.t("publishModal_imageSelected_simple"));
           },
           tagsQuery
         );
@@ -111090,11 +111119,11 @@ var init_wp_publish_modal_v2 = __esm({
       }
       async generateAImage(params) {
         if (!this.plugin.settings.aiConfig || !this.aiService) {
-          new import_obsidian9.Notice(this.t("publishModal_aiServiceRequired"));
+          new import_obsidian10.Notice(this.t("publishModal_aiServiceRequired"));
           return;
         }
         if (!this.aiService.hasImageAIKey()) {
-          new import_obsidian9.Notice(this.t("notice_imageAIApiKeyRequired"));
+          new import_obsidian10.Notice(this.t("notice_imageAIApiKeyRequired"));
           return;
         }
         try {
@@ -111106,9 +111135,9 @@ var init_wp_publish_modal_v2 = __esm({
           const basePrompt = this.imageGenerationPrompt || this.plugin.t("defaultPrompt_image");
           const localizedPrompt = getLocalizedPrompt(this.plugin, language, "image");
           const imageDescriptionPrompt = localizedPrompt.replace("{title}", params.title || "").replace("{content}", imagePromptContent);
-          new import_obsidian9.Notice(this.t("publishModal_aiGeneratingImage"));
+          new import_obsidian10.Notice(this.t("publishModal_aiGeneratingImage"));
           const imageUrl = await this.aiService.generateImage(imageDescriptionPrompt);
-          const response = await (0, import_obsidian9.requestUrl)({ url: imageUrl, method: "GET" });
+          const response = await (0, import_obsidian10.requestUrl)({ url: imageUrl, method: "GET" });
           const arrayBuffer = response.arrayBuffer;
           const fileName = `ai-generated-${Date.now()}.png`;
           this.featuredImage = {
@@ -111120,10 +111149,10 @@ var init_wp_publish_modal_v2 = __esm({
           this.imageSource = "ai";
           await this.saveImageToCache(arrayBuffer, fileName, "image/png", "ai");
           this.display(params);
-          new import_obsidian9.Notice(this.t("publishModal_aiImageGenerated"));
+          new import_obsidian10.Notice(this.t("publishModal_aiImageGenerated"));
         } catch (error2) {
           log5.error("AI image generation error:", error2);
-          new import_obsidian9.Notice(this.t("publishModal_aiImageGenerateFailed", { error: error2 instanceof Error ? error2.message : "Unknown error" }));
+          new import_obsidian10.Notice(this.t("publishModal_aiImageGenerateFailed", { error: error2 instanceof Error ? error2.message : "Unknown error" }));
         }
       }
       /**
@@ -111141,20 +111170,20 @@ var init_wp_publish_modal_v2 = __esm({
           return params.tags.join(", ");
         }
         if (!this.aiService) {
-          new import_obsidian9.Notice(this.t("notice_aiConfigRequired"));
+          new import_obsidian10.Notice(this.t("notice_aiConfigRequired"));
           return null;
         }
         if (!this.aiService.hasTextAIKey()) {
-          new import_obsidian9.Notice(this.t("notice_textAIApiKeyRequired"));
+          new import_obsidian10.Notice(this.t("notice_textAIApiKeyRequired"));
           return null;
         }
         const contentToUse = this.editableContent || this.articleContent;
         if (!contentToUse) {
-          new import_obsidian9.Notice(this.t("publishModal_emptyContent"));
+          new import_obsidian10.Notice(this.t("publishModal_emptyContent"));
           return null;
         }
         try {
-          new import_obsidian9.Notice(this.t("publishModal_generatingSummary"));
+          new import_obsidian10.Notice(this.t("publishModal_generatingSummary"));
           const cleanContent = this.sanitizeContentForAI(contentToUse, 2e3);
           const language = detectLanguage(cleanContent);
           log5.info("Detected language for image summary:", language);
@@ -111163,12 +111192,12 @@ var init_wp_publish_modal_v2 = __esm({
           const prompt = localizedPrompt.replace("{content}", cleanContent);
           const summary = await this.aiService.generateText(prompt);
           params.excerpt = summary.trim();
-          new import_obsidian9.Notice(this.t("publishModal_generatingSummary"));
+          new import_obsidian10.Notice(this.t("publishModal_generatingSummary"));
           this.display(params);
           return params.excerpt;
         } catch (error2) {
           log5.error("Generate summary for image error:", error2);
-          new import_obsidian9.Notice(this.t("publishModal_summaryGenerateFailed", { error: error2 instanceof Error ? error2.message : "Unknown error" }));
+          new import_obsidian10.Notice(this.t("publishModal_summaryGenerateFailed", { error: error2 instanceof Error ? error2.message : "Unknown error" }));
           return null;
         }
       }
@@ -111186,7 +111215,7 @@ var init_wp_publish_modal_v2 = __esm({
             this.imageSource = "vault";
             await this.saveImageToCache(arrayBuffer, file.name, mimeType, "vault");
             this.display(params);
-            new import_obsidian9.Notice(this.t("publishModal_imageFromGallery", { fileName: file.name }));
+            new import_obsidian10.Notice(this.t("publishModal_imageFromGallery", { fileName: file.name }));
           }
         );
         modal.open();
@@ -111204,12 +111233,12 @@ var init_wp_publish_modal_v2 = __esm({
           const file = (_a5 = input.files) == null ? void 0 : _a5[0];
           if (!file) return;
           if (!file.type.match(/^image\/(jpeg|png|gif|webp)$/)) {
-            new import_obsidian9.Notice(this.t("notice_invalidImageFormat"));
+            new import_obsidian10.Notice(this.t("notice_invalidImageFormat"));
             return;
           }
           const maxSize = 10 * 1024 * 1024;
           if (file.size > maxSize) {
-            new import_obsidian9.Notice(this.t("notice_imageTooLarge"));
+            new import_obsidian10.Notice(this.t("notice_imageTooLarge"));
             return;
           }
           try {
@@ -111223,7 +111252,7 @@ var init_wp_publish_modal_v2 = __esm({
             );
             if (processed) {
               arrayBuffer = processed;
-              new import_obsidian9.Notice(this.t("featuredImageModal_imageCropped", {
+              new import_obsidian10.Notice(this.t("featuredImageModal_imageCropped", {
                 width: (this.plugin.settings.imageCropWidth || 1200).toString(),
                 height: Math.round((this.plugin.settings.imageCropWidth || 1200) * this.getAspectRatio()).toString(),
                 ratio
@@ -111238,9 +111267,9 @@ var init_wp_publish_modal_v2 = __esm({
             this.imageSource = "local";
             await this.saveImageToCache(arrayBuffer, file.name, file.type, "local");
             this.display(params);
-            new import_obsidian9.Notice(this.t("publishModal_imageFromLocal", { fileName: file.name }));
+            new import_obsidian10.Notice(this.t("publishModal_imageFromLocal", { fileName: file.name }));
           } catch (error2) {
-            new import_obsidian9.Notice(this.t("notice_imageLoadFailed"));
+            new import_obsidian10.Notice(this.t("notice_imageLoadFailed"));
             log5.error("Failed to load local image:", error2);
           }
         };
@@ -111262,7 +111291,7 @@ var init_wp_publish_modal_v2 = __esm({
       addInfoButton(setting, infoKey) {
         setting.addExtraButton((btn) => {
           btn.setIcon("info").setTooltip(this.t(infoKey)).onClick(() => {
-            new import_obsidian9.Notice(this.t(infoKey), 5e3);
+            new import_obsidian10.Notice(this.t(infoKey), 5e3);
           });
           btn.extraSettingsEl.addClass("wp-info-button");
         });
@@ -111273,7 +111302,7 @@ var init_wp_publish_modal_v2 = __esm({
         card.createEl("h3", { text: this.plugin.t("publishModal_basicSettings"), cls: "wp-settings-section-title" });
         const gridContainer = card.createDiv("wp-settings-grid");
         const titleWrapper = gridContainer.createDiv("wp-grid-full");
-        const titleSetting = new import_obsidian9.Setting(titleWrapper).setName(this.t("publishModal_titleName")).addText((text5) => {
+        const titleSetting = new import_obsidian10.Setting(titleWrapper).setName(this.t("publishModal_titleName")).addText((text5) => {
           this.titleInput = text5.inputEl;
           text5.setPlaceholder(this.t("publishModal_titlePlaceholder")).setValue(params.title || "").onChange((value) => {
             params.title = value;
@@ -111284,7 +111313,7 @@ var init_wp_publish_modal_v2 = __esm({
               if (!this.lastAutoGeneratedSlug || params.slug === this.lastAutoGeneratedSlug) {
                 this.generateDefaultSlug(params.title, params);
                 this.lastAutoGeneratedSlug = params.slug || "";
-                new import_obsidian9.Notice(this.t("publishModal_slugAutoUpdated"));
+                new import_obsidian10.Notice(this.t("publishModal_slugAutoUpdated"));
               }
             }
           };
@@ -111300,7 +111329,7 @@ var init_wp_publish_modal_v2 = __esm({
         });
         this.addInfoButton(titleSetting, "publishModal_titleInfo");
         const slugWrapper = gridContainer.createDiv("wp-grid-full");
-        const slugSetting = new import_obsidian9.Setting(slugWrapper).setName(this.t("publishModal_slugName"));
+        const slugSetting = new import_obsidian10.Setting(slugWrapper).setName(this.t("publishModal_slugName"));
         const initialSlugValue = params.slug;
         slugSetting.addText((text5) => {
           this.slugInput = text5.inputEl;
@@ -111326,7 +111355,7 @@ var init_wp_publish_modal_v2 = __esm({
             slugSetting.addButton((btn) => {
               btn.setButtonText(this.t("publishModal_slugAIButton")).setTooltip(this.t("publishModal_slugAIButton")).onClick(async () => {
                 if (!params.title) {
-                  new import_obsidian9.Notice(this.t("publishModal_slugNeedTitle"));
+                  new import_obsidian10.Notice(this.t("publishModal_slugNeedTitle"));
                   return;
                 }
                 btn.setDisabled(true);
@@ -111337,9 +111366,9 @@ var init_wp_publish_modal_v2 = __esm({
                     this.slugInput.value = slug;
                     params.slug = slug;
                   }
-                  new import_obsidian9.Notice(this.t("publishModal_slugGenerated"));
+                  new import_obsidian10.Notice(this.t("publishModal_slugGenerated"));
                 } catch (error2) {
-                  new import_obsidian9.Notice(this.t("publishModal_slugTranslateFailed", { error: error2 instanceof Error ? error2.message : "Unknown error" }));
+                  new import_obsidian10.Notice(this.t("publishModal_slugTranslateFailed", { error: error2 instanceof Error ? error2.message : "Unknown error" }));
                 } finally {
                   btn.setDisabled(false);
                   btn.setButtonText(this.t("publishModal_slugAIButton"));
@@ -111357,9 +111386,9 @@ var init_wp_publish_modal_v2 = __esm({
           titleRow.createEl("div", { cls: "setting-item-name", text: this.t("publishModal_categoryName") });
           const infoBtn = titleRow.createEl("button", { cls: "wp-info-button clickable-icon" });
           infoBtn.setAttribute("aria-label", this.t("publishModal_categoryInfo"));
-          (0, import_obsidian9.setIcon)(infoBtn, "info");
+          (0, import_obsidian10.setIcon)(infoBtn, "info");
           infoBtn.addEventListener("click", () => {
-            new import_obsidian9.Notice(this.t("publishModal_categoryInfo"), 5e3);
+            new import_obsidian10.Notice(this.t("publishModal_categoryInfo"), 5e3);
           });
           const tagsContainer = document.createElement("div");
           tagsContainer.className = "wp-category-tags-container";
@@ -111479,7 +111508,7 @@ var init_wp_publish_modal_v2 = __esm({
           renderActionButtons();
         }
         const statusWrapper = gridContainer.createDiv();
-        new import_obsidian9.Setting(statusWrapper).setName(this.t("publishModal_statusName")).setDesc(this.t("publishModal_statusDesc")).addDropdown((dropdown) => {
+        new import_obsidian10.Setting(statusWrapper).setName(this.t("publishModal_statusName")).setDesc(this.t("publishModal_statusDesc")).addDropdown((dropdown) => {
           dropdown.addOption("draft" /* Draft */, this.plugin.t("publishModal_statusDraft")).addOption("publish" /* Publish */, this.plugin.t("publishModal_statusPublish")).addOption("private" /* Private */, this.plugin.t("publishModal_statusPrivate")).addOption("future" /* Future */, this.plugin.t("publishModal_statusFuture")).setValue(params.status).onChange((value) => {
             params.status = value;
             this.display(params);
@@ -111487,7 +111516,7 @@ var init_wp_publish_modal_v2 = __esm({
         });
         if (params.status === "future" /* Future */) {
           const dateWrapper = gridContainer.createDiv("wp-grid-full");
-          new import_obsidian9.Setting(dateWrapper).setName(this.t("publishModal_postDateTimeName")).setDesc(this.t("publishModal_postDateTimeDescFormat")).addText((text5) => {
+          new import_obsidian10.Setting(dateWrapper).setName(this.t("publishModal_postDateTimeName")).setDesc(this.t("publishModal_postDateTimeDescFormat")).addText((text5) => {
             text5.setValue(format(/* @__PURE__ */ new Date(), "yyyy-MM-dd HH:mm:ss"));
             this.setupDateMask(text5.inputEl, params);
           });
@@ -111495,20 +111524,20 @@ var init_wp_publish_modal_v2 = __esm({
           delete params.datetime;
         }
         const commentWrapper = gridContainer.createDiv();
-        new import_obsidian9.Setting(commentWrapper).setName(this.t("publishModal_commentName")).setDesc(this.t("publishModal_commentDesc")).addDropdown((dropdown) => {
+        new import_obsidian10.Setting(commentWrapper).setName(this.t("publishModal_commentName")).setDesc(this.t("publishModal_commentDesc")).addDropdown((dropdown) => {
           dropdown.addOption("open" /* Open */, this.plugin.t("publishModal_commentOpen")).addOption("closed" /* Closed */, this.plugin.t("publishModal_commentClosed")).setValue(params.commentStatus).onChange((value) => {
             params.commentStatus = value;
           });
         });
         const formatWrapper = gridContainer.createDiv();
-        new import_obsidian9.Setting(formatWrapper).setName(this.t("publishModal_postTypeName")).setDesc(this.t("publishModal_postTypeDesc")).addDropdown((dropdown) => {
+        new import_obsidian10.Setting(formatWrapper).setName(this.t("publishModal_postTypeName")).setDesc(this.t("publishModal_postTypeDesc")).addDropdown((dropdown) => {
           dropdown.addOption("html", this.plugin.t("publishModal_formatHTML")).addOption("markdown", this.plugin.t("publishModal_formatMarkdown")).setValue("html").onChange((value) => {
             params.contentFormat = value;
           });
         });
         if (this.matterData.postId) {
           const publishAsNewWrapper = gridContainer.createDiv();
-          new import_obsidian9.Setting(publishAsNewWrapper).setName(this.t("publishModal_publishAsNewName")).setDesc(this.t("publishModal_publishAsNewDesc")).addToggle((toggle) => {
+          new import_obsidian10.Setting(publishAsNewWrapper).setName(this.t("publishModal_publishAsNewName")).setDesc(this.t("publishModal_publishAsNewDesc")).addToggle((toggle) => {
             toggle.setValue(params.publishAsNew || false).onChange((value) => {
               params.publishAsNew = value;
             });
@@ -111674,7 +111703,7 @@ var init_wp_publish_modal_v2 = __esm({
             cls: "feature-btn disabled"
           });
           aiBtn.onclick = () => {
-            new import_obsidian9.Notice(this.t("notice_imageAIApiKeyRequired"));
+            new import_obsidian10.Notice(this.t("notice_imageAIApiKeyRequired"));
           };
         }
       }
@@ -111687,12 +111716,12 @@ var init_wp_publish_modal_v2 = __esm({
         if (!this.aiService) {
           generateBtn.addClass("disabled");
           generateBtn.onclick = () => {
-            new import_obsidian9.Notice(this.t("notice_aiConfigRequired"));
+            new import_obsidian10.Notice(this.t("notice_aiConfigRequired"));
           };
         } else if (!this.aiService.hasTextAIKey()) {
           generateBtn.addClass("disabled");
           generateBtn.onclick = () => {
-            new import_obsidian9.Notice(this.t("notice_textAIApiKeyRequired"));
+            new import_obsidian10.Notice(this.t("notice_textAIApiKeyRequired"));
           };
         } else {
           generateBtn.onclick = () => this.generateSummary(params);
@@ -111736,12 +111765,12 @@ var init_wp_publish_modal_v2 = __esm({
         if (!this.aiService) {
           generateBtn.addClass("disabled");
           generateBtn.onclick = () => {
-            new import_obsidian9.Notice(this.t("notice_aiConfigRequired"));
+            new import_obsidian10.Notice(this.t("notice_aiConfigRequired"));
           };
         } else if (!this.aiService.hasTextAIKey()) {
           generateBtn.addClass("disabled");
           generateBtn.onclick = () => {
-            new import_obsidian9.Notice(this.t("notice_textAIApiKeyRequired"));
+            new import_obsidian10.Notice(this.t("notice_textAIApiKeyRequired"));
           };
         } else {
           generateBtn.onclick = () => this.generateTags(params);
@@ -112079,13 +112108,13 @@ var init_wp_publish_modal_v2 = __esm({
         const trimmed = tagName.trim();
         if (!trimmed) return;
         if (this.editableTags.includes(trimmed)) {
-          new import_obsidian9.Notice(this.plugin.t("publishModal_tagExists") || "\u6807\u7B7E\u5DF2\u5B58\u5728");
+          new import_obsidian10.Notice(this.plugin.t("publishModal_tagExists") || "\u6807\u7B7E\u5DF2\u5B58\u5728");
           return;
         }
         this.editableTags.push(trimmed);
         params.tags = [...this.editableTags];
         this.refreshTagsPreview(params);
-        new import_obsidian9.Notice(this.plugin.t("publishModal_tagAdded") || "\u6807\u7B7E\u5DF2\u6DFB\u52A0");
+        new import_obsidian10.Notice(this.plugin.t("publishModal_tagAdded") || "\u6807\u7B7E\u5DF2\u6DFB\u52A0");
       }
       /**
        * 刷新标签预览
@@ -112148,7 +112177,7 @@ var init_wp_publish_modal_v2 = __esm({
         };
       }
       showApiInfoModal(apiType) {
-        showApiInfoModal(this.plugin.app, apiType);
+        showApiInfoModal(this.plugin, apiType);
       }
       // ==================== Bottom Action Bar ====================
       renderBottomBar(container, params) {
@@ -112161,7 +112190,7 @@ var init_wp_publish_modal_v2 = __esm({
           editBtn.onclick = () => {
             if (this.isEditingPreview) {
               this.isEditingPreview = false;
-              new import_obsidian9.Notice(this.t("publishModal_contentSaved"));
+              new import_obsidian10.Notice(this.t("publishModal_contentSaved"));
             } else {
               this.isEditingPreview = true;
             }
@@ -112188,20 +112217,20 @@ var init_wp_publish_modal_v2 = __esm({
       }
       async generateSummary(params) {
         if (!this.aiService) {
-          new import_obsidian9.Notice(this.t("publishModal_aiServiceRequired"));
+          new import_obsidian10.Notice(this.t("publishModal_aiServiceRequired"));
           return;
         }
         if (!this.aiService.hasTextAIKey()) {
-          new import_obsidian9.Notice(this.t("notice_textAIApiKeyRequired"));
+          new import_obsidian10.Notice(this.t("notice_textAIApiKeyRequired"));
           return;
         }
         const contentToUse = this.editableContent || this.articleContent;
         if (!contentToUse) {
-          new import_obsidian9.Notice(this.t("publishModal_emptyContentForTags"));
+          new import_obsidian10.Notice(this.t("publishModal_emptyContentForTags"));
           return;
         }
         try {
-          new import_obsidian9.Notice(this.t("publishModal_generatingSummary"));
+          new import_obsidian10.Notice(this.t("publishModal_generatingSummary"));
           const cleanContent = this.sanitizeContentForAI(contentToUse, 2e3);
           log5.info("Generating summary from content length:", cleanContent.length);
           const language = detectLanguage(cleanContent);
@@ -112211,29 +112240,29 @@ var init_wp_publish_modal_v2 = __esm({
           const prompt = localizedPrompt.replace("{content}", cleanContent);
           const summary = await this.aiService.generateText(prompt);
           params.excerpt = summary.trim();
-          new import_obsidian9.Notice(this.t("publishModal_summaryGenerated", { summary: params.excerpt.substring(0, 50) }));
+          new import_obsidian10.Notice(this.t("publishModal_summaryGenerated", { summary: params.excerpt.substring(0, 50) }));
           this.display(params);
         } catch (error2) {
           log5.error("Generate summary error:", error2);
-          new import_obsidian9.Notice(this.t("publishModal_summaryGenerateFailed", { error: error2 instanceof Error ? error2.message : "Unknown error" }));
+          new import_obsidian10.Notice(this.t("publishModal_summaryGenerateFailed", { error: error2 instanceof Error ? error2.message : "Unknown error" }));
         }
       }
       async generateTags(params) {
         if (!this.aiService) {
-          new import_obsidian9.Notice(this.t("notice_aiConfigRequired"));
+          new import_obsidian10.Notice(this.t("notice_aiConfigRequired"));
           return;
         }
         if (!this.aiService.hasTextAIKey()) {
-          new import_obsidian9.Notice(this.t("notice_textAIApiKeyRequired"));
+          new import_obsidian10.Notice(this.t("notice_textAIApiKeyRequired"));
           return;
         }
         const contentToUse = this.editableContent || this.articleContent;
         if (!contentToUse) {
-          new import_obsidian9.Notice(this.t("publishModal_emptyContentForTags"));
+          new import_obsidian10.Notice(this.t("publishModal_emptyContentForTags"));
           return;
         }
         try {
-          new import_obsidian9.Notice(this.t("publishModal_generatingTags"));
+          new import_obsidian10.Notice(this.t("publishModal_generatingTags"));
           const cleanContent = this.sanitizeContentForAI(contentToUse, 2e3);
           log5.info("Generating tags from content length:", cleanContent.length);
           const language = detectLanguage(cleanContent);
@@ -112243,11 +112272,11 @@ var init_wp_publish_modal_v2 = __esm({
           const prompt = localizedPrompt.replace("{content}", cleanContent);
           const tags = await this.aiService.generateText(prompt);
           params.tags = tags.split(/[,，]/).map((t) => t.trim()).filter((t) => t).slice(0, 4);
-          new import_obsidian9.Notice(this.t("publishModal_tagsGenerated", { tags: params.tags.join(", ") }));
+          new import_obsidian10.Notice(this.t("publishModal_tagsGenerated", { tags: params.tags.join(", ") }));
           this.display(params);
         } catch (error2) {
           log5.error("Generate tags error:", error2);
-          new import_obsidian9.Notice(this.t("publishModal_tagsGenerateFailed", { error: error2 instanceof Error ? error2.message : "Unknown error" }));
+          new import_obsidian10.Notice(this.t("publishModal_tagsGenerateFailed", { error: error2 instanceof Error ? error2.message : "Unknown error" }));
         }
       }
       doPublish(params, btn) {
@@ -112330,7 +112359,7 @@ var init_wp_publish_modal_v2 = __esm({
        * 显示发布成功提示
        */
       showSuccessNotice() {
-        new import_obsidian9.Notice(this.t("publishModal_publishSuccess"), 5e3);
+        new import_obsidian10.Notice(this.t("publishModal_publishSuccess"), 5e3);
         setTimeout(() => {
           this.close();
         }, 2e3);
@@ -114454,12 +114483,12 @@ function openPostPublishedModal(plugin4) {
     });
   });
 }
-var import_obsidian10, PostPublishedModal;
+var import_obsidian11, PostPublishedModal;
 var init_post_published_modal = __esm({
   "src/post-published-modal.ts"() {
     "use strict";
-    import_obsidian10 = require("obsidian");
-    PostPublishedModal = class extends import_obsidian10.Modal {
+    import_obsidian11 = require("obsidian");
+    PostPublishedModal = class extends import_obsidian11.Modal {
       constructor(plugin4, onOpenClicked) {
         super(plugin4.app);
         this.plugin = plugin4;
@@ -114471,8 +114500,8 @@ var init_post_published_modal = __esm({
         };
         const { contentEl } = this;
         contentEl.createEl("h1", { text: t("publishedModal_title") });
-        new import_obsidian10.Setting(contentEl).setName(t("publishedModal_confirmEditInWP"));
-        new import_obsidian10.Setting(contentEl).addButton(
+        new import_obsidian11.Setting(contentEl).setName(t("publishedModal_confirmEditInWP"));
+        new import_obsidian11.Setting(contentEl).addButton(
           (button) => button.setButtonText(t("publishedModal_cancel")).onClick(() => {
             this.close();
           })
@@ -114508,11 +114537,11 @@ function openLoginModal(plugin4, profile, validateUser) {
     modal.open();
   });
 }
-var import_obsidian11, WpLoginModal;
+var import_obsidian12, WpLoginModal;
 var init_wp_login_modal = __esm({
   "src/wp-login-modal.ts"() {
     "use strict";
-    import_obsidian11 = require("obsidian");
+    import_obsidian12 = require("obsidian");
     init_utils5();
     init_abstract_modal();
     WpLoginModal = class extends AbstractModal {
@@ -114527,7 +114556,7 @@ var init_wp_login_modal = __esm({
         this.createHeader(this.t("loginModal_title"));
         let username = this.profile.username;
         let password = this.profile.password;
-        new import_obsidian11.Setting(contentEl).setName(this.t("loginModal_username")).setDesc(this.t("loginModal_usernameDesc", { url: this.profile.endpoint })).addText((text5) => {
+        new import_obsidian12.Setting(contentEl).setName(this.t("loginModal_username")).setDesc(this.t("loginModal_usernameDesc", { url: this.profile.endpoint })).addText((text5) => {
           var _a5;
           text5.setValue((_a5 = this.profile.username) != null ? _a5 : "").onChange(async (value) => {
             username = value;
@@ -114542,7 +114571,7 @@ var init_wp_login_modal = __esm({
             });
           }
         });
-        new import_obsidian11.Setting(contentEl).setName(this.t("loginModal_password")).setDesc(this.t("loginModal_passwordDesc", { url: this.profile.endpoint })).addText((text5) => {
+        new import_obsidian12.Setting(contentEl).setName(this.t("loginModal_password")).setDesc(this.t("loginModal_passwordDesc", { url: this.profile.endpoint })).addText((text5) => {
           var _a5;
           text5.setValue((_a5 = this.profile.password) != null ? _a5 : "").onChange(async (value) => {
             password = value;
@@ -114557,7 +114586,7 @@ var init_wp_login_modal = __esm({
             });
           }
         });
-        new import_obsidian11.Setting(contentEl).addButton(
+        new import_obsidian12.Setting(contentEl).addButton(
           (button) => button.setButtonText(this.t("loginModal_loginButtonText")).setCta().onClick(() => {
             if (!username) {
               showError(this.t("error_noUsername"));
@@ -114819,12 +114848,12 @@ function openConflictModal(app, plugin4, conflicts) {
     new FrontmatterConflictModal(app, plugin4, conflicts, resolve).open();
   });
 }
-var import_obsidian12, FrontmatterConflictModal;
+var import_obsidian13, FrontmatterConflictModal;
 var init_frontmatter_conflict_modal = __esm({
   "src/frontmatter-conflict-modal.ts"() {
     "use strict";
-    import_obsidian12 = require("obsidian");
-    FrontmatterConflictModal = class extends import_obsidian12.Modal {
+    import_obsidian13 = require("obsidian");
+    FrontmatterConflictModal = class extends import_obsidian13.Modal {
       constructor(app, plugin4, conflicts, onResolve) {
         super(app);
         this.resolution = "cancel";
@@ -114856,19 +114885,19 @@ var init_frontmatter_conflict_modal = __esm({
           remoteValue.createEl("span", { text: this.formatValue(conflict.remoteValue) });
         }
         const optionsContainer = contentEl.createDiv("wp-conflict-options");
-        new import_obsidian12.Setting(optionsContainer).setName(this.plugin.t("conflictModal_useLocalName")).setDesc(this.plugin.t("conflictModal_useLocalDesc")).addButton(
+        new import_obsidian13.Setting(optionsContainer).setName(this.plugin.t("conflictModal_useLocalName")).setDesc(this.plugin.t("conflictModal_useLocalDesc")).addButton(
           (btn) => btn.setButtonText(this.plugin.t("conflictModal_useLocalButton")).setCta().onClick(() => {
             this.resolution = "local";
             this.close();
           })
         );
-        new import_obsidian12.Setting(optionsContainer).setName(this.plugin.t("conflictModal_useRemoteName")).setDesc(this.plugin.t("conflictModal_useRemoteDesc")).addButton(
+        new import_obsidian13.Setting(optionsContainer).setName(this.plugin.t("conflictModal_useRemoteName")).setDesc(this.plugin.t("conflictModal_useRemoteDesc")).addButton(
           (btn) => btn.setButtonText(this.plugin.t("conflictModal_useRemoteButton")).onClick(() => {
             this.resolution = "remote";
             this.close();
           })
         );
-        new import_obsidian12.Setting(optionsContainer).setName(this.plugin.t("conflictModal_cancelName")).setDesc(this.plugin.t("conflictModal_cancelDesc")).addButton(
+        new import_obsidian13.Setting(optionsContainer).setName(this.plugin.t("conflictModal_cancelName")).setDesc(this.plugin.t("conflictModal_cancelDesc")).addButton(
           (btn) => btn.setButtonText(this.plugin.t("conflictModal_cancelButton")).setWarning().onClick(() => {
             this.resolution = "cancel";
             this.close();
@@ -114941,11 +114970,11 @@ function getImages(content) {
   }
   return paths;
 }
-var import_obsidian13, import_file_type_checker, globalAuthCache, AbstractWordPressClient;
+var import_obsidian14, import_file_type_checker, globalAuthCache, AbstractWordPressClient;
 var init_abstract_wp_client = __esm({
   "src/abstract-wp-client.ts"() {
     "use strict";
-    import_obsidian13 = require("obsidian");
+    import_obsidian14 = require("obsidian");
     init_wp_types();
     init_wp_publish_modal_v2();
     init_featured_image_modal();
@@ -115291,7 +115320,7 @@ var init_abstract_wp_client = __esm({
                 continue;
               }
               const imgFile = this.plugin.app.metadataCache.getFirstLinkpathDest(img.src, fileName);
-              if (imgFile instanceof import_obsidian13.TFile) {
+              if (imgFile instanceof import_obsidian14.TFile) {
                 const content = await this.plugin.app.vault.readBinary(imgFile);
                 const fileType = import_file_type_checker.default.detectFile(content);
                 const result = await this.uploadMedia({
@@ -115313,7 +115342,7 @@ var init_abstract_wp_client = __esm({
                     name: imgFile.name
                   });
                   console.error("[updatePostImages] Image upload failed:", imgFile.name, errorMsg);
-                  new import_obsidian13.Notice(errorMsg, ERROR_NOTICE_TIMEOUT);
+                  new import_obsidian14.Notice(errorMsg, ERROR_NOTICE_TIMEOUT);
                 }
               }
             } else {
@@ -115353,7 +115382,7 @@ var init_abstract_wp_client = __esm({
               if (conflicts.length > 0) {
                 const resolution = await openConflictModal(this.plugin.app, this.plugin, conflicts);
                 if (resolution === "cancel") {
-                  new import_obsidian13.Notice(this.plugin.t("notice_publishCancelled"));
+                  new import_obsidian14.Notice(this.plugin.t("notice_publishCancelled"));
                   return {
                     code: 1 /* Error */,
                     error: {
@@ -115489,7 +115518,7 @@ var init_abstract_wp_client = __esm({
                         if (compressedContent) {
                           const originalSizeKB = (featuredImage.content.byteLength / 1024).toFixed(1);
                           const compressedSizeKB = (compressedContent.byteLength / 1024).toFixed(1);
-                          new import_obsidian13.Notice(this.plugin.i18n.t("notice_imageCompressed", {
+                          new import_obsidian14.Notice(this.plugin.i18n.t("notice_imageCompressed", {
                             originalSize: originalSizeKB,
                             compressedSize: compressedSizeKB
                           }));
@@ -115515,7 +115544,7 @@ var init_abstract_wp_client = __esm({
                           name: featuredImage.fileName
                         });
                         console.error("[WpPublishModalV2] Featured image upload failed:", errorMsg);
-                        new import_obsidian13.Notice(errorMsg, ERROR_NOTICE_TIMEOUT);
+                        new import_obsidian14.Notice(errorMsg, ERROR_NOTICE_TIMEOUT);
                       }
                     } else {
                       const cachedImageId = publishModal.getCachedFeaturedImageId();
@@ -115642,7 +115671,7 @@ var init_abstract_wp_client = __esm({
             if (result.code === 0 /* OK */) {
               if (attempt2 > 0) {
                 console.log(`[uploadMediaWithRetry] Upload succeeded after ${attempt2 + 1} attempts`);
-                new import_obsidian13.Notice(this.plugin.i18n.t("notice_featuredImageUploadRetrySuccess", {
+                new import_obsidian14.Notice(this.plugin.i18n.t("notice_featuredImageUploadRetrySuccess", {
                   fileName,
                   attempts: String(attempt2 + 1)
                 }), 5e3);
@@ -115654,7 +115683,7 @@ var init_abstract_wp_client = __esm({
               attempt2++;
               if (attempt2 <= FEATURED_IMAGE_UPLOAD_MAX_RETRIES) {
                 console.log(`[uploadMediaWithRetry] Transient error detected, retrying in ${FEATURED_IMAGE_UPLOAD_RETRY_DELAY_MS}ms...`, result.error);
-                new import_obsidian13.Notice(this.plugin.i18n.t("notice_featuredImageUploadRetrying", {
+                new import_obsidian14.Notice(this.plugin.i18n.t("notice_featuredImageUploadRetrying", {
                   fileName,
                   attempt: String(attempt2),
                   maxRetries: String(FEATURED_IMAGE_UPLOAD_MAX_RETRIES)
@@ -115671,7 +115700,7 @@ var init_abstract_wp_client = __esm({
               attempt2++;
               if (attempt2 <= FEATURED_IMAGE_UPLOAD_MAX_RETRIES) {
                 console.log(`[uploadMediaWithRetry] Transient exception detected, retrying in ${FEATURED_IMAGE_UPLOAD_RETRY_DELAY_MS}ms...`, error2);
-                new import_obsidian13.Notice(this.plugin.i18n.t("notice_featuredImageUploadRetrying", {
+                new import_obsidian14.Notice(this.plugin.i18n.t("notice_featuredImageUploadRetrying", {
                   fileName,
                   attempt: String(attempt2),
                   maxRetries: String(FEATURED_IMAGE_UPLOAD_MAX_RETRIES)
@@ -116240,11 +116269,11 @@ var init_constants3 = __esm({
 });
 
 // src/rest-client.ts
-var import_obsidian14, RestClient;
+var import_obsidian15, RestClient;
 var init_rest_client = __esm({
   "src/rest-client.ts"() {
     "use strict";
-    import_obsidian14 = require("obsidian");
+    import_obsidian15 = require("obsidian");
     init_utils5();
     init_types2();
     init_constants3();
@@ -116276,7 +116305,7 @@ var init_rest_client = __esm({
         const timeoutMs = (_a5 = options == null ? void 0 : options.timeout) != null ? _a5 : this.timeout;
         try {
           const response = await Promise.race([
-            (0, import_obsidian14.requestUrl)({
+            (0, import_obsidian15.requestUrl)({
               url: endpoint,
               method: "GET",
               headers: {
@@ -116328,7 +116357,7 @@ var init_rest_client = __esm({
         const timeoutMs = (_a5 = options == null ? void 0 : options.timeout) != null ? _a5 : this.timeout;
         try {
           const response = await Promise.race([
-            (0, import_obsidian14.requestUrl)({
+            (0, import_obsidian15.requestUrl)({
               url: endpoint,
               method: "POST",
               headers: {
@@ -116907,7 +116936,7 @@ function rendererProfile(profile, container) {
       desc += " / \u{1F512} ******";
     }
   }
-  return new import_obsidian15.Setting(container).setName(name).setDesc(desc);
+  return new import_obsidian16.Setting(container).setName(name).setDesc(desc);
 }
 function isValidUrl(url) {
   try {
@@ -116950,7 +116979,7 @@ function showError(error2) {
   } else {
     errorMessage = String(error2);
   }
-  new import_obsidian15.Notice(`\u274C ${errorMessage}`, ERROR_NOTICE_TIMEOUT);
+  new import_obsidian16.Notice(`\u274C ${errorMessage}`, ERROR_NOTICE_TIMEOUT);
   return {
     code: 1 /* Error */,
     error: {
@@ -116976,11 +117005,11 @@ async function processFile(file, app) {
 function sleep2(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
-var import_obsidian15;
+var import_obsidian16;
 var init_utils5 = __esm({
   "src/utils.ts"() {
     "use strict";
-    import_obsidian15 = require("obsidian");
+    import_obsidian16 = require("obsidian");
     init_markdown_it_mathjax3_plugin();
     init_wp_types();
     init_wp_clients();
@@ -116997,23 +117026,23 @@ __export(main_exports, {
   default: () => WordpressPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian22 = require("obsidian");
+var import_obsidian23 = require("obsidian");
 
 // src/settings.ts
-var import_obsidian19 = require("obsidian");
+var import_obsidian20 = require("obsidian");
 init_wp_api();
 
 // src/wp-profile-manage-modal.ts
-var import_obsidian18 = require("obsidian");
+var import_obsidian19 = require("obsidian");
 
 // src/wp-profile-modal.ts
-var import_obsidian17 = require("obsidian");
+var import_obsidian18 = require("obsidian");
 init_consts();
 init_wp_types();
 
 // src/oauth2-client.ts
 init_utils5();
-var import_obsidian16 = require("obsidian");
+var import_obsidian17 = require("obsidian");
 init_wp_types();
 init_consts();
 init_logger();
@@ -117056,7 +117085,7 @@ var OAuth2Client = class _OAuth2Client {
       code: params.code,
       redirect_uri: params.redirectUri
     };
-    return (0, import_obsidian16.requestUrl)({
+    return (0, import_obsidian17.requestUrl)({
       url: this.options.tokenEndpoint,
       method: "POST",
       headers: {
@@ -117081,7 +117110,7 @@ var OAuth2Client = class _OAuth2Client {
       throw new Error("No validate token endpoint set.");
     }
     try {
-      const response = await (0, import_obsidian16.requestUrl)({
+      const response = await (0, import_obsidian17.requestUrl)({
         url: `${this.options.validateTokenEndpoint}?client_id=${this.options.clientId}&token=${params.token}`,
         method: "GET",
         headers: {
@@ -117195,7 +117224,7 @@ var WpProfileModal = class extends AbstractModal {
     let apiDesc = getApiTypeDesc(this.profileData.apiType);
     const renderProfile = () => {
       content.empty();
-      new import_obsidian17.Setting(content).setName(this.t("profileModal_name")).setDesc(this.t("profileModal_nameDesc")).addText(
+      new import_obsidian18.Setting(content).setName(this.t("profileModal_name")).setDesc(this.t("profileModal_nameDesc")).addText(
         (text5) => {
           var _a5;
           return text5.setPlaceholder("Profile name").setValue((_a5 = this.profileData.name) != null ? _a5 : "").onChange((value) => {
@@ -117203,12 +117232,12 @@ var WpProfileModal = class extends AbstractModal {
           });
         }
       );
-      new import_obsidian17.Setting(content).setName(this.t("settings_url")).setDesc(this.t("settings_urlDesc")).addText((text5) => text5.setPlaceholder(this.t("settings_urlPlaceholder")).setValue(this.profileData.endpoint).onChange((value) => {
+      new import_obsidian18.Setting(content).setName(this.t("settings_url")).setDesc(this.t("settings_urlDesc")).addText((text5) => text5.setPlaceholder(this.t("settings_urlPlaceholder")).setValue(this.profileData.endpoint).onChange((value) => {
         if (this.profileData.endpoint !== value) {
           this.profileData.endpoint = value;
         }
       }));
-      new import_obsidian17.Setting(content).setName(this.t("settings_apiType")).setDesc(this.t("settings_apiTypeDesc")).addDropdown((dropdown) => {
+      new import_obsidian18.Setting(content).setName(this.t("settings_apiType")).setDesc(this.t("settings_apiTypeDesc")).addDropdown((dropdown) => {
         dropdown.addOption("xml-rpc" /* XML_RPC */, this.t("settings_apiTypeXmlRpc")).addOption("miniOrange" /* RestAPI_miniOrange */, this.t("settings_apiTypeRestMiniOrange")).addOption("application-passwords" /* RestApi_ApplicationPasswords */, this.t("settings_apiTypeRestApplicationPasswords")).addOption("WpComOAuth2" /* RestApi_WpComOAuth2 */, this.t("settings_apiTypeRestWpComOAuth2")).setValue(this.profileData.apiType).onChange(async (value) => {
           let hasError = false;
           let newApiType = value;
@@ -117242,14 +117271,14 @@ var WpProfileModal = class extends AbstractModal {
         cls: "setting-item-description"
       });
       if (this.profileData.apiType === "xml-rpc" /* XML_RPC */) {
-        new import_obsidian17.Setting(content).setName(this.t("settings_xmlRpcPath")).setDesc(this.t("settings_xmlRpcPathDesc")).addText((text5) => {
+        new import_obsidian18.Setting(content).setName(this.t("settings_xmlRpcPath")).setDesc(this.t("settings_xmlRpcPathDesc")).addText((text5) => {
           var _a5;
           return text5.setPlaceholder("/xmlrpc.php").setValue((_a5 = this.profileData.xmlRpcPath) != null ? _a5 : "").onChange((value) => {
             this.profileData.xmlRpcPath = value;
           });
         });
       } else if (this.profileData.apiType === "WpComOAuth2" /* RestApi_WpComOAuth2 */) {
-        new import_obsidian17.Setting(content).setName(this.t("settings_wpComOAuth2RefreshToken")).setDesc(this.t("settings_wpComOAuth2RefreshTokenDesc")).addButton((button) => button.setButtonText(this.t("settings_wpComOAuth2ValidateTokenButtonText")).onClick(() => {
+        new import_obsidian18.Setting(content).setName(this.t("settings_wpComOAuth2RefreshToken")).setDesc(this.t("settings_wpComOAuth2RefreshTokenDesc")).addButton((button) => button.setButtonText(this.t("settings_wpComOAuth2ValidateTokenButtonText")).onClick(() => {
           if (this.profileData.wpComOAuth2Token) {
             OAuth2Client.getWpOAuth2Client(this.plugin).validateToken({
               token: this.profileData.wpComOAuth2Token.accessToken
@@ -117258,7 +117287,7 @@ var WpProfileModal = class extends AbstractModal {
               if (result.code === 1 /* Error */) {
                 showError(((_a5 = result.error) == null ? void 0 : _a5.message) + "");
               } else {
-                new import_obsidian17.Notice(this.t("message_wpComTokenValidated"));
+                new import_obsidian18.Notice(this.t("message_wpComTokenValidated"));
               }
             });
           }
@@ -117267,7 +117296,7 @@ var WpProfileModal = class extends AbstractModal {
         }));
       }
       if (this.profileData.apiType !== "WpComOAuth2" /* RestApi_WpComOAuth2 */) {
-        const usernameSetting = new import_obsidian17.Setting(content).setName(this.t("profileModal_rememberUsername"));
+        const usernameSetting = new import_obsidian18.Setting(content).setName(this.t("profileModal_rememberUsername"));
         if (this.profileData.saveUsername) {
           usernameSetting.addText(
             (text5) => {
@@ -117284,7 +117313,7 @@ var WpProfileModal = class extends AbstractModal {
             renderProfile();
           })
         );
-        const passwordSetting = new import_obsidian17.Setting(content).setName(this.t("profileModal_rememberPassword"));
+        const passwordSetting = new import_obsidian18.Setting(content).setName(this.t("profileModal_rememberPassword"));
         if (this.profileData.savePassword) {
           passwordSetting.addText(
             (text5) => {
@@ -117302,12 +117331,12 @@ var WpProfileModal = class extends AbstractModal {
           })
         );
       }
-      new import_obsidian17.Setting(content).setName(this.t("profileModal_setDefault")).addToggle(
+      new import_obsidian18.Setting(content).setName(this.t("profileModal_setDefault")).addToggle(
         (toggle) => toggle.setValue(this.profileData.isDefault).onChange((value) => {
           this.profileData.isDefault = value;
         })
       );
-      new import_obsidian17.Setting(content).addButton(
+      new import_obsidian18.Setting(content).addButton(
         (button) => button.setButtonText(this.t("profileModal_Save")).setCta().onClick(() => {
           if (!isValidUrl(this.profileData.endpoint)) {
             showError(this.t("error_invalidUrl"));
@@ -117400,7 +117429,7 @@ var WpProfileManageModal = class extends AbstractModal {
     };
     this.createHeader(this.t("profilesManageModal_title"));
     const { contentEl } = this;
-    new import_obsidian18.Setting(contentEl).setName(this.t("profilesManageModal_create")).setDesc(this.t("profilesManageModal_createDesc")).addButton((button) => button.setButtonText(this.t("profilesManageModal_create")).setCta().onClick(async () => {
+    new import_obsidian19.Setting(contentEl).setName(this.t("profilesManageModal_create")).setDesc(this.t("profilesManageModal_createDesc")).addButton((button) => button.setButtonText(this.t("profilesManageModal_create")).setCta().onClick(async () => {
       const { profile } = await openProfileModal(
         this.plugin
       );
@@ -117430,7 +117459,7 @@ init_utils5();
 init_app_state();
 init_ai_service();
 init_unsplash_service();
-var WordpressSettingTab = class extends import_obsidian19.PluginSettingTab {
+var WordpressSettingTab = class extends import_obsidian20.PluginSettingTab {
   constructor(plugin4) {
     super(plugin4.app, plugin4);
     this.plugin = plugin4;
@@ -117465,29 +117494,29 @@ var WordpressSettingTab = class extends import_obsidian19.PluginSettingTab {
     containerEl.createEl("h1", { text: t("settings_title") });
     let mathJaxOutputTypeDesc = getMathJaxOutputTypeDesc(this.plugin.settings.mathJaxOutputType);
     let commentConvertModeDesc = getCommentConvertModeDesc(this.plugin.settings.commentConvertMode);
-    new import_obsidian19.Setting(containerEl).setName(t("settings_profiles")).setDesc(t("settings_profilesDesc")).addButton((button) => button.setButtonText(t("settings_profilesModal")).onClick(() => {
+    new import_obsidian20.Setting(containerEl).setName(t("settings_profiles")).setDesc(t("settings_profilesDesc")).addButton((button) => button.setButtonText(t("settings_profilesModal")).onClick(() => {
       new WpProfileManageModal(this.plugin).open();
     }));
-    new import_obsidian19.Setting(containerEl).setName(t("settings_showRibbonIcon")).setDesc(t("settings_showRibbonIconDesc")).addToggle(
+    new import_obsidian20.Setting(containerEl).setName(t("settings_showRibbonIcon")).setDesc(t("settings_showRibbonIconDesc")).addToggle(
       (toggle) => toggle.setValue(this.plugin.settings.showRibbonIcon).onChange(async (value) => {
         this.plugin.settings.showRibbonIcon = value;
         await this.plugin.saveSettings();
         this.plugin.updateRibbonIcon();
       })
     );
-    new import_obsidian19.Setting(containerEl).setName(t("settings_defaultPostStatus")).setDesc(t("settings_defaultPostStatusDesc")).addDropdown((dropdown) => {
+    new import_obsidian20.Setting(containerEl).setName(t("settings_defaultPostStatus")).setDesc(t("settings_defaultPostStatusDesc")).addDropdown((dropdown) => {
       dropdown.addOption("draft" /* Draft */, t("settings_defaultPostStatusDraft")).addOption("publish" /* Publish */, t("settings_defaultPostStatusPublish")).addOption("private" /* Private */, t("settings_defaultPostStatusPrivate")).setValue(this.plugin.settings.defaultPostStatus).onChange(async (value) => {
         this.plugin.settings.defaultPostStatus = value;
         await this.plugin.saveSettings();
       });
     });
-    new import_obsidian19.Setting(containerEl).setName(t("settings_defaultPostComment")).setDesc(t("settings_defaultPostCommentDesc")).addDropdown((dropdown) => {
+    new import_obsidian20.Setting(containerEl).setName(t("settings_defaultPostComment")).setDesc(t("settings_defaultPostCommentDesc")).addDropdown((dropdown) => {
       dropdown.addOption("open" /* Open */, t("settings_defaultPostCommentOpen")).addOption("closed" /* Closed */, t("settings_defaultPostCommentClosed")).setValue(this.plugin.settings.defaultCommentStatus).onChange(async (value) => {
         this.plugin.settings.defaultCommentStatus = value;
         await this.plugin.saveSettings();
       });
     });
-    new import_obsidian19.Setting(containerEl).setName(t("settings_rememberLastSelectedCategories")).setDesc(t("settings_rememberLastSelectedCategoriesDesc")).addToggle(
+    new import_obsidian20.Setting(containerEl).setName(t("settings_rememberLastSelectedCategories")).setDesc(t("settings_rememberLastSelectedCategoriesDesc")).addToggle(
       (toggle) => toggle.setValue(this.plugin.settings.rememberLastSelectedCategories).onChange(async (value) => {
         this.plugin.settings.rememberLastSelectedCategories = value;
         if (!value) {
@@ -117500,13 +117529,13 @@ var WordpressSettingTab = class extends import_obsidian19.PluginSettingTab {
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian19.Setting(containerEl).setName(t("settings_showWordPressEditPageModal")).setDesc(t("settings_showWordPressEditPageModalDesc")).addToggle(
+    new import_obsidian20.Setting(containerEl).setName(t("settings_showWordPressEditPageModal")).setDesc(t("settings_showWordPressEditPageModalDesc")).addToggle(
       (toggle) => toggle.setValue(this.plugin.settings.showWordPressEditConfirm).onChange(async (value) => {
         this.plugin.settings.showWordPressEditConfirm = value;
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian19.Setting(containerEl).setName(t("settings_mathJaxOutputType")).setDesc(t("settings_mathJaxOutputTypeDesc")).addDropdown((dropdown) => {
+    new import_obsidian20.Setting(containerEl).setName(t("settings_mathJaxOutputType")).setDesc(t("settings_mathJaxOutputTypeDesc")).addDropdown((dropdown) => {
       dropdown.addOption("tex" /* TeX */, t("settings_mathJaxOutputTypeTeX")).addOption("svg" /* SVG */, t("settings_mathJaxOutputTypeSVG")).setValue(this.plugin.settings.mathJaxOutputType).onChange(async (value) => {
         this.plugin.settings.mathJaxOutputType = value;
         mathJaxOutputTypeDesc = getMathJaxOutputTypeDesc(this.plugin.settings.mathJaxOutputType);
@@ -117519,7 +117548,7 @@ var WordpressSettingTab = class extends import_obsidian19.PluginSettingTab {
       text: mathJaxOutputTypeDesc,
       cls: "setting-item-description"
     });
-    new import_obsidian19.Setting(containerEl).setName(t("settings_commentConvertMode")).setDesc(t("settings_commentConvertModeDesc")).addDropdown((dropdown) => {
+    new import_obsidian20.Setting(containerEl).setName(t("settings_commentConvertMode")).setDesc(t("settings_commentConvertModeDesc")).addDropdown((dropdown) => {
       dropdown.addOption("ignore" /* Ignore */, t("settings_commentConvertModeIgnore")).addOption("html" /* HTML */, t("settings_commentConvertModeHTML")).setValue(this.plugin.settings.commentConvertMode).onChange(async (value) => {
         this.plugin.settings.commentConvertMode = value;
         commentConvertModeDesc = getCommentConvertModeDesc(this.plugin.settings.commentConvertMode);
@@ -117532,7 +117561,7 @@ var WordpressSettingTab = class extends import_obsidian19.PluginSettingTab {
       text: commentConvertModeDesc,
       cls: "setting-item-description"
     });
-    new import_obsidian19.Setting(containerEl).setName(t("settings_enableHtml")).setDesc(t("settings_enableHtmlDesc")).addToggle(
+    new import_obsidian20.Setting(containerEl).setName(t("settings_enableHtml")).setDesc(t("settings_enableHtmlDesc")).addToggle(
       (toggle) => toggle.setValue(this.plugin.settings.enableHtml).onChange(async (value) => {
         this.plugin.settings.enableHtml = value;
         await this.plugin.saveSettings();
@@ -117541,20 +117570,20 @@ var WordpressSettingTab = class extends import_obsidian19.PluginSettingTab {
         });
       })
     );
-    new import_obsidian19.Setting(containerEl).setName(t("settings_replaceMediaLinks")).setDesc(t("settings_replaceMediaLinksDesc")).addToggle(
+    new import_obsidian20.Setting(containerEl).setName(t("settings_replaceMediaLinks")).setDesc(t("settings_replaceMediaLinksDesc")).addToggle(
       (toggle) => toggle.setValue(this.plugin.settings.replaceMediaLinks).onChange(async (value) => {
         this.plugin.settings.replaceMediaLinks = value;
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian19.Setting(containerEl).setName(t("settings_language")).setDesc(t("settings_languageDesc")).addDropdown((dropdown) => {
+    new import_obsidian20.Setting(containerEl).setName(t("settings_language")).setDesc(t("settings_languageDesc")).addDropdown((dropdown) => {
       dropdown.addOption("auto", t("settings_languageAuto")).addOption("en", t("settings_languageEn")).addOption("zh_cn", t("settings_languageZhCn")).setValue(this.plugin.settings.lang).onChange(async (value) => {
         this.plugin.settings.lang = value;
         await this.plugin.saveSettings();
         this.display();
       });
     });
-    new import_obsidian19.Setting(containerEl).setName(t("settings_authCacheDuration")).setDesc(t("settings_authCacheDurationDesc")).addDropdown((dropdown) => {
+    new import_obsidian20.Setting(containerEl).setName(t("settings_authCacheDuration")).setDesc(t("settings_authCacheDurationDesc")).addDropdown((dropdown) => {
       var _a6;
       dropdown.addOption("1d" /* OneDay */, t("settings_authCacheDurationOneDay")).addOption("1w" /* OneWeek */, t("settings_authCacheDurationOneWeek")).addOption("1m" /* OneMonth */, t("settings_authCacheDurationOneMonth")).addOption("6m" /* SixMonths */, t("settings_authCacheDurationSixMonths")).addOption("forever" /* Forever */, t("settings_authCacheDurationForever")).setValue((_a6 = this.plugin.settings.authCacheDuration) != null ? _a6 : "1m" /* OneMonth */).onChange(async (value) => {
         this.plugin.settings.authCacheDuration = value;
@@ -117563,19 +117592,19 @@ var WordpressSettingTab = class extends import_obsidian19.PluginSettingTab {
     });
     containerEl.createEl("h2", { text: t("settings_aiConfig") });
     containerEl.createEl("h3", { text: t("settings_slugGeneration") });
-    new import_obsidian19.Setting(containerEl).setName(t("settings_autoGenerateSlug")).setDesc(t("settings_autoGenerateSlugDesc")).addToggle(
+    new import_obsidian20.Setting(containerEl).setName(t("settings_autoGenerateSlug")).setDesc(t("settings_autoGenerateSlugDesc")).addToggle(
       (toggle) => toggle.setValue(this.plugin.settings.autoGenerateSlug).onChange(async (value) => {
         this.plugin.settings.autoGenerateSlug = value;
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian19.Setting(containerEl).setName(t("settings_slugGenerationMode")).setDesc(t("settings_slugGenerationModeDesc")).addDropdown((dropdown) => {
+    new import_obsidian20.Setting(containerEl).setName(t("settings_slugGenerationMode")).setDesc(t("settings_slugGenerationModeDesc")).addDropdown((dropdown) => {
       dropdown.addOption("pinyin", t("settings_slugGenerationModePinyin")).addOption("ai-translate", t("settings_slugGenerationModeAI")).setValue(this.plugin.settings.slugGenerationMode).onChange(async (value) => {
         var _a6, _b2;
         const newMode = value;
         if (newMode === "ai-translate") {
           if (!((_b2 = (_a6 = this.plugin.settings.aiConfig) == null ? void 0 : _a6.textAI) == null ? void 0 : _b2.apiKey)) {
-            new import_obsidian19.Notice(t("notice_slugModeRequiresAI"));
+            new import_obsidian20.Notice(t("notice_slugModeRequiresAI"));
             dropdown.setValue("pinyin");
             this.plugin.settings.slugGenerationMode = "pinyin";
             await this.plugin.saveSettings();
@@ -117587,7 +117616,7 @@ var WordpressSettingTab = class extends import_obsidian19.PluginSettingTab {
       });
     });
     containerEl.createEl("h3", { text: t("settings_tagFormat") });
-    new import_obsidian19.Setting(containerEl).setName(t("settings_tagFormat")).setDesc(t("settings_tagFormatDesc")).addDropdown((dropdown) => {
+    new import_obsidian20.Setting(containerEl).setName(t("settings_tagFormat")).setDesc(t("settings_tagFormatDesc")).addDropdown((dropdown) => {
       var _a6;
       dropdown.addOption("inline" /* Inline */, t("settings_tagFormatInline")).addOption("yaml" /* YAML */, t("settings_tagFormatYAML")).setValue((_a6 = this.plugin.settings.tagFormat) != null ? _a6 : "inline" /* Inline */).onChange(async (value) => {
         this.plugin.settings.tagFormat = value;
@@ -117595,13 +117624,13 @@ var WordpressSettingTab = class extends import_obsidian19.PluginSettingTab {
       });
     });
     containerEl.createEl("h3", { text: t("settings_imageCropSettings") });
-    new import_obsidian19.Setting(containerEl).setName(t("settings_imageCropRatio")).setDesc(t("settings_imageCropRatioDesc")).addDropdown((dropdown) => {
+    new import_obsidian20.Setting(containerEl).setName(t("settings_imageCropRatio")).setDesc(t("settings_imageCropRatioDesc")).addDropdown((dropdown) => {
       dropdown.addOption("16:9", "16:9").addOption("4:3", "4:3").addOption("1:1", "1:1").addOption("3:2", "3:2").addOption("21:9", "21:9").setValue(this.plugin.settings.imageCropRatio || "16:9").onChange(async (value) => {
         this.plugin.settings.imageCropRatio = value;
         await this.plugin.saveSettings();
       });
     });
-    new import_obsidian19.Setting(containerEl).setName(t("settings_imageCropWidth")).setDesc(t("settings_imageCropWidthDesc")).addText((text5) => {
+    new import_obsidian20.Setting(containerEl).setName(t("settings_imageCropWidth")).setDesc(t("settings_imageCropWidthDesc")).addText((text5) => {
       text5.setPlaceholder("1200").setValue(String(this.plugin.settings.imageCropWidth || 1200)).onChange(async (value) => {
         const num = parseInt(value);
         if (!isNaN(num) && num > 0) {
@@ -117611,7 +117640,7 @@ var WordpressSettingTab = class extends import_obsidian19.PluginSettingTab {
       });
     });
     containerEl.createEl("h3", { text: t("settings_unsplashConfig") });
-    new import_obsidian19.Setting(containerEl).setName(t("settings_unsplashAccessKey")).setDesc(t("settings_unsplashAccessKeyDesc")).addText((text5) => {
+    new import_obsidian20.Setting(containerEl).setName(t("settings_unsplashAccessKey")).setDesc(t("settings_unsplashAccessKeyDesc")).addText((text5) => {
       text5.setPlaceholder(t("settings_unsplashAccessKeyPlaceholder")).setValue(this.plugin.settings.unsplashAccessKey || "").onChange(async (value) => {
         this.plugin.settings.unsplashAccessKey = value;
         await this.plugin.saveSettings();
@@ -117620,7 +117649,7 @@ var WordpressSettingTab = class extends import_obsidian19.PluginSettingTab {
     }).addButton((btn) => {
       btn.setButtonText(t("settings_validateButton")).onClick(async () => {
         if (!this.plugin.settings.unsplashAccessKey) {
-          new import_obsidian19.Notice(t("notice_unsplashKeyRequired"));
+          new import_obsidian20.Notice(t("notice_unsplashKeyRequired"));
           return;
         }
         btn.setDisabled(true);
@@ -117629,12 +117658,12 @@ var WordpressSettingTab = class extends import_obsidian19.PluginSettingTab {
           const service = new UnsplashService(this.plugin.settings.unsplashAccessKey);
           const isValid2 = await service.validateApiKey();
           if (isValid2) {
-            new import_obsidian19.Notice(t("notice_unsplashKeyValid"));
+            new import_obsidian20.Notice(t("notice_unsplashKeyValid"));
           } else {
-            new import_obsidian19.Notice(t("notice_unsplashKeyInvalid"));
+            new import_obsidian20.Notice(t("notice_unsplashKeyInvalid"));
           }
         } catch (error2) {
-          new import_obsidian19.Notice(t("notice_validationFailed", { error: error2 instanceof Error ? error2.message : "Unknown error" }));
+          new import_obsidian20.Notice(t("notice_validationFailed", { error: error2 instanceof Error ? error2.message : "Unknown error" }));
         } finally {
           btn.setDisabled(false);
           btn.setButtonText(t("settings_validateButton"));
@@ -117648,7 +117677,7 @@ var WordpressSettingTab = class extends import_obsidian19.PluginSettingTab {
       apiKey: "",
       model: "gpt-3.5-turbo"
     };
-    new import_obsidian19.Setting(containerEl).setName(t("settings_aiProvider")).setDesc(t("settings_aiProviderDesc")).addDropdown((dropdown) => {
+    new import_obsidian20.Setting(containerEl).setName(t("settings_aiProvider")).setDesc(t("settings_aiProviderDesc")).addDropdown((dropdown) => {
       dropdown.addOption("openai", t("settings_aiProviderOpenAI")).addOption("claude", t("settings_aiProviderClaude")).setValue(textAIConfig.provider).onChange(async (value) => {
         if (!this.plugin.settings.aiConfig) {
           this.plugin.settings.aiConfig = {
@@ -117661,7 +117690,7 @@ var WordpressSettingTab = class extends import_obsidian19.PluginSettingTab {
         this.display();
       });
     });
-    new import_obsidian19.Setting(containerEl).setName(t("settings_aiBaseURL")).setDesc(t("settings_aiBaseURLDesc")).addText((text5) => {
+    new import_obsidian20.Setting(containerEl).setName(t("settings_aiBaseURL")).setDesc(t("settings_aiBaseURLDesc")).addText((text5) => {
       text5.setPlaceholder(t("settings_aiBaseURLPlaceholder")).setValue(textAIConfig.baseURL).onChange(async (value) => {
         if (!this.plugin.settings.aiConfig) {
           this.plugin.settings.aiConfig = {
@@ -117674,7 +117703,7 @@ var WordpressSettingTab = class extends import_obsidian19.PluginSettingTab {
       });
       text5.inputEl.style.width = "100%";
     });
-    new import_obsidian19.Setting(containerEl).setName(t("settings_aiAPIKey")).setDesc(t("settings_aiAPIKeyDesc")).addText((text5) => {
+    new import_obsidian20.Setting(containerEl).setName(t("settings_aiAPIKey")).setDesc(t("settings_aiAPIKeyDesc")).addText((text5) => {
       var _a6;
       text5.setPlaceholder(t("settings_aiAPIKeyPlaceholder")).setValue((_a6 = textAIConfig.apiKey) != null ? _a6 : "").onChange(async (value) => {
         if (!this.plugin.settings.aiConfig) {
@@ -117689,7 +117718,7 @@ var WordpressSettingTab = class extends import_obsidian19.PluginSettingTab {
       text5.inputEl.type = "password";
       text5.inputEl.style.width = "100%";
     });
-    new import_obsidian19.Setting(containerEl).setName(t("settings_aiModel")).setDesc(t("settings_aiModelDesc")).addText((text5) => {
+    new import_obsidian20.Setting(containerEl).setName(t("settings_aiModel")).setDesc(t("settings_aiModelDesc")).addText((text5) => {
       text5.setPlaceholder(t("settings_aiModelPlaceholder")).setValue(textAIConfig.model).onChange(async (value) => {
         if (!this.plugin.settings.aiConfig) {
           this.plugin.settings.aiConfig = {
@@ -117704,7 +117733,7 @@ var WordpressSettingTab = class extends import_obsidian19.PluginSettingTab {
       btn.setButtonText(t("settings_validateConnection")).onClick(async () => {
         var _a6;
         if (!((_a6 = this.plugin.settings.aiConfig) == null ? void 0 : _a6.textAI)) {
-          new import_obsidian19.Notice(t("notice_aiConfigRequired"));
+          new import_obsidian20.Notice(t("notice_aiConfigRequired"));
           return;
         }
         btn.setDisabled(true);
@@ -117713,12 +117742,12 @@ var WordpressSettingTab = class extends import_obsidian19.PluginSettingTab {
           const service = new AIService(this.plugin.settings.aiConfig);
           const result = await service.validateConfig(this.plugin.settings.aiConfig.textAI);
           if (result.valid) {
-            new import_obsidian19.Notice(t("notice_aiConfigValid"));
+            new import_obsidian20.Notice(t("notice_aiConfigValid"));
           } else {
-            new import_obsidian19.Notice(t("notice_aiConfigInvalid", { error: result.error || "Unknown error" }));
+            new import_obsidian20.Notice(t("notice_aiConfigInvalid", { error: result.error || "Unknown error" }));
           }
         } catch (error2) {
-          new import_obsidian19.Notice(t("notice_validationFailed", { error: error2 instanceof Error ? error2.message : "Unknown error" }));
+          new import_obsidian20.Notice(t("notice_validationFailed", { error: error2 instanceof Error ? error2.message : "Unknown error" }));
         } finally {
           btn.setDisabled(false);
           btn.setButtonText(t("settings_validateConnection"));
@@ -117732,7 +117761,7 @@ var WordpressSettingTab = class extends import_obsidian19.PluginSettingTab {
       apiKey: "",
       model: "dall-e-3"
     };
-    new import_obsidian19.Setting(containerEl).setName(t("settings_aiProvider")).setDesc(t("settings_imageAIProviderDesc")).addDropdown((dropdown) => {
+    new import_obsidian20.Setting(containerEl).setName(t("settings_aiProvider")).setDesc(t("settings_imageAIProviderDesc")).addDropdown((dropdown) => {
       dropdown.addOption("openai", t("settings_aiProviderOpenAIImage")).setValue(imageAIConfig.provider).onChange(async (value) => {
         if (!this.plugin.settings.aiConfig) {
           this.plugin.settings.aiConfig = {
@@ -117745,7 +117774,7 @@ var WordpressSettingTab = class extends import_obsidian19.PluginSettingTab {
         this.display();
       });
     });
-    new import_obsidian19.Setting(containerEl).setName(t("settings_aiBaseURL")).setDesc(t("settings_aiBaseURLDesc")).addText((text5) => {
+    new import_obsidian20.Setting(containerEl).setName(t("settings_aiBaseURL")).setDesc(t("settings_aiBaseURLDesc")).addText((text5) => {
       text5.setPlaceholder(t("settings_aiBaseURLPlaceholder")).setValue(imageAIConfig.baseURL).onChange(async (value) => {
         if (!this.plugin.settings.aiConfig) {
           this.plugin.settings.aiConfig = {
@@ -117758,7 +117787,7 @@ var WordpressSettingTab = class extends import_obsidian19.PluginSettingTab {
       });
       text5.inputEl.style.width = "100%";
     });
-    new import_obsidian19.Setting(containerEl).setName(t("settings_aiAPIKey")).setDesc(t("settings_aiAPIKeyDesc")).addText((text5) => {
+    new import_obsidian20.Setting(containerEl).setName(t("settings_aiAPIKey")).setDesc(t("settings_aiAPIKeyDesc")).addText((text5) => {
       var _a6;
       text5.setPlaceholder(t("settings_aiAPIKeyPlaceholder")).setValue((_a6 = imageAIConfig.apiKey) != null ? _a6 : "").onChange(async (value) => {
         if (!this.plugin.settings.aiConfig) {
@@ -117773,7 +117802,7 @@ var WordpressSettingTab = class extends import_obsidian19.PluginSettingTab {
       text5.inputEl.type = "password";
       text5.inputEl.style.width = "100%";
     });
-    new import_obsidian19.Setting(containerEl).setName(t("settings_aiModel")).setDesc(t("settings_aiModelDesc")).addText((text5) => {
+    new import_obsidian20.Setting(containerEl).setName(t("settings_aiModel")).setDesc(t("settings_aiModelDesc")).addText((text5) => {
       text5.setPlaceholder(t("settings_aiImageModelPlaceholder")).setValue(imageAIConfig.model).onChange(async (value) => {
         if (!this.plugin.settings.aiConfig) {
           this.plugin.settings.aiConfig = {
@@ -117788,7 +117817,7 @@ var WordpressSettingTab = class extends import_obsidian19.PluginSettingTab {
       btn.setButtonText(t("settings_validateConnection")).onClick(async () => {
         var _a6;
         if (!((_a6 = this.plugin.settings.aiConfig) == null ? void 0 : _a6.imageAI)) {
-          new import_obsidian19.Notice(t("notice_imageAIConfigRequired"));
+          new import_obsidian20.Notice(t("notice_imageAIConfigRequired"));
           return;
         }
         btn.setDisabled(true);
@@ -117797,12 +117826,12 @@ var WordpressSettingTab = class extends import_obsidian19.PluginSettingTab {
           const service = new AIService(this.plugin.settings.aiConfig);
           const result = await service.validateConfig(this.plugin.settings.aiConfig.imageAI, true);
           if (result.valid) {
-            new import_obsidian19.Notice(t("notice_imageAIConfigValid"));
+            new import_obsidian20.Notice(t("notice_imageAIConfigValid"));
           } else {
-            new import_obsidian19.Notice(t("notice_imageAIConfigInvalid", { error: result.error || "Unknown error" }));
+            new import_obsidian20.Notice(t("notice_imageAIConfigInvalid", { error: result.error || "Unknown error" }));
           }
         } catch (error2) {
-          new import_obsidian19.Notice(t("notice_validationFailed", { error: error2 instanceof Error ? error2.message : "Unknown error" }));
+          new import_obsidian20.Notice(t("notice_validationFailed", { error: error2 instanceof Error ? error2.message : "Unknown error" }));
         } finally {
           btn.setDisabled(false);
           btn.setButtonText(t("settings_validateConnection"));
@@ -117813,7 +117842,7 @@ var WordpressSettingTab = class extends import_obsidian19.PluginSettingTab {
 };
 
 // src/icons.ts
-var import_obsidian20 = require("obsidian");
+var import_obsidian21 = require("obsidian");
 var icons = {
   "wp-logo": `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
@@ -117828,7 +117857,7 @@ var icons = {
 };
 var addIcons = () => {
   Object.keys(icons).forEach((key) => {
-    (0, import_obsidian20.addIcon)(key, icons[key]);
+    (0, import_obsidian21.addIcon)(key, icons[key]);
   });
 };
 
@@ -117845,6 +117874,8 @@ __export(en_exports, {
   aiImageModal_descriptionRequired: () => aiImageModal_descriptionRequired,
   aiImageModal_generateButton: () => aiImageModal_generateButton,
   aiImageModal_title: () => aiImageModal_title,
+  apiInfo_close: () => apiInfo_close,
+  apiInfo_title: () => apiInfo_title,
   command_publish: () => command_publish,
   command_publishWithDefault: () => command_publishWithDefault,
   common_back: () => common_back,
@@ -118704,6 +118735,8 @@ var publishModal_aiGenerateSummary = "\u{1F916} AI Generate";
 var publishModal_manualInput = "\u{1F4DD} Manual Input";
 var publishModal_addTag = "\u{1F3F7}\uFE0F Add Tag";
 var publishModal_aiGenerateTags = "\u{1F916} AI Generate";
+var apiInfo_title = "API Information";
+var apiInfo_close = "Close";
 var en_default = {
   error_noEndpoint,
   error_notWpCom,
@@ -119136,7 +119169,9 @@ var en_default = {
   publishModal_aiGenerateSummary,
   publishModal_manualInput,
   publishModal_addTag,
-  publishModal_aiGenerateTags
+  publishModal_aiGenerateTags,
+  apiInfo_title,
+  apiInfo_close
 };
 
 // src/i18n/zh-cn.json
@@ -119149,6 +119184,8 @@ __export(zh_cn_exports, {
   aiImageModal_descriptionRequired: () => aiImageModal_descriptionRequired2,
   aiImageModal_generateButton: () => aiImageModal_generateButton2,
   aiImageModal_title: () => aiImageModal_title2,
+  apiInfo_close: () => apiInfo_close2,
+  apiInfo_title: () => apiInfo_title2,
   command_publish: () => command_publish2,
   command_publishWithDefault: () => command_publishWithDefault2,
   common_back: () => common_back2,
@@ -120008,6 +120045,8 @@ var publishModal_aiGenerateSummary2 = "\u{1F916} \u751F\u6210\u6458\u8981";
 var publishModal_manualInput2 = "\u{1F4DD} \u624B\u52A8\u8F93\u5165";
 var publishModal_addTag2 = "\u{1F3F7}\uFE0F \u6DFB\u52A0\u6807\u7B7E";
 var publishModal_aiGenerateTags2 = "\u{1F916} \u751F\u6210\u6807\u7B7E";
+var apiInfo_title2 = "API \u4FE1\u606F";
+var apiInfo_close2 = "\u5173\u95ED";
 var zh_cn_default = {
   error_noEndpoint: error_noEndpoint2,
   error_notWpCom: error_notWpCom2,
@@ -120440,7 +120479,9 @@ var zh_cn_default = {
   publishModal_aiGenerateSummary: publishModal_aiGenerateSummary2,
   publishModal_manualInput: publishModal_manualInput2,
   publishModal_addTag: publishModal_addTag2,
-  publishModal_aiGenerateTags: publishModal_aiGenerateTags2
+  publishModal_aiGenerateTags: publishModal_aiGenerateTags2,
+  apiInfo_title: apiInfo_title2,
+  apiInfo_close: apiInfo_close2
 };
 
 // src/i18n/langs.ts
@@ -120450,7 +120491,7 @@ var LANGUAGES = {
 };
 
 // src/i18n.ts
-var import_obsidian21 = require("obsidian");
+var import_obsidian22 = require("obsidian");
 init_lodash();
 var _I18n_instances, get_fn;
 var I18n = class {
@@ -120472,8 +120513,8 @@ var I18n = class {
 _I18n_instances = new WeakSet();
 get_fn = function(key) {
   let lang;
-  if (this.lang === "auto" && import_obsidian21.moment.locale().replace("-", "_") in LANGUAGES) {
-    lang = import_obsidian21.moment.locale().replace("-", "_");
+  if (this.lang === "auto" && import_obsidian22.moment.locale().replace("-", "_") in LANGUAGES) {
+    lang = import_obsidian22.moment.locale().replace("-", "_");
   } else {
     lang = "en";
   }
@@ -120675,7 +120716,7 @@ var FeaturePictureCacheManager = class {
 
 // src/main.ts
 var log7 = createModuleLogger("WordpressPlugin");
-var WordpressPlugin = class extends import_obsidian22.Plugin {
+var WordpressPlugin = class extends import_obsidian23.Plugin {
   constructor() {
     super(...arguments);
     /** Ribbon icon element reference */
