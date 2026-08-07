@@ -101298,6 +101298,965 @@ var init_featured_image_modal = __esm({
   }
 });
 
+// src/image-cache-manager.ts
+var import_obsidian7, log3, ImageCacheManager;
+var init_image_cache_manager = __esm({
+  "src/image-cache-manager.ts"() {
+    "use strict";
+    import_obsidian7 = require("obsidian");
+    init_logger();
+    log3 = createModuleLogger("ImageCacheManager");
+    ImageCacheManager = class {
+      constructor(app, pluginId = "wordpress-publisher") {
+        this.app = app;
+        this.pluginId = pluginId;
+        this.index = {};
+        this.initialized = false;
+        this.pluginDir = `.obsidian/plugins/${pluginId}`;
+        this.cacheDir = `${this.pluginDir}/cache`;
+        this.imagesDir = `${this.cacheDir}/images`;
+        this.indexPath = `${this.cacheDir}/index.json`;
+      }
+      /**
+       * Initialize cache manager - load index and create directories
+       */
+      async initialize() {
+        if (this.initialized) return;
+        try {
+          await this.ensureDirectory(this.cacheDir);
+          await this.ensureDirectory(this.imagesDir);
+          await this.loadIndex();
+          this.initialized = true;
+          log3.info("Initialized successfully");
+        } catch (error2) {
+          log3.error("Initialization failed:", error2);
+          this.index = {};
+          this.initialized = true;
+        }
+      }
+      /**
+       * Save featured image to cache
+       * @param notePath - Path to the note file (relative to vault root)
+       * @param imageData - Image binary data
+       * @param fileName - Original filename
+       * @param mimeType - MIME type
+       * @param sourceType - Source of the image
+       * @returns Cache entry
+       */
+      async saveImage(notePath, imageData, fileName, mimeType, sourceType) {
+        await this.initialize();
+        const normalizedPath = (0, import_obsidian7.normalizePath)(notePath);
+        const existingEntry = this.index[normalizedPath];
+        if (existingEntry) {
+          await this.deleteImageFile(existingEntry.cacheId);
+        }
+        const cacheId = this.generateCacheId();
+        const extension = this.getExtensionFromMime(mimeType);
+        const imageFileName = `${cacheId}.${extension}`;
+        const imagePath = `${this.imagesDir}/${imageFileName}`;
+        await this.app.vault.adapter.writeBinary(imagePath, imageData);
+        const entry = {
+          cacheId,
+          fileName,
+          mimeType,
+          cachedAt: (/* @__PURE__ */ new Date()).toISOString(),
+          sourceType
+        };
+        this.index[normalizedPath] = entry;
+        await this.saveIndex();
+        log3.info(`Image cached: ${normalizedPath} \u2192 ${imageFileName}`);
+        return entry;
+      }
+      /**
+       * Load cached image for a note
+       * @param notePath - Path to the note file
+       * @returns Cached image data or null if not found
+       */
+      async loadImage(notePath) {
+        await this.initialize();
+        const normalizedPath = (0, import_obsidian7.normalizePath)(notePath);
+        const entry = this.index[normalizedPath];
+        if (!entry) {
+          return null;
+        }
+        const extension = this.getExtensionFromMime(entry.mimeType);
+        const imagePath = `${this.imagesDir}/${entry.cacheId}.${extension}`;
+        try {
+          const exists = await this.app.vault.adapter.exists(imagePath);
+          if (!exists) {
+            log3.warn("Cached image file not found:", imagePath);
+            delete this.index[normalizedPath];
+            await this.saveIndex();
+            return null;
+          }
+          const content = await this.app.vault.adapter.readBinary(imagePath);
+          return {
+            fileName: entry.fileName,
+            mimeType: entry.mimeType,
+            content,
+            width: 1200,
+            // Default width
+            sourceType: entry.sourceType
+          };
+        } catch (error2) {
+          log3.error("Failed to load cached image:", error2);
+          return null;
+        }
+      }
+      /**
+       * Check if a note has cached image
+       * @param notePath - Path to the note file
+       */
+      async hasCachedImage(notePath) {
+        await this.initialize();
+        const normalizedPath = (0, import_obsidian7.normalizePath)(notePath);
+        return normalizedPath in this.index;
+      }
+      /**
+       * Get cache entry without loading image data
+       * @param notePath - Path to the note file
+       */
+      async getCacheEntry(notePath) {
+        await this.initialize();
+        const normalizedPath = (0, import_obsidian7.normalizePath)(notePath);
+        return this.index[normalizedPath] || null;
+      }
+      /**
+       * Clear cache for a specific note
+       * @param notePath - Path to the note file
+       */
+      async clearCache(notePath) {
+        await this.initialize();
+        const normalizedPath = (0, import_obsidian7.normalizePath)(notePath);
+        const entry = this.index[normalizedPath];
+        if (entry) {
+          await this.deleteImageFile(entry.cacheId);
+          delete this.index[normalizedPath];
+          await this.saveIndex();
+          log3.info("Cache cleared for:", normalizedPath);
+        }
+      }
+      /**
+       * Clear all caches
+       */
+      async clearAllCaches() {
+        await this.initialize();
+        for (const entry of Object.values(this.index)) {
+          await this.deleteImageFile(entry.cacheId);
+        }
+        this.index = {};
+        await this.saveIndex();
+        log3.info("All caches cleared");
+      }
+      /**
+       * Clean up orphan caches (notes that no longer exist)
+       */
+      async cleanupOrphanCaches() {
+        await this.initialize();
+        let cleanedCount = 0;
+        const pathsToRemove = [];
+        for (const [notePath, entry] of Object.entries(this.index)) {
+          const file = this.app.vault.getAbstractFileByPath(notePath);
+          if (!(file instanceof import_obsidian7.TFile)) {
+            pathsToRemove.push(notePath);
+            await this.deleteImageFile(entry.cacheId);
+            cleanedCount++;
+          }
+        }
+        for (const path of pathsToRemove) {
+          delete this.index[path];
+        }
+        if (cleanedCount > 0) {
+          await this.saveIndex();
+          log3.info(`Cleaned up ${cleanedCount} orphan caches`);
+        }
+        return cleanedCount;
+      }
+      /**
+       * Clean up old caches (older than specified days)
+       * @param maxAgeDays - Maximum age in days
+       */
+      async cleanupOldCaches(maxAgeDays = 30) {
+        await this.initialize();
+        const now = /* @__PURE__ */ new Date();
+        const maxAgeMs = maxAgeDays * 24 * 60 * 60 * 1e3;
+        let cleanedCount = 0;
+        const pathsToRemove = [];
+        for (const [notePath, entry] of Object.entries(this.index)) {
+          const cachedAt = new Date(entry.cachedAt);
+          if (now.getTime() - cachedAt.getTime() > maxAgeMs) {
+            pathsToRemove.push(notePath);
+            await this.deleteImageFile(entry.cacheId);
+            cleanedCount++;
+          }
+        }
+        for (const path of pathsToRemove) {
+          delete this.index[path];
+        }
+        if (cleanedCount > 0) {
+          await this.saveIndex();
+          log3.info(`Cleaned up ${cleanedCount} old caches (> ${maxAgeDays} days)`);
+        }
+        return cleanedCount;
+      }
+      /**
+       * Get cache statistics
+       */
+      async getStats() {
+        await this.initialize();
+        let totalSize = 0;
+        let oldestCache = null;
+        let newestCache = null;
+        let oldestTime = Infinity;
+        let newestTime = 0;
+        for (const entry of Object.values(this.index)) {
+          const extension = this.getExtensionFromMime(entry.mimeType);
+          const imagePath = `${this.imagesDir}/${entry.cacheId}.${extension}`;
+          try {
+            const stat = await this.app.vault.adapter.stat(imagePath);
+            if (stat) {
+              totalSize += stat.size;
+            }
+          } catch (e) {
+          }
+          const cachedTime = new Date(entry.cachedAt).getTime();
+          if (cachedTime < oldestTime) {
+            oldestTime = cachedTime;
+            oldestCache = entry.cachedAt;
+          }
+          if (cachedTime > newestTime) {
+            newestTime = cachedTime;
+            newestCache = entry.cachedAt;
+          }
+        }
+        return {
+          totalEntries: Object.keys(this.index).length,
+          totalSize,
+          oldestCache,
+          newestCache
+        };
+      }
+      // ==================== Private Methods ====================
+      /**
+       * Ensure a directory exists
+       */
+      async ensureDirectory(dirPath) {
+        const exists = await this.app.vault.adapter.exists(dirPath);
+        if (!exists) {
+          await this.app.vault.adapter.mkdir(dirPath);
+        }
+      }
+      /**
+       * Load index from file
+       */
+      async loadIndex() {
+        try {
+          const exists = await this.app.vault.adapter.exists(this.indexPath);
+          if (exists) {
+            const content = await this.app.vault.adapter.read(this.indexPath);
+            this.index = JSON.parse(content);
+          }
+        } catch (error2) {
+          log3.warn("Failed to load index, starting fresh:", error2);
+          this.index = {};
+        }
+      }
+      /**
+       * Save index to file
+       */
+      async saveIndex() {
+        const content = JSON.stringify(this.index, null, 2);
+        await this.app.vault.adapter.write(this.indexPath, content);
+      }
+      /**
+       * Delete an image file by cache ID
+       */
+      async deleteImageFile(cacheId) {
+        const extensions = ["jpg", "jpeg", "png", "gif", "webp"];
+        for (const ext of extensions) {
+          const imagePath = `${this.imagesDir}/${cacheId}.${ext}`;
+          try {
+            const exists = await this.app.vault.adapter.exists(imagePath);
+            if (exists) {
+              await this.app.vault.adapter.remove(imagePath);
+              return;
+            }
+          } catch (e) {
+          }
+        }
+      }
+      /**
+       * Generate unique cache ID
+       */
+      generateCacheId() {
+        return `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+      }
+      /**
+       * Get file extension from MIME type
+       */
+      getExtensionFromMime(mimeType) {
+        const mimeToExt = {
+          "image/jpeg": "jpg",
+          "image/jpg": "jpg",
+          "image/png": "png",
+          "image/gif": "gif",
+          "image/webp": "webp"
+        };
+        return mimeToExt[mimeType.toLowerCase()] || "jpg";
+      }
+    };
+  }
+});
+
+// src/tag-formatter.ts
+var TagFormatter;
+var init_tag_formatter = __esm({
+  "src/tag-formatter.ts"() {
+    "use strict";
+    TagFormatter = class {
+      /**
+       * Parse tags from any format to string array
+       * Supports:
+       * - YAML array: ["鸡排", "牛肉", "美食"]
+       * - Inline tags: "#鸡排 #牛肉 #美食"
+       * - Comma-separated: "鸡排, 牛肉, 美食"
+       * 
+       * @param tags - Tags in any format
+       * @returns Array of tag strings
+       * 
+       * @example
+       * TagFormatter.parseToArray(['鸡排', '牛肉']) // ['鸡排', '牛肉']
+       * TagFormatter.parseToArray('#鸡排 #牛肉') // ['鸡排', '牛肉']
+       * TagFormatter.parseToArray('鸡排, 牛肉') // ['鸡排', '牛肉']
+       */
+      static parseToArray(tags) {
+        if (!tags) return [];
+        if (Array.isArray(tags)) {
+          return tags.map((t) => String(t).trim()).filter((t) => t);
+        }
+        if (typeof tags === "string") {
+          const trimmed = tags.trim();
+          if (!trimmed) return [];
+          if (trimmed.includes("#")) {
+            const matches = trimmed.match(/#[^\s#]+/g);
+            if (matches) {
+              return matches.map((t) => t.slice(1).trim()).filter((t) => t);
+            }
+          }
+          return trimmed.split(/[,，]/).map((t) => t.trim()).filter((t) => t);
+        }
+        return [];
+      }
+      /**
+       * Format tags to YAML array format
+       * @param tags - Array of tag strings
+       * @returns YAML array format
+       * 
+       * @example
+       * TagFormatter.toYamlFormat(['鸡排', '牛肉']) // ['鸡排', '牛肉']
+       */
+      static toYamlFormat(tags) {
+        return [...tags];
+      }
+      /**
+       * Format tags to inline format (#tag)
+       * @param tags - Array of tag strings
+       * @returns Inline tags string "#鸡排 #牛肉 #美食"
+       * 
+       * @example
+       * TagFormatter.toInlineFormat(['鸡排', '牛肉']) // '#鸡排 #牛肉'
+       */
+      static toInlineFormat(tags) {
+        if (!tags || tags.length === 0) return "";
+        return tags.map((t) => `#${t}`).join(" ");
+      }
+      /**
+       * Format tags according to user preference
+       * @param tags - Array of tag strings
+       * @param format - Target format (YAML or Inline)
+       * @returns Formatted tags
+       * 
+       * @example
+       * TagFormatter.formatTags(['鸡排', '牛肉'], 'yaml') // ['鸡排', '牛肉']
+       * TagFormatter.formatTags(['鸡排', '牛肉'], 'inline') // '#鸡排 #牛肉'
+       */
+      static formatTags(tags, format3) {
+        if (!tags || tags.length === 0) {
+          return format3 === "inline" ? "" : [];
+        }
+        switch (format3) {
+          case "yaml":
+            return this.toYamlFormat(tags);
+          case "inline":
+            return this.toInlineFormat(tags);
+          default:
+            return tags;
+        }
+      }
+      /**
+       * Check if a string is inline tag format
+       * @param tags - Tags string to check
+       * @returns True if the string contains inline tags
+       * 
+       * @example
+       * TagFormatter.isInlineFormat('#鸡排 #牛肉') // true
+       * TagFormatter.isInlineFormat('鸡排, 牛肉') // false
+       */
+      static isInlineFormat(tags) {
+        if (typeof tags !== "string") return false;
+        return tags.trim().includes("#");
+      }
+      /**
+       * Normalize tag string (remove extra spaces, duplicate #, etc.)
+       * @param tags - Tags string to normalize
+       * @returns Normalized tags string
+       * 
+       * @example
+       * TagFormatter.normalizeInlineTags('#鸡排  ##牛肉') // '#鸡排 #牛肉'
+       */
+      static normalizeInlineTags(tags) {
+        const parsed = this.parseToArray(tags);
+        return this.toInlineFormat(parsed);
+      }
+    };
+  }
+});
+
+// src/api-capability.ts
+function getApiCapabilities(apiType) {
+  const capabilities = {
+    ["xml-rpc" /* XML_RPC */]: {
+      supportsCategoryCreation: true,
+      // wp.newCategory
+      supportsTagCreation: true,
+      // wp.newTerm
+      supportsRichCategoryProperties: false,
+      // Limited properties in XML-RPC
+      supportsBatchOperations: false,
+      // XML-RPC is single-operation oriented
+      supportsCustomPostTypes: false,
+      // Limited support in XML-RPC
+      supportsApplicationPasswords: false,
+      // XML-RPC uses basic auth
+      supportsOAuth2: false
+      // XML-RPC doesn't support OAuth2
+    },
+    ["miniOrange" /* RestAPI_miniOrange */]: {
+      supportsCategoryCreation: true,
+      supportsTagCreation: true,
+      supportsRichCategoryProperties: true,
+      supportsBatchOperations: true,
+      supportsCustomPostTypes: true,
+      supportsApplicationPasswords: true,
+      supportsOAuth2: true
+    },
+    ["application-passwords" /* RestApi_ApplicationPasswords */]: {
+      supportsCategoryCreation: true,
+      supportsTagCreation: true,
+      supportsRichCategoryProperties: true,
+      supportsBatchOperations: true,
+      supportsCustomPostTypes: true,
+      supportsApplicationPasswords: true,
+      supportsOAuth2: false
+    },
+    ["WpComOAuth2" /* RestApi_WpComOAuth2 */]: {
+      supportsCategoryCreation: true,
+      supportsTagCreation: true,
+      supportsRichCategoryProperties: true,
+      supportsBatchOperations: true,
+      supportsCustomPostTypes: true,
+      supportsApplicationPasswords: false,
+      supportsOAuth2: true
+    }
+  };
+  return capabilities[apiType] || capabilities["application-passwords" /* RestApi_ApplicationPasswords */];
+}
+function getApiLimitations(apiType) {
+  const capabilities = getApiCapabilities(apiType);
+  const limitations = [];
+  if (!capabilities.supportsRichCategoryProperties) {
+    limitations.push("Limited category properties (description, slug, parent may not be fully supported)");
+  }
+  if (!capabilities.supportsBatchOperations) {
+    limitations.push("No batch operations support");
+  }
+  if (!capabilities.supportsCustomPostTypes) {
+    limitations.push("Limited custom post type support");
+  }
+  if (apiType === "xml-rpc" /* XML_RPC */) {
+    limitations.push("Uses basic authentication (consider switching to REST API with application passwords for better security)");
+    limitations.push("Some modern WordPress features may not be available");
+  }
+  return limitations;
+}
+function getApiRecommendation(apiType) {
+  switch (apiType) {
+    case "xml-rpc" /* XML_RPC */:
+      return "Consider migrating to REST API with Application Passwords for better security and feature support";
+    case "miniOrange" /* RestAPI_miniOrange */:
+      return "Using miniOrange authentication - ensure your WordPress site has the miniOrange plugin installed";
+    case "application-passwords" /* RestApi_ApplicationPasswords */:
+      return "Best practice: Using WordPress Application Passwords for secure REST API access";
+    case "WpComOAuth2" /* RestApi_WpComOAuth2 */:
+      return "Using WordPress.com OAuth2 authentication for WordPress.com sites";
+    default:
+      return "Unknown API type";
+  }
+}
+var init_api_capability = __esm({
+  "src/api-capability.ts"() {
+    "use strict";
+    init_plugin_settings();
+  }
+});
+
+// src/api-info-modal.ts
+function showApiInfoModal(plugin4, apiType) {
+  new ApiInfoModal(plugin4.app, apiType, plugin4.i18n).open();
+}
+var import_obsidian8, ApiInfoModal;
+var init_api_info_modal = __esm({
+  "src/api-info-modal.ts"() {
+    "use strict";
+    import_obsidian8 = require("obsidian");
+    init_api_capability();
+    ApiInfoModal = class extends import_obsidian8.Modal {
+      constructor(app, apiType, i18n) {
+        super(app);
+        this.apiType = apiType;
+        this.i18n = i18n;
+      }
+      onOpen() {
+        const { contentEl } = this;
+        contentEl.empty();
+        contentEl.addClass("wp-api-info-modal");
+        const header = contentEl.createDiv("wp-api-info-modal-header");
+        header.createEl("h3", { text: this.i18n.t("apiInfo_title") });
+        const closeButton = header.createEl("button", {
+          cls: "wp-api-info-modal-close",
+          text: "\xD7"
+        });
+        closeButton.addEventListener("click", () => this.close());
+        const body = contentEl.createDiv("wp-api-info-modal-body");
+        this.renderCapabilities(body);
+        this.renderSection(body, "Limitations", this.renderLimitations);
+        this.renderRecommendation(body);
+        this.renderSecurityNote(body);
+        const footer = contentEl.createDiv("wp-api-info-footer");
+        const close = footer.createEl("button", {
+          cls: "mod-cta",
+          text: this.i18n.t("apiInfo_close")
+        });
+        close.addEventListener("click", () => this.close());
+      }
+      onClose() {
+        this.contentEl.empty();
+      }
+      renderCapabilities(container) {
+        const capabilities = getApiCapabilities(this.apiType);
+        container.createEl("h4", { text: "Supported Features" });
+        const list3 = container.createEl("ul", { cls: "wp-api-info-features" });
+        const rows = [
+          [capabilities.supportsCategoryCreation, "Category Creation"],
+          [capabilities.supportsTagCreation, "Tag Creation"],
+          [capabilities.supportsRichCategoryProperties, "Rich Category Properties"],
+          [capabilities.supportsBatchOperations, "Batch Operations"],
+          [capabilities.supportsCustomPostTypes, "Custom Post Types"]
+        ];
+        for (const [supported, label] of rows) {
+          list3.createEl("li", { text: `${supported ? "\u2705" : "\u274C"} ${label}` });
+        }
+      }
+      renderSection(container, title, render3) {
+        container.createEl("h4", { text: title });
+        render3(container);
+      }
+      renderLimitations(container) {
+        const limitations = getApiLimitations(this.apiType);
+        if (limitations.length === 0) {
+          container.createEl("p", { text: "\u2014" });
+          return;
+        }
+        const list3 = container.createEl("ul", { cls: "wp-api-info-limitations" });
+        for (const limitation of limitations) {
+          list3.createEl("li", { text: limitation });
+        }
+      }
+      renderRecommendation(container) {
+        const recommendation = getApiRecommendation(this.apiType);
+        container.createEl("h4", { text: "Recommendation" });
+        container.createEl("p", { text: recommendation });
+      }
+      renderSecurityNote(container) {
+        container.createEl("h4", { text: "Security Note" });
+        container.createEl("p", {
+          text: "XML-RPC uses basic authentication which may be less secure than REST API with Application Passwords. Consider migrating to REST API for better security and feature support."
+        });
+      }
+    };
+  }
+});
+
+// src/modal-helpers.ts
+function getTagColor(tagName) {
+  const hash = tagName.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  return TAG_COLORS[hash % TAG_COLORS.length];
+}
+function detectLanguage(text5) {
+  if (!text5 || text5.length < 10) return "en";
+  const chineseChars = text5.match(/[\u4e00-\u9fa5]/g);
+  const chineseCount = chineseChars ? chineseChars.length : 0;
+  const englishChars = text5.match(/[a-zA-Z]/g);
+  const englishCount = englishChars ? englishChars.length : 0;
+  if (chineseCount > text5.length * 0.3) {
+    return "zh";
+  }
+  if (englishCount > text5.length * 0.4) {
+    return "en";
+  }
+  return "other";
+}
+function getLocalizedPrompt(plugin4, language, type) {
+  if (type === "summary" && plugin4.settings.summaryPrompt) {
+    return plugin4.settings.summaryPrompt;
+  } else if (type === "tags" && plugin4.settings.tagsPrompt) {
+    return plugin4.settings.tagsPrompt;
+  } else if (type === "image" && plugin4.settings.imageGenerationPrompt) {
+    return plugin4.settings.imageGenerationPrompt;
+  }
+  if (language === "en" || language === "other") {
+    if (type === "summary") {
+      return plugin4.t("defaultPrompt_summaryEn");
+    } else if (type === "tags") {
+      return plugin4.t("defaultPrompt_tagsEn");
+    } else {
+      return plugin4.t("defaultPrompt_imageEn");
+    }
+  }
+  if (type === "summary") {
+    return plugin4.t("defaultPrompt_summary");
+  } else if (type === "tags") {
+    return plugin4.t("defaultPrompt_tags");
+  } else {
+    return plugin4.t("defaultPrompt_image");
+  }
+}
+function getMimeTypeFromResponse(contentType, url) {
+  var _a5, _b;
+  if (contentType == null ? void 0 : contentType.startsWith("image/")) {
+    return contentType.split(";")[0];
+  }
+  const ext = (_b = (_a5 = url.split(".").pop()) == null ? void 0 : _a5.toLowerCase()) == null ? void 0 : _b.split("?")[0];
+  return getMimeType(ext || "jpg");
+}
+function extractFileName(url) {
+  var _a5;
+  const urlParts = url.split("/");
+  const lastPart = (_a5 = urlParts[urlParts.length - 1]) == null ? void 0 : _a5.split("?")[0];
+  return lastPart && lastPart.includes(".") ? lastPart : "featured-image.jpg";
+}
+function getMimeType(extension) {
+  return MIME_TYPES2[extension.toLowerCase()] || "image/jpeg";
+}
+function formatFileSize(bytes) {
+  if (bytes < 1024) return bytes + " B";
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+  return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+}
+function truncateMiddle(str, prefixLen = 10, suffixLen = 8) {
+  if (str.length <= prefixLen + suffixLen + 3) return str;
+  return str.slice(0, prefixLen) + "..." + str.slice(str.length - suffixLen);
+}
+function normalizeTags(tags) {
+  return TagFormatter.parseToArray(tags);
+}
+var TAG_COLORS, MIME_TYPES2;
+var init_modal_helpers = __esm({
+  "src/modal-helpers.ts"() {
+    "use strict";
+    init_tag_formatter();
+    TAG_COLORS = [
+      "var(--wp-tag-color-1)",
+      "var(--wp-tag-color-2)",
+      "var(--wp-tag-color-3)",
+      "var(--wp-tag-color-4)",
+      "var(--wp-tag-color-5)",
+      "var(--wp-tag-color-6)",
+      "var(--wp-tag-color-7)",
+      "var(--wp-tag-color-8)",
+      "var(--wp-tag-color-9)"
+    ];
+    MIME_TYPES2 = {
+      "jpg": "image/jpeg",
+      "jpeg": "image/jpeg",
+      "png": "image/png",
+      "gif": "image/gif",
+      "webp": "image/webp"
+    };
+  }
+});
+
+// src/sections/v3-layout.ts
+function createV3Section(container, title, actions) {
+  const section = container.createDiv("wp-v3-section");
+  const header = section.createDiv("wp-v3-section-header");
+  header.createSpan({ text: title, cls: "wp-v3-section-title" });
+  const actionsEl = header.createDiv("wp-v3-section-actions");
+  if (actions && actions.length > 0) {
+    actions.forEach((action) => {
+      const btn = actionsEl.createEl("button", {
+        text: action.emoji,
+        cls: "wp-v3-icon-btn",
+        attr: { "aria-label": action.label, title: action.label }
+      });
+      btn.addEventListener("click", action.onClick);
+    });
+  }
+  return section;
+}
+function renderV3Field(ctx, container, label, hintKey, renderControl) {
+  const field = container.createDiv("wp-v3-field");
+  const labelRow = field.createDiv("wp-v3-field-label-row");
+  labelRow.createSpan({ text: label, cls: "wp-v3-field-label" });
+  if (hintKey) {
+    addV3HintBtn(labelRow, ctx.plugin.t(hintKey) || hintKey);
+  }
+  renderControl(field);
+}
+function addV3HintBtn(container, hintText) {
+  const icon = container.createEl("span", { cls: "wp-v3-hint-icon", text: "\u24D8" });
+  const tooltip = icon.createDiv("wp-v3-tooltip");
+  tooltip.textContent = hintText;
+}
+var init_v3_layout = __esm({
+  "src/sections/v3-layout.ts"() {
+    "use strict";
+  }
+});
+
+// src/sections/featured-image-section.ts
+var import_obsidian9, FeaturedImageSection;
+var init_featured_image_section = __esm({
+  "src/sections/featured-image-section.ts"() {
+    "use strict";
+    import_obsidian9 = require("obsidian");
+    init_modal_helpers();
+    init_v3_layout();
+    FeaturedImageSection = class {
+      constructor(ctx) {
+        this.ctx = ctx;
+      }
+      render(container, params) {
+        const ctx = this.ctx;
+        const imageToDisplay = ctx.featuredImage || ctx.autoFeaturedImage;
+        const hasImage = !!imageToDisplay || !!ctx.matterData.featurePicture;
+        const section = createV3Section(
+          container,
+          ctx.plugin.t("publishModal_previewFeaturedImage") || "Featured Image",
+          []
+        );
+        const body = section.createDiv("wp-v3-section-body");
+        const updateHeaderActions = (opts = {}) => {
+          var _a5;
+          const actionsEl = section.querySelector(".wp-v3-section-actions");
+          if (!actionsEl) return;
+          actionsEl.empty();
+          if (opts.sourceLabel) {
+            const tag = actionsEl.createSpan({ cls: `wp-v3-featured-source-tag ${(_a5 = opts.sourceCls) != null ? _a5 : ""}` });
+            tag.textContent = opts.sourceLabel;
+          }
+          if (opts.fileName) {
+            const nameEl = actionsEl.createSpan({ cls: "wp-v3-img-filename" });
+            nameEl.textContent = truncateMiddle(opts.fileName);
+            nameEl.title = opts.fileName;
+          }
+          if (opts.showDelete) {
+            const delBtn = actionsEl.createEl("button", {
+              text: "\u274C",
+              cls: "wp-v3-icon-btn wp-v3-icon-btn-delete",
+              attr: { title: ctx.plugin.t("publishModal_removeImage") || "Remove image" }
+            });
+            delBtn.onclick = () => {
+              ctx.featuredImage = null;
+              ctx.autoFeaturedImage = null;
+              ctx.matterData.featurePicture = "";
+              renderSetup();
+            };
+          }
+        };
+        const renderPreview = () => {
+          body.empty();
+          const wrap2 = body.createDiv("wp-v3-featured-image-wrap");
+          if (ctx.isLoadingRemoteImage) {
+            const loading = wrap2.createDiv("wp-v3-featured-status-wrap");
+            loading.createEl("p", { text: ctx.plugin.t("publishModal_loadingRemoteImage") || "\u6B63\u5728\u52A0\u8F7D\u8FDC\u7A0B\u56FE\u7247..." });
+            updateHeaderActions();
+          } else if (ctx.remoteImageLoadFailed) {
+            const errDiv = wrap2.createDiv("wp-v3-featured-status-wrap wp-v3-featured-status-error");
+            errDiv.createEl("p", { text: "\u274C " + (ctx.remoteImageError || "") });
+            const btnRow = errDiv.createDiv("wp-v3-featured-btn-row");
+            const retryBtn = btnRow.createEl("button", {
+              text: ctx.plugin.t("publishModal_retryLoadImage") || "\u91CD\u8BD5",
+              cls: "wp-v3-feature-btn"
+            });
+            retryBtn.onclick = async () => {
+              if (ctx.remoteImagePostId) {
+                ctx.remoteImageLoadFailed = false;
+                ctx.remoteImageError = null;
+                await ctx.loadRemoteFeaturedImage(ctx.remoteImagePostId, params);
+              }
+            };
+            const skipBtn = btnRow.createEl("button", {
+              text: ctx.plugin.t("publishModal_skipRemoteImage") || "\u8DF3\u8FC7",
+              cls: "wp-v3-feature-btn"
+            });
+            skipBtn.onclick = () => {
+              ctx.remoteImageLoadFailed = false;
+              ctx.remoteImageError = null;
+              ctx.remoteImagePostId = null;
+              ctx.display(params);
+            };
+            updateHeaderActions();
+          } else if (imageToDisplay) {
+            const isLocalNew = ctx.imageSource !== "cached";
+            const imgContainer = wrap2.createDiv("wp-v3-featured-img-container");
+            const blob = new Blob([imageToDisplay.content], { type: imageToDisplay.mimeType });
+            const url = URL.createObjectURL(blob);
+            imgContainer.createEl("img", { cls: "wp-v3-featured-img", attr: { src: url, alt: "Featured Image" } });
+            if (isLocalNew) {
+              updateHeaderActions({
+                sourceLabel: "\u{1F4C2} Local",
+                sourceCls: "wp-v3-source-local",
+                fileName: `${imageToDisplay.fileName} (${formatFileSize(imageToDisplay.content.byteLength)})`,
+                showDelete: true
+              });
+            } else {
+              const urlStr = ctx.matterData.featurePicture ? String(ctx.matterData.featurePicture) : imageToDisplay.fileName;
+              updateHeaderActions({
+                sourceLabel: "\u2601\uFE0F WordPress",
+                sourceCls: "wp-v3-source-uploaded",
+                fileName: urlStr,
+                showDelete: true
+              });
+            }
+          } else if (ctx.matterData.featurePicture) {
+            const imgContainer = wrap2.createDiv("wp-v3-featured-img-container");
+            imgContainer.createEl("img", {
+              cls: "wp-v3-featured-img",
+              attr: { src: ctx.matterData.featurePicture, alt: "Featured Image" }
+            });
+            const urlStr = String(ctx.matterData.featurePicture);
+            updateHeaderActions({
+              sourceLabel: "\u2601\uFE0F WordPress",
+              sourceCls: "wp-v3-source-uploaded",
+              fileName: urlStr,
+              showDelete: true
+            });
+          } else {
+            renderSetup();
+            return;
+          }
+        };
+        const renderSetup = () => {
+          var _a5;
+          body.empty();
+          const setup = body.createDiv("wp-v3-featured-setup");
+          setup.createDiv({ cls: "wp-v3-featured-empty", text: ctx.plugin.t("publishModal_noImageSelected") || "\u6682\u65E0\u7279\u8272\u56FE\u7247" });
+          const btnRow = setup.createDiv("wp-v3-featured-btn-row");
+          const localBtn = btnRow.createEl("button", {
+            text: "\u{1F4C2} " + ctx.plugin.t("publishModal_selectFromLocal"),
+            cls: "wp-v3-feature-btn"
+          });
+          localBtn.onclick = () => ctx.selectLocalFile(params);
+          const vaultBtn = btnRow.createEl("button", {
+            text: "\u{1F4C1} " + ctx.plugin.t("publishModal_selectFromVault"),
+            cls: "wp-v3-feature-btn"
+          });
+          vaultBtn.onclick = () => ctx.selectVaultImage(params);
+          if (ctx.unsplashService) {
+            const unsplashBtn = btnRow.createEl("button", {
+              text: "\u{1F5BC}\uFE0F Unsplash",
+              cls: "wp-v3-feature-btn"
+            });
+            unsplashBtn.onclick = () => ctx.selectUnsplashImage(params);
+          }
+          if ((_a5 = ctx.aiService) == null ? void 0 : _a5.hasImageAIKey()) {
+            const aiBtn = btnRow.createEl("button", {
+              text: "\u{1F916} " + ctx.plugin.t("publishModal_aiGenerate"),
+              cls: "wp-v3-feature-btn"
+            });
+            aiBtn.onclick = () => ctx.generateFeaturedImage(params);
+          } else {
+            const aiBtn = btnRow.createEl("button", {
+              text: "\u{1F916} " + ctx.plugin.t("publishModal_aiGenerate"),
+              cls: "wp-v3-feature-btn disabled"
+            });
+            aiBtn.onclick = () => new import_obsidian9.Notice(ctx.plugin.t("notice_imageAIApiKeyRequired"));
+          }
+          updateHeaderActions();
+        };
+        if (hasImage) {
+          renderPreview();
+        } else {
+          renderSetup();
+        }
+        const SUPPORTED_MIME = ["image/jpeg", "image/png", "image/gif", "image/webp", "image/svg+xml"];
+        const SUPPORTED_EXT = ["jpg", "jpeg", "png", "gif", "webp", "svg"];
+        section.addEventListener("dragover", (e) => {
+          var _a5, _b, _c;
+          e.preventDefault();
+          e.stopPropagation();
+          const items = (_a5 = e.dataTransfer) == null ? void 0 : _a5.items;
+          if (items && items.length > 0 && items[0].kind === "file") {
+            body.addClass("drag-over");
+            (_b = body.querySelector(".wp-v3-featured-empty")) == null ? void 0 : _b.addClass("drag-over");
+            (_c = body.querySelector(".wp-v3-featured-img-container")) == null ? void 0 : _c.addClass("drag-over");
+          }
+        });
+        section.addEventListener("dragleave", (e) => {
+          var _a5, _b;
+          if (!section.contains(e.relatedTarget)) {
+            body.removeClass("drag-over");
+            (_a5 = body.querySelector(".wp-v3-featured-empty")) == null ? void 0 : _a5.removeClass("drag-over");
+            (_b = body.querySelector(".wp-v3-featured-img-container")) == null ? void 0 : _b.removeClass("drag-over");
+          }
+        });
+        section.addEventListener("drop", async (e) => {
+          var _a5, _b, _c, _d, _e;
+          e.preventDefault();
+          e.stopPropagation();
+          body.removeClass("drag-over");
+          (_a5 = body.querySelector(".wp-v3-featured-empty")) == null ? void 0 : _a5.removeClass("drag-over");
+          (_b = body.querySelector(".wp-v3-featured-img-container")) == null ? void 0 : _b.removeClass("drag-over");
+          const file = (_d = (_c = e.dataTransfer) == null ? void 0 : _c.files) == null ? void 0 : _d[0];
+          if (!file) return;
+          const ext = ((_e = file.name.split(".").pop()) == null ? void 0 : _e.toLowerCase()) || "";
+          const mimeOk = SUPPORTED_MIME.includes(file.type);
+          const extOk = SUPPORTED_EXT.includes(ext);
+          if (!mimeOk && !extOk) {
+            const errEl = body.createDiv("wp-v3-drop-error");
+            errEl.textContent = `\u274C \u4E0D\u652F\u6301\u7684\u56FE\u7247\u683C\u5F0F: .${ext}`;
+            setTimeout(() => errEl.remove(), 2500);
+            return;
+          }
+          try {
+            const arrayBuffer = await file.arrayBuffer();
+            const mimeType = mimeOk ? file.type : `image/${ext === "jpg" ? "jpeg" : ext}`;
+            ctx.featuredImage = {
+              fileName: file.name,
+              content: new Uint8Array(arrayBuffer),
+              mimeType
+            };
+            ctx.display(params);
+          } catch (err) {
+            new import_obsidian9.Notice(ctx.plugin.t("error_imageLoadFailed"));
+          }
+        });
+      }
+    };
+  }
+});
+
 // node_modules/mdurl/lib/decode.mjs
 function getDecodeCache(exclude) {
   let cache = decodeCache[exclude];
@@ -106742,11 +107701,11 @@ var init_markdown_it_comment_plugin = __esm({
 });
 
 // src/app-state.ts
-var import_obsidian7, AppStore, AppState;
+var import_obsidian10, AppStore, AppState;
 var init_app_state = __esm({
   "src/app-state.ts"() {
     "use strict";
-    import_obsidian7 = require("obsidian");
+    import_obsidian10 = require("obsidian");
     init_markdown_it();
     init_markdown_it_image_plugin();
     init_markdown_it_comment_plugin();
@@ -106754,435 +107713,11 @@ var init_app_state = __esm({
     AppStore = class {
       constructor() {
         this.markdownParser = new lib_default();
-        this.events = new import_obsidian7.Events();
+        this.events = new import_obsidian10.Events();
       }
     };
     AppState = new AppStore();
     AppState.markdownParser.use(MarkdownItCommentPluginInstance.plugin).use(MarkdownItMathJax3PluginInstance.plugin).use(MarkdownItImagePluginInstance.plugin);
-  }
-});
-
-// src/image-cache-manager.ts
-var import_obsidian8, log3, ImageCacheManager;
-var init_image_cache_manager = __esm({
-  "src/image-cache-manager.ts"() {
-    "use strict";
-    import_obsidian8 = require("obsidian");
-    init_logger();
-    log3 = createModuleLogger("ImageCacheManager");
-    ImageCacheManager = class {
-      constructor(app, pluginId = "wordpress-publisher") {
-        this.app = app;
-        this.pluginId = pluginId;
-        this.index = {};
-        this.initialized = false;
-        this.pluginDir = `.obsidian/plugins/${pluginId}`;
-        this.cacheDir = `${this.pluginDir}/cache`;
-        this.imagesDir = `${this.cacheDir}/images`;
-        this.indexPath = `${this.cacheDir}/index.json`;
-      }
-      /**
-       * Initialize cache manager - load index and create directories
-       */
-      async initialize() {
-        if (this.initialized) return;
-        try {
-          await this.ensureDirectory(this.cacheDir);
-          await this.ensureDirectory(this.imagesDir);
-          await this.loadIndex();
-          this.initialized = true;
-          log3.info("Initialized successfully");
-        } catch (error2) {
-          log3.error("Initialization failed:", error2);
-          this.index = {};
-          this.initialized = true;
-        }
-      }
-      /**
-       * Save featured image to cache
-       * @param notePath - Path to the note file (relative to vault root)
-       * @param imageData - Image binary data
-       * @param fileName - Original filename
-       * @param mimeType - MIME type
-       * @param sourceType - Source of the image
-       * @returns Cache entry
-       */
-      async saveImage(notePath, imageData, fileName, mimeType, sourceType) {
-        await this.initialize();
-        const normalizedPath = (0, import_obsidian8.normalizePath)(notePath);
-        const existingEntry = this.index[normalizedPath];
-        if (existingEntry) {
-          await this.deleteImageFile(existingEntry.cacheId);
-        }
-        const cacheId = this.generateCacheId();
-        const extension = this.getExtensionFromMime(mimeType);
-        const imageFileName = `${cacheId}.${extension}`;
-        const imagePath = `${this.imagesDir}/${imageFileName}`;
-        await this.app.vault.adapter.writeBinary(imagePath, imageData);
-        const entry = {
-          cacheId,
-          fileName,
-          mimeType,
-          cachedAt: (/* @__PURE__ */ new Date()).toISOString(),
-          sourceType
-        };
-        this.index[normalizedPath] = entry;
-        await this.saveIndex();
-        log3.info(`Image cached: ${normalizedPath} \u2192 ${imageFileName}`);
-        return entry;
-      }
-      /**
-       * Load cached image for a note
-       * @param notePath - Path to the note file
-       * @returns Cached image data or null if not found
-       */
-      async loadImage(notePath) {
-        await this.initialize();
-        const normalizedPath = (0, import_obsidian8.normalizePath)(notePath);
-        const entry = this.index[normalizedPath];
-        if (!entry) {
-          return null;
-        }
-        const extension = this.getExtensionFromMime(entry.mimeType);
-        const imagePath = `${this.imagesDir}/${entry.cacheId}.${extension}`;
-        try {
-          const exists = await this.app.vault.adapter.exists(imagePath);
-          if (!exists) {
-            log3.warn("Cached image file not found:", imagePath);
-            delete this.index[normalizedPath];
-            await this.saveIndex();
-            return null;
-          }
-          const content = await this.app.vault.adapter.readBinary(imagePath);
-          return {
-            fileName: entry.fileName,
-            mimeType: entry.mimeType,
-            content,
-            width: 1200,
-            // Default width
-            sourceType: entry.sourceType
-          };
-        } catch (error2) {
-          log3.error("Failed to load cached image:", error2);
-          return null;
-        }
-      }
-      /**
-       * Check if a note has cached image
-       * @param notePath - Path to the note file
-       */
-      async hasCachedImage(notePath) {
-        await this.initialize();
-        const normalizedPath = (0, import_obsidian8.normalizePath)(notePath);
-        return normalizedPath in this.index;
-      }
-      /**
-       * Get cache entry without loading image data
-       * @param notePath - Path to the note file
-       */
-      async getCacheEntry(notePath) {
-        await this.initialize();
-        const normalizedPath = (0, import_obsidian8.normalizePath)(notePath);
-        return this.index[normalizedPath] || null;
-      }
-      /**
-       * Clear cache for a specific note
-       * @param notePath - Path to the note file
-       */
-      async clearCache(notePath) {
-        await this.initialize();
-        const normalizedPath = (0, import_obsidian8.normalizePath)(notePath);
-        const entry = this.index[normalizedPath];
-        if (entry) {
-          await this.deleteImageFile(entry.cacheId);
-          delete this.index[normalizedPath];
-          await this.saveIndex();
-          log3.info("Cache cleared for:", normalizedPath);
-        }
-      }
-      /**
-       * Clear all caches
-       */
-      async clearAllCaches() {
-        await this.initialize();
-        for (const entry of Object.values(this.index)) {
-          await this.deleteImageFile(entry.cacheId);
-        }
-        this.index = {};
-        await this.saveIndex();
-        log3.info("All caches cleared");
-      }
-      /**
-       * Clean up orphan caches (notes that no longer exist)
-       */
-      async cleanupOrphanCaches() {
-        await this.initialize();
-        let cleanedCount = 0;
-        const pathsToRemove = [];
-        for (const [notePath, entry] of Object.entries(this.index)) {
-          const file = this.app.vault.getAbstractFileByPath(notePath);
-          if (!(file instanceof import_obsidian8.TFile)) {
-            pathsToRemove.push(notePath);
-            await this.deleteImageFile(entry.cacheId);
-            cleanedCount++;
-          }
-        }
-        for (const path of pathsToRemove) {
-          delete this.index[path];
-        }
-        if (cleanedCount > 0) {
-          await this.saveIndex();
-          log3.info(`Cleaned up ${cleanedCount} orphan caches`);
-        }
-        return cleanedCount;
-      }
-      /**
-       * Clean up old caches (older than specified days)
-       * @param maxAgeDays - Maximum age in days
-       */
-      async cleanupOldCaches(maxAgeDays = 30) {
-        await this.initialize();
-        const now = /* @__PURE__ */ new Date();
-        const maxAgeMs = maxAgeDays * 24 * 60 * 60 * 1e3;
-        let cleanedCount = 0;
-        const pathsToRemove = [];
-        for (const [notePath, entry] of Object.entries(this.index)) {
-          const cachedAt = new Date(entry.cachedAt);
-          if (now.getTime() - cachedAt.getTime() > maxAgeMs) {
-            pathsToRemove.push(notePath);
-            await this.deleteImageFile(entry.cacheId);
-            cleanedCount++;
-          }
-        }
-        for (const path of pathsToRemove) {
-          delete this.index[path];
-        }
-        if (cleanedCount > 0) {
-          await this.saveIndex();
-          log3.info(`Cleaned up ${cleanedCount} old caches (> ${maxAgeDays} days)`);
-        }
-        return cleanedCount;
-      }
-      /**
-       * Get cache statistics
-       */
-      async getStats() {
-        await this.initialize();
-        let totalSize = 0;
-        let oldestCache = null;
-        let newestCache = null;
-        let oldestTime = Infinity;
-        let newestTime = 0;
-        for (const entry of Object.values(this.index)) {
-          const extension = this.getExtensionFromMime(entry.mimeType);
-          const imagePath = `${this.imagesDir}/${entry.cacheId}.${extension}`;
-          try {
-            const stat = await this.app.vault.adapter.stat(imagePath);
-            if (stat) {
-              totalSize += stat.size;
-            }
-          } catch (e) {
-          }
-          const cachedTime = new Date(entry.cachedAt).getTime();
-          if (cachedTime < oldestTime) {
-            oldestTime = cachedTime;
-            oldestCache = entry.cachedAt;
-          }
-          if (cachedTime > newestTime) {
-            newestTime = cachedTime;
-            newestCache = entry.cachedAt;
-          }
-        }
-        return {
-          totalEntries: Object.keys(this.index).length,
-          totalSize,
-          oldestCache,
-          newestCache
-        };
-      }
-      // ==================== Private Methods ====================
-      /**
-       * Ensure a directory exists
-       */
-      async ensureDirectory(dirPath) {
-        const exists = await this.app.vault.adapter.exists(dirPath);
-        if (!exists) {
-          await this.app.vault.adapter.mkdir(dirPath);
-        }
-      }
-      /**
-       * Load index from file
-       */
-      async loadIndex() {
-        try {
-          const exists = await this.app.vault.adapter.exists(this.indexPath);
-          if (exists) {
-            const content = await this.app.vault.adapter.read(this.indexPath);
-            this.index = JSON.parse(content);
-          }
-        } catch (error2) {
-          log3.warn("Failed to load index, starting fresh:", error2);
-          this.index = {};
-        }
-      }
-      /**
-       * Save index to file
-       */
-      async saveIndex() {
-        const content = JSON.stringify(this.index, null, 2);
-        await this.app.vault.adapter.write(this.indexPath, content);
-      }
-      /**
-       * Delete an image file by cache ID
-       */
-      async deleteImageFile(cacheId) {
-        const extensions = ["jpg", "jpeg", "png", "gif", "webp"];
-        for (const ext of extensions) {
-          const imagePath = `${this.imagesDir}/${cacheId}.${ext}`;
-          try {
-            const exists = await this.app.vault.adapter.exists(imagePath);
-            if (exists) {
-              await this.app.vault.adapter.remove(imagePath);
-              return;
-            }
-          } catch (e) {
-          }
-        }
-      }
-      /**
-       * Generate unique cache ID
-       */
-      generateCacheId() {
-        return `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
-      }
-      /**
-       * Get file extension from MIME type
-       */
-      getExtensionFromMime(mimeType) {
-        const mimeToExt = {
-          "image/jpeg": "jpg",
-          "image/jpg": "jpg",
-          "image/png": "png",
-          "image/gif": "gif",
-          "image/webp": "webp"
-        };
-        return mimeToExt[mimeType.toLowerCase()] || "jpg";
-      }
-    };
-  }
-});
-
-// src/tag-formatter.ts
-var TagFormatter;
-var init_tag_formatter = __esm({
-  "src/tag-formatter.ts"() {
-    "use strict";
-    TagFormatter = class {
-      /**
-       * Parse tags from any format to string array
-       * Supports:
-       * - YAML array: ["鸡排", "牛肉", "美食"]
-       * - Inline tags: "#鸡排 #牛肉 #美食"
-       * - Comma-separated: "鸡排, 牛肉, 美食"
-       * 
-       * @param tags - Tags in any format
-       * @returns Array of tag strings
-       * 
-       * @example
-       * TagFormatter.parseToArray(['鸡排', '牛肉']) // ['鸡排', '牛肉']
-       * TagFormatter.parseToArray('#鸡排 #牛肉') // ['鸡排', '牛肉']
-       * TagFormatter.parseToArray('鸡排, 牛肉') // ['鸡排', '牛肉']
-       */
-      static parseToArray(tags) {
-        if (!tags) return [];
-        if (Array.isArray(tags)) {
-          return tags.map((t) => String(t).trim()).filter((t) => t);
-        }
-        if (typeof tags === "string") {
-          const trimmed = tags.trim();
-          if (!trimmed) return [];
-          if (trimmed.includes("#")) {
-            const matches = trimmed.match(/#[^\s#]+/g);
-            if (matches) {
-              return matches.map((t) => t.slice(1).trim()).filter((t) => t);
-            }
-          }
-          return trimmed.split(/[,，]/).map((t) => t.trim()).filter((t) => t);
-        }
-        return [];
-      }
-      /**
-       * Format tags to YAML array format
-       * @param tags - Array of tag strings
-       * @returns YAML array format
-       * 
-       * @example
-       * TagFormatter.toYamlFormat(['鸡排', '牛肉']) // ['鸡排', '牛肉']
-       */
-      static toYamlFormat(tags) {
-        return [...tags];
-      }
-      /**
-       * Format tags to inline format (#tag)
-       * @param tags - Array of tag strings
-       * @returns Inline tags string "#鸡排 #牛肉 #美食"
-       * 
-       * @example
-       * TagFormatter.toInlineFormat(['鸡排', '牛肉']) // '#鸡排 #牛肉'
-       */
-      static toInlineFormat(tags) {
-        if (!tags || tags.length === 0) return "";
-        return tags.map((t) => `#${t}`).join(" ");
-      }
-      /**
-       * Format tags according to user preference
-       * @param tags - Array of tag strings
-       * @param format - Target format (YAML or Inline)
-       * @returns Formatted tags
-       * 
-       * @example
-       * TagFormatter.formatTags(['鸡排', '牛肉'], 'yaml') // ['鸡排', '牛肉']
-       * TagFormatter.formatTags(['鸡排', '牛肉'], 'inline') // '#鸡排 #牛肉'
-       */
-      static formatTags(tags, format3) {
-        if (!tags || tags.length === 0) {
-          return format3 === "inline" ? "" : [];
-        }
-        switch (format3) {
-          case "yaml":
-            return this.toYamlFormat(tags);
-          case "inline":
-            return this.toInlineFormat(tags);
-          default:
-            return tags;
-        }
-      }
-      /**
-       * Check if a string is inline tag format
-       * @param tags - Tags string to check
-       * @returns True if the string contains inline tags
-       * 
-       * @example
-       * TagFormatter.isInlineFormat('#鸡排 #牛肉') // true
-       * TagFormatter.isInlineFormat('鸡排, 牛肉') // false
-       */
-      static isInlineFormat(tags) {
-        if (typeof tags !== "string") return false;
-        return tags.trim().includes("#");
-      }
-      /**
-       * Normalize tag string (remove extra spaces, duplicate #, etc.)
-       * @param tags - Tags string to normalize
-       * @returns Normalized tags string
-       * 
-       * @example
-       * TagFormatter.normalizeInlineTags('#鸡排  ##牛肉') // '#鸡排 #牛肉'
-       */
-      static normalizeInlineTags(tags) {
-        const parsed = this.parseToArray(tags);
-        return this.toInlineFormat(parsed);
-      }
-    };
   }
 });
 
@@ -108744,286 +109279,579 @@ var init_html_sanitizer = __esm({
   }
 });
 
-// src/api-capability.ts
-function getApiCapabilities(apiType) {
-  const capabilities = {
-    ["xml-rpc" /* XML_RPC */]: {
-      supportsCategoryCreation: true,
-      // wp.newCategory
-      supportsTagCreation: true,
-      // wp.newTerm
-      supportsRichCategoryProperties: false,
-      // Limited properties in XML-RPC
-      supportsBatchOperations: false,
-      // XML-RPC is single-operation oriented
-      supportsCustomPostTypes: false,
-      // Limited support in XML-RPC
-      supportsApplicationPasswords: false,
-      // XML-RPC uses basic auth
-      supportsOAuth2: false
-      // XML-RPC doesn't support OAuth2
-    },
-    ["miniOrange" /* RestAPI_miniOrange */]: {
-      supportsCategoryCreation: true,
-      supportsTagCreation: true,
-      supportsRichCategoryProperties: true,
-      supportsBatchOperations: true,
-      supportsCustomPostTypes: true,
-      supportsApplicationPasswords: true,
-      supportsOAuth2: true
-    },
-    ["application-passwords" /* RestApi_ApplicationPasswords */]: {
-      supportsCategoryCreation: true,
-      supportsTagCreation: true,
-      supportsRichCategoryProperties: true,
-      supportsBatchOperations: true,
-      supportsCustomPostTypes: true,
-      supportsApplicationPasswords: true,
-      supportsOAuth2: false
-    },
-    ["WpComOAuth2" /* RestApi_WpComOAuth2 */]: {
-      supportsCategoryCreation: true,
-      supportsTagCreation: true,
-      supportsRichCategoryProperties: true,
-      supportsBatchOperations: true,
-      supportsCustomPostTypes: true,
-      supportsApplicationPasswords: false,
-      supportsOAuth2: true
-    }
-  };
-  return capabilities[apiType] || capabilities["application-passwords" /* RestApi_ApplicationPasswords */];
-}
-function getApiLimitations(apiType) {
-  const capabilities = getApiCapabilities(apiType);
-  const limitations = [];
-  if (!capabilities.supportsRichCategoryProperties) {
-    limitations.push("Limited category properties (description, slug, parent may not be fully supported)");
-  }
-  if (!capabilities.supportsBatchOperations) {
-    limitations.push("No batch operations support");
-  }
-  if (!capabilities.supportsCustomPostTypes) {
-    limitations.push("Limited custom post type support");
-  }
-  if (apiType === "xml-rpc" /* XML_RPC */) {
-    limitations.push("Uses basic authentication (consider switching to REST API with application passwords for better security)");
-    limitations.push("Some modern WordPress features may not be available");
-  }
-  return limitations;
-}
-function getApiRecommendation(apiType) {
-  switch (apiType) {
-    case "xml-rpc" /* XML_RPC */:
-      return "Consider migrating to REST API with Application Passwords for better security and feature support";
-    case "miniOrange" /* RestAPI_miniOrange */:
-      return "Using miniOrange authentication - ensure your WordPress site has the miniOrange plugin installed";
-    case "application-passwords" /* RestApi_ApplicationPasswords */:
-      return "Best practice: Using WordPress Application Passwords for secure REST API access";
-    case "WpComOAuth2" /* RestApi_WpComOAuth2 */:
-      return "Using WordPress.com OAuth2 authentication for WordPress.com sites";
-    default:
-      return "Unknown API type";
-  }
-}
-var init_api_capability = __esm({
-  "src/api-capability.ts"() {
+// src/sections/content-preview-section.ts
+var ContentPreviewSection;
+var init_content_preview_section = __esm({
+  "src/sections/content-preview-section.ts"() {
     "use strict";
-    init_plugin_settings();
-  }
-});
-
-// src/api-info-modal.ts
-function showApiInfoModal(plugin4, apiType) {
-  new ApiInfoModal(plugin4.app, apiType, plugin4.i18n).open();
-}
-var import_obsidian9, ApiInfoModal;
-var init_api_info_modal = __esm({
-  "src/api-info-modal.ts"() {
-    "use strict";
-    import_obsidian9 = require("obsidian");
-    init_api_capability();
-    ApiInfoModal = class extends import_obsidian9.Modal {
-      constructor(app, apiType, i18n) {
-        super(app);
-        this.apiType = apiType;
-        this.i18n = i18n;
+    init_modal_helpers();
+    init_app_state();
+    init_html_sanitizer();
+    init_v3_layout();
+    ContentPreviewSection = class {
+      constructor(ctx) {
+        this.ctx = ctx;
       }
-      onOpen() {
-        const { contentEl } = this;
-        contentEl.empty();
-        contentEl.addClass("wp-api-info-modal");
-        const header = contentEl.createDiv("wp-api-info-modal-header");
-        header.createEl("h3", { text: this.i18n.t("apiInfo_title") });
-        const closeButton = header.createEl("button", {
-          cls: "wp-api-info-modal-close",
-          text: "\xD7"
-        });
-        closeButton.addEventListener("click", () => this.close());
-        const body = contentEl.createDiv("wp-api-info-modal-body");
-        this.renderCapabilities(body);
-        this.renderSection(body, "Limitations", this.renderLimitations);
-        this.renderRecommendation(body);
-        this.renderSecurityNote(body);
-        const footer = contentEl.createDiv("wp-api-info-footer");
-        const close = footer.createEl("button", {
-          cls: "mod-cta",
-          text: this.i18n.t("apiInfo_close")
-        });
-        close.addEventListener("click", () => this.close());
+      render(container, params) {
+        const ctx = this.ctx;
+        let isContentEditing = false;
+        let originalContent = "";
+        const section = createV3Section(
+          container,
+          ctx.plugin.t("publishModal_previewContent") || "Content Preview",
+          []
+        );
+        section.dataset.contentSection = "true";
+        const body = section.createDiv("wp-v3-section-body");
+        const renderHtmlPreview = () => {
+          body.empty();
+          section.removeClass("is-editing");
+          renderExcerptRow(body, params);
+          renderTagsRow(body, params);
+          const previewDiv = body.createDiv("wp-v3-content-preview");
+          const html4 = AppState.markdownParser.render(ctx.editableContent);
+          previewDiv.innerHTML = sanitizeHtml(html4);
+        };
+        const enterContentEdit = () => {
+          if (isContentEditing) return;
+          isContentEditing = true;
+          originalContent = ctx.editableContent;
+          section.addClass("is-editing");
+          body.empty();
+          const textarea = body.createEl("textarea", { cls: "wp-v3-content-edit-area" });
+          textarea.value = ctx.editableContent;
+          textarea.placeholder = ctx.plugin.t("publishModal_previewEditPlaceholder") || "Edit Markdown content...";
+          const actions = body.createDiv("wp-v3-edit-actions");
+          const cancelBtn = actions.createEl("button", { text: ctx.plugin.t("publishModal_cancel") || "Cancel", cls: "wp-v3-cancel-btn" });
+          const saveBtn = actions.createEl("button", { text: ctx.plugin.t("publishModal_save") || "Save", cls: "wp-v3-save-btn" });
+          saveBtn.onclick = () => {
+            ctx.editableContent = textarea.value;
+            isContentEditing = false;
+            renderHtmlPreview();
+          };
+          cancelBtn.onclick = () => {
+            ctx.editableContent = originalContent;
+            isContentEditing = false;
+            renderHtmlPreview();
+          };
+          textarea.addEventListener("keydown", (e) => {
+            if (e.key === "Escape") {
+              e.preventDefault();
+              ctx.editableContent = originalContent;
+              isContentEditing = false;
+              renderHtmlPreview();
+            } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+              e.preventDefault();
+              saveBtn.click();
+            }
+          });
+          textarea.focus();
+        };
+        section.__enterContentEdit = enterContentEdit;
+        const renderExcerptRow = (parent2, p) => {
+          const excerptWrap = parent2.createDiv("wp-v3-excerpt-row");
+          if (p.excerpt) {
+            const textEl = excerptWrap.createDiv("wp-v3-excerpt-inline-text");
+            textEl.textContent = p.excerpt;
+            const editBtn = excerptWrap.createEl("button", {
+              text: "\u270F\uFE0F",
+              cls: "wp-v3-inline-edit-btn",
+              attr: { title: ctx.plugin.t("publishModal_editButton") || "Edit excerpt" }
+            });
+            editBtn.onclick = () => openExcerptModal(p);
+          } else {
+            const placeholder = excerptWrap.createDiv("wp-v3-excerpt-placeholder");
+            const btnRow = placeholder.createDiv("wp-v3-placeholder-btn-row");
+            const aiBtn = btnRow.createEl("button", {
+              text: ctx.plugin.t("publishModal_aiGenerateSummary"),
+              cls: "wp-v3-placeholder-btn"
+            });
+            aiBtn.onclick = () => ctx.generateSummary(p);
+            const manualBtn = btnRow.createEl("button", {
+              text: ctx.plugin.t("publishModal_manualInput"),
+              cls: "wp-v3-placeholder-btn"
+            });
+            manualBtn.onclick = () => openExcerptModal(p);
+          }
+        };
+        const openExcerptModal = (p) => {
+          const overlay = body.createDiv("wp-v3-excerpt-edit-overlay");
+          const originalVal = p.excerpt || "";
+          const textarea = overlay.createEl("textarea", {
+            cls: "wp-v3-textarea",
+            attr: { placeholder: ctx.plugin.t("publishModal_excerptPlaceholder") || "Enter excerpt..." }
+          });
+          textarea.value = originalVal;
+          textarea.rows = 4;
+          const actions = overlay.createDiv("wp-v3-edit-actions");
+          const cancelBtn = actions.createEl("button", { text: ctx.plugin.t("publishModal_cancel") || "Cancel", cls: "wp-v3-cancel-btn" });
+          const saveBtn = actions.createEl("button", { text: ctx.plugin.t("publishModal_save") || "Save", cls: "wp-v3-save-btn" });
+          saveBtn.onclick = () => {
+            p.excerpt = textarea.value;
+            overlay.remove();
+            renderHtmlPreview();
+          };
+          cancelBtn.onclick = () => {
+            p.excerpt = originalVal;
+            overlay.remove();
+            renderHtmlPreview();
+          };
+          textarea.addEventListener("keydown", (e) => {
+            if (e.key === "Escape") {
+              p.excerpt = originalVal;
+              overlay.remove();
+              renderHtmlPreview();
+            } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+              e.preventDefault();
+              saveBtn.click();
+            }
+          });
+          textarea.focus();
+        };
+        const renderTagsRow = (parent2, p) => {
+          if ((p.tags || []).length > 0 && JSON.stringify(p.tags) !== JSON.stringify(ctx.editableTags)) {
+            ctx.editableTags = p.tags ? [...p.tags] : [];
+          }
+          const tagsWrap = parent2.createDiv("wp-v3-tags-row");
+          let isTagEditing = false;
+          const renderTagsContent = () => {
+            tagsWrap.empty();
+            if (ctx.editableTags.length > 0) {
+              const tagsContainer = tagsWrap.createDiv("wp-v3-tags-container");
+              if (isTagEditing) {
+                ctx.editableTags.forEach((tag, index2) => {
+                  const tagEl = tagsContainer.createEl("span", { cls: "wp-v3-tag-item is-shaking is-draggable" });
+                  tagEl.style.backgroundColor = getTagColor(tag);
+                  tagEl.dataset.tagIndex = String(index2);
+                  tagEl.createSpan({ text: tag });
+                  const xBtn = tagEl.createEl("button", { cls: "wp-v3-tag-delete-btn", text: "\xD7" });
+                  xBtn.addEventListener("click", (e) => {
+                    e.stopPropagation();
+                    ctx.editableTags = ctx.editableTags.filter((t) => t !== tag);
+                    p.tags = [...ctx.editableTags];
+                    renderTagsContent();
+                  });
+                });
+                const addBtn = tagsContainer.createEl("button", { cls: "wp-v3-tag-action-btn", text: "+", attr: { title: ctx.plugin.t("publishModal_addTag") } });
+                addBtn.onclick = () => showInlineTagInput(tagsContainer, addBtn, p, renderTagsContent);
+                this.enableTagDragSort(tagsContainer, p, renderTagsContent);
+                const actionsRow = tagsWrap.createDiv("wp-v3-tags-editing-actions");
+                const doneBtn = actionsRow.createEl("button", {
+                  text: ctx.plugin.t("publishModal_save") || "Done",
+                  cls: "wp-v3-tag-action-btn wp-v3-tag-done-btn"
+                });
+                doneBtn.onclick = () => {
+                  isTagEditing = false;
+                  renderTagsContent();
+                };
+              } else {
+                ctx.editableTags.forEach((tag) => {
+                  const tagEl = tagsContainer.createEl("span", { cls: "wp-v3-tag-item" });
+                  tagEl.style.backgroundColor = getTagColor(tag);
+                  tagEl.createSpan({ text: tag });
+                });
+                const editBtn = tagsContainer.createEl("button", {
+                  text: "\u270F\uFE0F",
+                  cls: "wp-v3-inline-edit-btn",
+                  attr: { title: ctx.plugin.t("publishModal_editButton") || "Edit tags" }
+                });
+                editBtn.onclick = () => {
+                  isTagEditing = true;
+                  renderTagsContent();
+                };
+              }
+            } else {
+              const emptyRow = tagsWrap.createDiv("wp-v3-tags-empty-row");
+              const addBtn = emptyRow.createEl("button", {
+                text: ctx.plugin.t("publishModal_addTag"),
+                cls: "wp-v3-placeholder-btn"
+              });
+              addBtn.onclick = () => {
+                isTagEditing = true;
+                tagsWrap.empty();
+                const tagsContainer = tagsWrap.createDiv("wp-v3-tags-container");
+                const btnArea = tagsWrap.createDiv("wp-v3-tags-btn-area");
+                const plusBtn = btnArea.createEl("button", { cls: "wp-v3-tag-action-btn", text: "+", attr: { title: ctx.plugin.t("publishModal_addTag") } });
+                plusBtn.onclick = () => showInlineTagInput(tagsContainer, plusBtn, p, renderTagsContent);
+                showInlineTagInput(tagsContainer, plusBtn, p, renderTagsContent);
+              };
+              const aiBtn = emptyRow.createEl("button", {
+                text: ctx.plugin.t("publishModal_aiGenerateTags"),
+                cls: "wp-v3-placeholder-btn"
+              });
+              aiBtn.onclick = () => ctx.generateTags(p);
+            }
+          };
+          renderTagsContent();
+        };
+        const showInlineTagInput = (parent2, triggerBtn, p, onDone) => {
+          triggerBtn.style.display = "none";
+          const input = parent2.createEl("input", { cls: "wp-v3-tag-input", type: "text" });
+          input.placeholder = ctx.plugin.t("publishModal_tagInputPlaceholder") || "\u8F93\u5165\u6807\u7B7E...";
+          input.focus();
+          let committed = false;
+          const commit = () => {
+            if (committed) return;
+            committed = true;
+            const val2 = input.value.trim();
+            if (val2 && !ctx.editableTags.includes(val2)) {
+              ctx.editableTags.push(val2);
+              p.tags = [...ctx.editableTags];
+            }
+            input.remove();
+            triggerBtn.style.display = "";
+            onDone();
+          };
+          input.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              commit();
+            } else if (e.key === "Escape") {
+              committed = true;
+              input.remove();
+              triggerBtn.style.display = "";
+            }
+          });
+          input.addEventListener("blur", () => setTimeout(commit, 200));
+        };
+        renderHtmlPreview();
       }
-      onClose() {
-        this.contentEl.empty();
-      }
-      renderCapabilities(container) {
-        const capabilities = getApiCapabilities(this.apiType);
-        container.createEl("h4", { text: "Supported Features" });
-        const list3 = container.createEl("ul", { cls: "wp-api-info-features" });
-        const rows = [
-          [capabilities.supportsCategoryCreation, "Category Creation"],
-          [capabilities.supportsTagCreation, "Tag Creation"],
-          [capabilities.supportsRichCategoryProperties, "Rich Category Properties"],
-          [capabilities.supportsBatchOperations, "Batch Operations"],
-          [capabilities.supportsCustomPostTypes, "Custom Post Types"]
-        ];
-        for (const [supported, label] of rows) {
-          list3.createEl("li", { text: `${supported ? "\u2705" : "\u274C"} ${label}` });
-        }
-      }
-      renderSection(container, title, render3) {
-        container.createEl("h4", { text: title });
-        render3(container);
-      }
-      renderLimitations(container) {
-        const limitations = getApiLimitations(this.apiType);
-        if (limitations.length === 0) {
-          container.createEl("p", { text: "\u2014" });
-          return;
-        }
-        const list3 = container.createEl("ul", { cls: "wp-api-info-limitations" });
-        for (const limitation of limitations) {
-          list3.createEl("li", { text: limitation });
-        }
-      }
-      renderRecommendation(container) {
-        const recommendation = getApiRecommendation(this.apiType);
-        container.createEl("h4", { text: "Recommendation" });
-        container.createEl("p", { text: recommendation });
-      }
-      renderSecurityNote(container) {
-        container.createEl("h4", { text: "Security Note" });
-        container.createEl("p", {
-          text: "XML-RPC uses basic authentication which may be less secure than REST API with Application Passwords. Consider migrating to REST API for better security and feature support."
+      // ==================== 标签拖拽排序（桌面 + 移动端） ====================
+      enableTagDragSort(container, p, onReorder) {
+        const ctx = this.ctx;
+        let draggingEl = null;
+        let ghost = null;
+        let placeholder = null;
+        let originIndex = -1;
+        const getTagEls = () => Array.from(container.querySelectorAll(".wp-v3-tag-item.is-draggable"));
+        const getIndexOf = (el) => getTagEls().indexOf(el);
+        const createGhost = (source, clientX, clientY) => {
+          ghost = source.cloneNode(true);
+          ghost.className = "wp-v3-tag-item wp-v3-drag-ghost";
+          ghost.style.backgroundColor = source.style.backgroundColor;
+          ghost.style.left = `${clientX - source.offsetWidth / 2}px`;
+          ghost.style.top = `${clientY - source.offsetHeight / 2}px`;
+          document.body.appendChild(ghost);
+        };
+        const moveGhost = (clientX, clientY) => {
+          if (!ghost || !draggingEl) return;
+          ghost.style.left = `${clientX - draggingEl.offsetWidth / 2}px`;
+          ghost.style.top = `${clientY - draggingEl.offsetHeight / 2}px`;
+        };
+        const getTargetEl = (clientX, clientY) => {
+          const els = getTagEls().filter((el) => el !== draggingEl);
+          for (const el of els) {
+            const rect = el.getBoundingClientRect();
+            if (clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom) {
+              return el;
+            }
+          }
+          return null;
+        };
+        const applyReorder = (targetEl) => {
+          const fromIdx = getIndexOf(draggingEl);
+          const toIdx = getIndexOf(targetEl);
+          if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return;
+          const arr = [...ctx.editableTags];
+          const [item] = arr.splice(fromIdx, 1);
+          arr.splice(toIdx, 0, item);
+          ctx.editableTags = arr;
+          p.tags = [...arr];
+        };
+        const endDrag = (clientX, clientY) => {
+          if (!draggingEl) return;
+          const target = getTargetEl(clientX, clientY);
+          if (target) applyReorder(target);
+          draggingEl.classList.remove("is-dragging");
+          if (ghost) {
+            ghost.remove();
+            ghost = null;
+          }
+          if (placeholder) {
+            placeholder.remove();
+            placeholder = null;
+          }
+          draggingEl = null;
+          onReorder();
+        };
+        getTagEls().forEach((tagEl) => {
+          tagEl.addEventListener("pointerdown", (e) => {
+            if (e.target.classList.contains("wp-v3-tag-delete-btn")) return;
+            e.preventDefault();
+            draggingEl = tagEl;
+            originIndex = getIndexOf(tagEl);
+            tagEl.classList.add("is-dragging");
+            tagEl.setPointerCapture(e.pointerId);
+            createGhost(tagEl, e.clientX, e.clientY);
+          });
+          tagEl.addEventListener("pointermove", (e) => {
+            if (!draggingEl || draggingEl !== tagEl) return;
+            e.preventDefault();
+            moveGhost(e.clientX, e.clientY);
+          });
+          tagEl.addEventListener("pointerup", (e) => {
+            if (!draggingEl || draggingEl !== tagEl) return;
+            endDrag(e.clientX, e.clientY);
+          });
+          tagEl.addEventListener("pointercancel", () => {
+            if (draggingEl) {
+              draggingEl.classList.remove("is-dragging");
+              if (ghost) {
+                ghost.remove();
+                ghost = null;
+              }
+              draggingEl = null;
+              onReorder();
+            }
+          });
         });
       }
     };
   }
 });
 
-// src/modal-helpers.ts
-function getTagColor(tagName) {
-  const hash = tagName.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
-  return TAG_COLORS[hash % TAG_COLORS.length];
-}
-function detectLanguage(text5) {
-  if (!text5 || text5.length < 10) return "en";
-  const chineseChars = text5.match(/[\u4e00-\u9fa5]/g);
-  const chineseCount = chineseChars ? chineseChars.length : 0;
-  const englishChars = text5.match(/[a-zA-Z]/g);
-  const englishCount = englishChars ? englishChars.length : 0;
-  if (chineseCount > text5.length * 0.3) {
-    return "zh";
-  }
-  if (englishCount > text5.length * 0.4) {
-    return "en";
-  }
-  return "other";
-}
-function getLocalizedPrompt(plugin4, language, type) {
-  if (type === "summary" && plugin4.settings.summaryPrompt) {
-    return plugin4.settings.summaryPrompt;
-  } else if (type === "tags" && plugin4.settings.tagsPrompt) {
-    return plugin4.settings.tagsPrompt;
-  } else if (type === "image" && plugin4.settings.imageGenerationPrompt) {
-    return plugin4.settings.imageGenerationPrompt;
-  }
-  if (language === "en" || language === "other") {
-    if (type === "summary") {
-      return plugin4.t("defaultPrompt_summaryEn");
-    } else if (type === "tags") {
-      return plugin4.t("defaultPrompt_tagsEn");
-    } else {
-      return plugin4.t("defaultPrompt_imageEn");
-    }
-  }
-  if (type === "summary") {
-    return plugin4.t("defaultPrompt_summary");
-  } else if (type === "tags") {
-    return plugin4.t("defaultPrompt_tags");
-  } else {
-    return plugin4.t("defaultPrompt_image");
-  }
-}
-function getMimeTypeFromResponse(contentType, url) {
-  var _a5, _b;
-  if (contentType == null ? void 0 : contentType.startsWith("image/")) {
-    return contentType.split(";")[0];
-  }
-  const ext = (_b = (_a5 = url.split(".").pop()) == null ? void 0 : _a5.toLowerCase()) == null ? void 0 : _b.split("?")[0];
-  return getMimeType(ext || "jpg");
-}
-function extractFileName(url) {
-  var _a5;
-  const urlParts = url.split("/");
-  const lastPart = (_a5 = urlParts[urlParts.length - 1]) == null ? void 0 : _a5.split("?")[0];
-  return lastPart && lastPart.includes(".") ? lastPart : "featured-image.jpg";
-}
-function getMimeType(extension) {
-  return MIME_TYPES2[extension.toLowerCase()] || "image/jpeg";
-}
-function formatFileSize(bytes) {
-  if (bytes < 1024) return bytes + " B";
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
-  return (bytes / (1024 * 1024)).toFixed(1) + " MB";
-}
-function truncateMiddle(str, prefixLen = 10, suffixLen = 8) {
-  if (str.length <= prefixLen + suffixLen + 3) return str;
-  return str.slice(0, prefixLen) + "..." + str.slice(str.length - suffixLen);
-}
-function normalizeTags(tags) {
-  return TagFormatter.parseToArray(tags);
-}
-var TAG_COLORS, MIME_TYPES2;
-var init_modal_helpers = __esm({
-  "src/modal-helpers.ts"() {
+// src/sections/settings-sidebar.ts
+var SettingsSidebar;
+var init_settings_sidebar = __esm({
+  "src/sections/settings-sidebar.ts"() {
     "use strict";
-    init_tag_formatter();
-    TAG_COLORS = [
-      "var(--wp-tag-color-1)",
-      "var(--wp-tag-color-2)",
-      "var(--wp-tag-color-3)",
-      "var(--wp-tag-color-4)",
-      "var(--wp-tag-color-5)",
-      "var(--wp-tag-color-6)",
-      "var(--wp-tag-color-7)",
-      "var(--wp-tag-color-8)",
-      "var(--wp-tag-color-9)"
-    ];
-    MIME_TYPES2 = {
-      "jpg": "image/jpeg",
-      "jpeg": "image/jpeg",
-      "png": "image/png",
-      "gif": "image/gif",
-      "webp": "image/webp"
+    init_wp_api();
+    init_slug_generator();
+    init_date_fns();
+    init_v3_layout();
+    SettingsSidebar = class {
+      constructor(ctx) {
+        this.ctx = ctx;
+      }
+      render(container, params) {
+        this.renderSettingsCard(container, params);
+        this.renderHistoryCard(container, params);
+      }
+      renderSettingsCard(container, params) {
+        const ctx = this.ctx;
+        const card = container.createDiv("wp-v3-settings-card");
+        card.createDiv({
+          cls: "wp-v3-settings-card-title",
+          text: ctx.plugin.t("publishModal_basicSettings") || "Settings"
+        });
+        const body = card.createDiv("wp-v3-settings-body");
+        renderV3Field(ctx, body, ctx.plugin.t("publishModal_titleName"), "publishModal_titleInfo", (fieldEl) => {
+          const input = fieldEl.createEl("input", { cls: "wp-v3-input", type: "text" });
+          input.value = params.title || "";
+          input.placeholder = ctx.plugin.t("publishModal_titlePlaceholder");
+          ctx.titleInput = input;
+          input.addEventListener("input", () => {
+            params.title = input.value;
+          });
+          input.addEventListener("blur", () => {
+            if (ctx.plugin.settings.autoGenerateSlug && ctx.slugInput) {
+              if (!ctx.lastAutoGeneratedSlug || params.slug === ctx.lastAutoGeneratedSlug) {
+                ctx.generateDefaultSlug(params.title, params);
+                ctx.lastAutoGeneratedSlug = params.slug || "";
+                if (ctx.slugInput) ctx.slugInput.value = params.slug || "";
+              }
+            }
+          });
+        });
+        renderV3Field(ctx, body, ctx.plugin.t("publishModal_slugName"), "publishModal_slugInfo", (fieldEl) => {
+          const slugRow = fieldEl.createDiv();
+          slugRow.style.display = "flex";
+          slugRow.style.gap = "6px";
+          slugRow.style.alignItems = "center";
+          const input = fieldEl.createEl("input", { cls: "wp-v3-input", type: "text" });
+          input.value = params.slug || "";
+          input.placeholder = ctx.plugin.t("publishModal_slugPlaceholder");
+          ctx.slugInput = input;
+          const initialSlugValue = params.slug;
+          input.addEventListener("input", () => {
+            const sanitized = SlugGenerator.sanitizeSlug(input.value);
+            params.slug = sanitized;
+            if (sanitized && initialSlugValue && sanitized !== initialSlugValue) {
+              ctx.lastAutoGeneratedSlug = "";
+            }
+          });
+        });
+        body.createDiv("wp-v3-divider");
+        renderV3Field(ctx, body, ctx.plugin.t("publishModal_statusName"), "publishModal_statusDesc", (fieldEl) => {
+          const select2 = fieldEl.createEl("select", { cls: "wp-v3-select" });
+          [
+            ["draft" /* Draft */, ctx.plugin.t("publishModal_statusDraft")],
+            ["publish" /* Publish */, ctx.plugin.t("publishModal_statusPublish")],
+            ["private" /* Private */, ctx.plugin.t("publishModal_statusPrivate")],
+            ["future" /* Future */, ctx.plugin.t("publishModal_statusFuture")]
+          ].forEach(([val2, label]) => {
+            const opt = select2.createEl("option", { value: val2, text: label });
+            if (val2 === params.status) opt.selected = true;
+          });
+          select2.addEventListener("change", () => {
+            params.status = select2.value;
+            ctx.display(params);
+          });
+        });
+        if (params.status === "future" /* Future */) {
+          renderV3Field(ctx, body, ctx.plugin.t("publishModal_postDateTimeName"), "publishModal_postDateTimeDescFormat", (fieldEl) => {
+            const input = fieldEl.createEl("input", { cls: "wp-v3-input", type: "text" });
+            input.value = format(/* @__PURE__ */ new Date(), "yyyy-MM-dd HH:mm:ss");
+            this.ctx.setupDateMask(input, params);
+          });
+        } else {
+          delete params.datetime;
+        }
+        renderV3Field(ctx, body, ctx.plugin.t("publishModal_commentName"), "publishModal_commentDesc", (fieldEl) => {
+          const select2 = fieldEl.createEl("select", { cls: "wp-v3-select" });
+          [
+            ["open" /* Open */, ctx.plugin.t("publishModal_commentOpen")],
+            ["closed" /* Closed */, ctx.plugin.t("publishModal_commentClosed")]
+          ].forEach(([val2, label]) => {
+            const opt = select2.createEl("option", { value: val2, text: label });
+            if (val2 === params.commentStatus) opt.selected = true;
+          });
+          select2.addEventListener("change", () => {
+            params.commentStatus = select2.value;
+          });
+        });
+        renderV3Field(ctx, body, ctx.plugin.t("publishModal_postTypeName"), "publishModal_postTypeDesc", (fieldEl) => {
+          const select2 = fieldEl.createEl("select", { cls: "wp-v3-select" });
+          [
+            ["html", ctx.plugin.t("publishModal_formatHTML")],
+            ["markdown", ctx.plugin.t("publishModal_formatMarkdown")]
+          ].forEach(([val2, label]) => {
+            select2.createEl("option", { value: val2, text: label });
+          });
+          select2.addEventListener("change", () => {
+            params.contentFormat = select2.value;
+          });
+        });
+        const getValidCategoriesV3 = () => ctx.categories.items.filter((it) => it.name && it.name.trim());
+        body.createDiv("wp-v3-divider");
+        renderV3Field(ctx, body, ctx.plugin.t("publishModal_categoryName"), "publishModal_categoryInfo", (fieldEl) => {
+          const tagsWrap = fieldEl.createDiv();
+          tagsWrap.style.display = "flex";
+          tagsWrap.style.flexWrap = "wrap";
+          tagsWrap.style.gap = "4px";
+          if (params.categories.length === 0) {
+            const uncategorized = getValidCategoriesV3().find(
+              (it) => ["Uncategorized", "\u672A\u5206\u7C7B", ctx.plugin.t("publishModal_uncategorized")].includes(it.name)
+            );
+            if (uncategorized) params.categories = [Number(uncategorized.id)];
+          }
+          const renderCats = () => {
+            tagsWrap.empty();
+            const validCategories = getValidCategoriesV3();
+            params.categories.forEach((catId) => {
+              const cat = validCategories.find((c) => Number(c.id) === catId);
+              if (!cat) return;
+              const tag = tagsWrap.createEl("span", { cls: "wp-v3-tag-item" });
+              tag.style.backgroundColor = "var(--interactive-accent)";
+              tag.style.fontSize = "11px";
+              tag.createSpan({ text: cat.name });
+              const removeBtn = tag.createEl("button", { cls: "wp-v3-tag-delete-btn", text: "\xD7" });
+              removeBtn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                params.categories = params.categories.filter((id) => id !== catId);
+                renderCats();
+              });
+            });
+            const btnRow = tagsWrap.createEl("span", { cls: "wp-v3-cat-btn-row" });
+            const available = validCategories.filter((cat) => !params.categories.includes(Number(cat.id)));
+            const select2 = btnRow.createEl("select", { cls: "wp-v3-select" });
+            select2.style.width = "auto";
+            select2.style.fontSize = "11px";
+            select2.createEl("option", { value: "", text: ctx.plugin.t("publishModal_selectCategory") || "\u9009\u62E9\u5206\u7C7B..." });
+            available.forEach((cat) => select2.createEl("option", { value: String(cat.id), text: cat.name }));
+            select2.addEventListener("change", () => {
+              if (select2.value) {
+                params.categories.push(Number(select2.value));
+                renderCats();
+              }
+            });
+            const addBtn = btnRow.createEl("button", { cls: "wp-v3-cat-add-btn", text: ctx.plugin.t("publishModal_addCategory") || "\u589E\u52A0" });
+            addBtn.addEventListener("click", () => {
+              addBtn.style.display = "none";
+              const input = btnRow.createEl("input", { cls: "wp-v3-input", type: "text" });
+              input.style.width = "80px";
+              input.style.fontSize = "11px";
+              input.placeholder = ctx.plugin.t("publishModal_newCategoryPlaceholder") || "\u65B0\u5206\u7C7B\u540D\u79F0";
+              const commit = () => {
+                const name = input.value.trim();
+                if (name) {
+                  const tempId = -(ctx.categories.items.length + 100 + params.categories.length);
+                  ctx.categories.items.push({ id: String(tempId), name, slug: name.toLowerCase().replace(/\s+/g, "-"), taxonomy: "category", description: "", count: 0 });
+                  params.categories.push(tempId);
+                }
+                input.remove();
+                addBtn.style.display = "";
+                renderCats();
+              };
+              let v3CatCommitted = false;
+              input.addEventListener("keydown", (e) => {
+                if (e.key === "Enter") {
+                  v3CatCommitted = true;
+                  commit();
+                }
+                if (e.key === "Escape") {
+                  v3CatCommitted = true;
+                  input.remove();
+                  addBtn.style.display = "";
+                }
+              });
+              input.addEventListener("blur", () => {
+                if (!v3CatCommitted) commit();
+              });
+              input.focus();
+            });
+          };
+          renderCats();
+        });
+        if (ctx.matterData.postId) {
+          body.createDiv("wp-v3-divider");
+          const toggleRow = body.createDiv("wp-v3-toggle-row");
+          const labelRow = toggleRow.createDiv("wp-v3-field-label-row");
+          labelRow.createSpan({ text: ctx.plugin.t("publishModal_publishAsNewName"), cls: "wp-v3-field-label" });
+          addV3HintBtn(labelRow, ctx.plugin.t("publishModal_publishAsNewDesc"));
+          const label = toggleRow.createEl("label", { cls: "wp-v3-toggle" });
+          const checkbox = label.createEl("input", { type: "checkbox" });
+          checkbox.checked = params.publishAsNew || false;
+          checkbox.addEventListener("change", () => {
+            params.publishAsNew = checkbox.checked;
+          });
+          label.createDiv("wp-v3-toggle-slider");
+        }
+      }
+      renderHistoryCard(container, params) {
+        const ctx = this.ctx;
+        const card = container.createDiv("wp-v3-settings-card wp-v3-collapsible-card");
+        card.addClass("is-collapsed");
+        const titleRow = card.createDiv("wp-v3-settings-card-title wp-v3-card-title-clickable");
+        titleRow.createSpan({ text: ctx.plugin.t("publishModal_historyPanel") || "History" });
+        const chevron = titleRow.createSpan({ cls: "wp-v3-collapse-chevron", text: "\u25B6" });
+        const body = card.createDiv("wp-v3-settings-body wp-v3-collapsible-body");
+        body.style.display = "none";
+        const historyList = body.createDiv("wp-v3-history-list");
+        historyList.createDiv({ cls: "wp-v3-history-empty", text: ctx.plugin.t("publishModal_noHistory") || "No history yet" });
+        titleRow.addEventListener("click", () => {
+          const collapsed = card.hasClass("is-collapsed");
+          if (collapsed) {
+            card.removeClass("is-collapsed");
+            body.style.display = "";
+            chevron.textContent = "\u25BC";
+          } else {
+            card.addClass("is-collapsed");
+            body.style.display = "none";
+            chevron.textContent = "\u25B6";
+          }
+        });
+      }
     };
   }
 });
 
 // src/wp-publish-modal-v2.ts
-var import_obsidian10, log5, WpPublishModalV2;
+var import_obsidian11, log5, WpPublishModalV2;
 var init_wp_publish_modal_v2 = __esm({
   "src/wp-publish-modal-v2.ts"() {
     "use strict";
-    import_obsidian10 = require("obsidian");
+    import_obsidian11 = require("obsidian");
     init_date_fns();
     init_esm10();
     init_wp_api();
@@ -109033,13 +109861,14 @@ var init_wp_publish_modal_v2 = __esm({
     init_featured_image_modal();
     init_unsplash_service();
     init_ai_service();
-    init_app_state();
     init_image_cache_manager();
     init_logger();
     init_tag_formatter();
-    init_html_sanitizer();
     init_api_capability();
     init_api_info_modal();
+    init_featured_image_section();
+    init_content_preview_section();
+    init_settings_sidebar();
     init_modal_helpers();
     log5 = createModuleLogger("WpPublishModalV2");
     WpPublishModalV2 = class extends AbstractModal {
@@ -109053,16 +109882,13 @@ var init_wp_publish_modal_v2 = __esm({
         this.articleContent = articleContent;
         this.noteTitle = noteTitle;
         this.dateInputMask = null;
+        // ── PublishModalContext surface (shared with extracted section components) ──
         this.featuredImage = null;
         this.aiService = null;
         this.unsplashService = null;
         this.slugInput = null;
         this.titleInput = null;
-        this.currentTab = "settings";
-        this.currentAITab = "featured-image";
-        // AI 标签页状态
         this.editableContent = "";
-        this.isEditingPreview = false;
         this.autoFeaturedImage = null;
         this.slugGenerated = false;
         this.lastAutoGeneratedSlug = "";
@@ -109075,8 +109901,6 @@ var init_wp_publish_modal_v2 = __esm({
         this.currentParams = null;
         // 当前的发布参数，用于在关闭时保存生成的内容
         this.editableTags = [];
-        // 可编辑的标签数组（预览标签页使用）
-        this.tagsContainer = null;
         // 从缓存或远程获取的特色图片 ID
         this.isLoadingRemoteImage = false;
         // 是否正在加载远程图片
@@ -109226,7 +110050,7 @@ var init_wp_publish_modal_v2 = __esm({
       async loadFeaturePictureFromUrl(url) {
         try {
           log5.info("Loading featured image from URL:", url);
-          const response = await (0, import_obsidian10.requestUrl)({
+          const response = await (0, import_obsidian11.requestUrl)({
             url,
             method: "GET"
           });
@@ -109347,7 +110171,7 @@ var init_wp_publish_modal_v2 = __esm({
       }
       async loadLocalImage(imagePath) {
         const file = this.app.metadataCache.getFirstLinkpathDest(imagePath, this.noteTitle);
-        if (file instanceof import_obsidian10.TFile) {
+        if (file instanceof import_obsidian11.TFile) {
           const binaryContent = await this.app.vault.readBinary(file);
           this.autoFeaturedImage = {
             fileName: file.name,
@@ -109363,7 +110187,7 @@ var init_wp_publish_modal_v2 = __esm({
       }
       async loadOnlineImage(imagePath) {
         try {
-          const response = await (0, import_obsidian10.requestUrl)({
+          const response = await (0, import_obsidian11.requestUrl)({
             url: imagePath,
             method: "GET"
           });
@@ -109386,7 +110210,7 @@ var init_wp_publish_modal_v2 = __esm({
       async loadEmptyImage() {
         try {
           const emptyFile = this.app.vault.getAbstractFileByPath("empty.png");
-          if (emptyFile instanceof import_obsidian10.TFile) {
+          if (emptyFile instanceof import_obsidian11.TFile) {
             const content = await this.app.vault.readBinary(emptyFile);
             this.autoFeaturedImage = {
               fileName: "empty.png",
@@ -109433,7 +110257,6 @@ var init_wp_publish_modal_v2 = __esm({
           params.featuredMedia = Number(this.matterData.featuredImageId);
         }
         this.editableContent = this.articleContent;
-        this.currentTab = "settings";
         if (!this.featuredImage && this.autoFeaturedImage) {
           this.featuredImage = this.autoFeaturedImage;
         }
@@ -109462,7 +110285,7 @@ var init_wp_publish_modal_v2 = __esm({
       async saveParamsToFrontmatter(params) {
         if (!this.notePath) return;
         const file = this.plugin.app.vault.getAbstractFileByPath(this.notePath);
-        if (!file || !(file instanceof import_obsidian10.TFile)) return;
+        if (!file || !(file instanceof import_obsidian11.TFile)) return;
         try {
           await this.plugin.app.fileManager.processFrontMatter(file, (fm) => {
             if (params.slug) fm.slug = params.slug;
@@ -109473,11 +110296,11 @@ var init_wp_publish_modal_v2 = __esm({
             }
             if (params.excerpt) fm.excerpt = params.excerpt;
           });
-          new import_obsidian10.Notice(this.t("publishModal_settingsSaved") || "Settings saved");
+          new import_obsidian11.Notice(this.t("publishModal_settingsSaved") || "Settings saved");
           this.close();
         } catch (error2) {
           log5.error("Failed to save params to frontmatter:", error2);
-          new import_obsidian10.Notice(this.plugin.t("error_saveFailed", { error: error2 instanceof Error ? error2.message : String(error2) }));
+          new import_obsidian11.Notice(this.plugin.t("error_saveFailed", { error: error2 instanceof Error ? error2.message : String(error2) }));
         }
       }
       /**
@@ -109489,7 +110312,7 @@ var init_wp_publish_modal_v2 = __esm({
           return;
         }
         const file = this.plugin.app.vault.getAbstractFileByPath(this.notePath);
-        if (!file || !(file instanceof import_obsidian10.TFile)) {
+        if (!file || !(file instanceof import_obsidian11.TFile)) {
           return;
         }
         try {
@@ -109587,1033 +110410,14 @@ var init_wp_publish_modal_v2 = __esm({
        * V3.1 左侧预览区：特色图片 / 摘要 / 标签 / 文章内容
        */
       renderV3PreviewArea(container, params) {
-        this.renderV3FeaturedImageSection(container, params);
-        this.renderV3ContentSection(container, params);
+        new FeaturedImageSection(this).render(container, params);
+        new ContentPreviewSection(this).render(container, params);
       }
       /**
        * V3.1 右侧设置区：基本设置 + 历史记录
        */
       renderV3SidebarArea(container, params) {
-        this.renderV3SettingsCard(container, params);
-        this.renderV3HistoryCard(container, params);
-      }
-      // ==================== V3.1 Section 辅助方法 ====================
-      /**
-       * 创建段落容器（带标题栏和操作按钮）
-       */
-      createV3Section(container, title, actions) {
-        const section = container.createDiv("wp-v3-section");
-        const header = section.createDiv("wp-v3-section-header");
-        header.createSpan({ text: title, cls: "wp-v3-section-title" });
-        const actionsEl = header.createDiv("wp-v3-section-actions");
-        if (actions && actions.length > 0) {
-          actions.forEach((action) => {
-            const btn = actionsEl.createEl("button", {
-              text: action.emoji,
-              cls: "wp-v3-icon-btn",
-              attr: { "aria-label": action.label, title: action.label }
-            });
-            btn.addEventListener("click", action.onClick);
-          });
-        }
-        return section;
-      }
-      // ==================== V3.1 特色图片段 ====================
-      renderV3FeaturedImageSection(container, params) {
-        const imageToDisplay = this.featuredImage || this.autoFeaturedImage;
-        const hasImage = !!imageToDisplay || !!this.matterData.featurePicture;
-        const section = this.createV3Section(
-          container,
-          this.t("publishModal_previewFeaturedImage") || "Featured Image",
-          []
-        );
-        const body = section.createDiv("wp-v3-section-body");
-        const updateHeaderActions = (opts = {}) => {
-          var _a5;
-          const actionsEl = section.querySelector(".wp-v3-section-actions");
-          if (!actionsEl) return;
-          actionsEl.empty();
-          if (opts.sourceLabel) {
-            const tag = actionsEl.createSpan({ cls: `wp-v3-featured-source-tag ${(_a5 = opts.sourceCls) != null ? _a5 : ""}` });
-            tag.textContent = opts.sourceLabel;
-          }
-          if (opts.fileName) {
-            const nameEl = actionsEl.createSpan({ cls: "wp-v3-img-filename" });
-            nameEl.textContent = truncateMiddle(opts.fileName);
-            nameEl.title = opts.fileName;
-          }
-          if (opts.showDelete) {
-            const delBtn = actionsEl.createEl("button", {
-              text: "\u274C",
-              cls: "wp-v3-icon-btn wp-v3-icon-btn-delete",
-              attr: { title: this.t("publishModal_removeImage") || "Remove image" }
-            });
-            delBtn.onclick = () => {
-              this.featuredImage = null;
-              this.autoFeaturedImage = null;
-              this.matterData.featurePicture = "";
-              renderSetup();
-            };
-          }
-        };
-        const renderPreview = () => {
-          body.empty();
-          const wrap2 = body.createDiv("wp-v3-featured-image-wrap");
-          if (this.isLoadingRemoteImage) {
-            const loading = wrap2.createDiv("wp-v3-featured-status-wrap");
-            loading.createEl("p", { text: this.t("publishModal_loadingRemoteImage") || "\u6B63\u5728\u52A0\u8F7D\u8FDC\u7A0B\u56FE\u7247..." });
-            updateHeaderActions();
-          } else if (this.remoteImageLoadFailed) {
-            const errDiv = wrap2.createDiv("wp-v3-featured-status-wrap wp-v3-featured-status-error");
-            errDiv.createEl("p", { text: "\u274C " + (this.remoteImageError || "") });
-            const btnRow = errDiv.createDiv("wp-v3-featured-btn-row");
-            const retryBtn = btnRow.createEl("button", {
-              text: this.t("publishModal_retryLoadImage") || "\u91CD\u8BD5",
-              cls: "wp-v3-feature-btn"
-            });
-            retryBtn.onclick = async () => {
-              if (this.remoteImagePostId) {
-                this.remoteImageLoadFailed = false;
-                this.remoteImageError = null;
-                await this.loadRemoteFeaturedImage(this.remoteImagePostId, params);
-              }
-            };
-            const skipBtn = btnRow.createEl("button", {
-              text: this.t("publishModal_skipRemoteImage") || "\u8DF3\u8FC7",
-              cls: "wp-v3-feature-btn"
-            });
-            skipBtn.onclick = () => {
-              this.remoteImageLoadFailed = false;
-              this.remoteImageError = null;
-              this.remoteImagePostId = null;
-              this.display(params);
-            };
-            updateHeaderActions();
-          } else if (imageToDisplay) {
-            const isLocalNew = this.imageSource !== "cached";
-            const imgContainer = wrap2.createDiv("wp-v3-featured-img-container");
-            const blob = new Blob([imageToDisplay.content], { type: imageToDisplay.mimeType });
-            const url = URL.createObjectURL(blob);
-            imgContainer.createEl("img", { cls: "wp-v3-featured-img", attr: { src: url, alt: "Featured Image" } });
-            if (isLocalNew) {
-              updateHeaderActions({
-                sourceLabel: "\u{1F4C2} Local",
-                sourceCls: "wp-v3-source-local",
-                fileName: `${imageToDisplay.fileName} (${formatFileSize(imageToDisplay.content.byteLength)})`,
-                showDelete: true
-              });
-            } else {
-              const urlStr = this.matterData.featurePicture ? String(this.matterData.featurePicture) : imageToDisplay.fileName;
-              updateHeaderActions({
-                sourceLabel: "\u2601\uFE0F WordPress",
-                sourceCls: "wp-v3-source-uploaded",
-                fileName: urlStr,
-                showDelete: true
-              });
-            }
-          } else if (this.matterData.featurePicture) {
-            const imgContainer = wrap2.createDiv("wp-v3-featured-img-container");
-            imgContainer.createEl("img", {
-              cls: "wp-v3-featured-img",
-              attr: { src: this.matterData.featurePicture, alt: "Featured Image" }
-            });
-            const urlStr = String(this.matterData.featurePicture);
-            updateHeaderActions({
-              sourceLabel: "\u2601\uFE0F WordPress",
-              sourceCls: "wp-v3-source-uploaded",
-              fileName: urlStr,
-              showDelete: true
-            });
-          } else {
-            renderSetup();
-            return;
-          }
-        };
-        const renderSetup = () => {
-          var _a5;
-          body.empty();
-          const setup = body.createDiv("wp-v3-featured-setup");
-          setup.createDiv({ cls: "wp-v3-featured-empty", text: this.t("publishModal_noImageSelected") || "\u6682\u65E0\u7279\u8272\u56FE\u7247" });
-          const btnRow = setup.createDiv("wp-v3-featured-btn-row");
-          const localBtn = btnRow.createEl("button", {
-            text: "\u{1F4C2} " + this.t("publishModal_selectFromLocal"),
-            cls: "wp-v3-feature-btn"
-          });
-          localBtn.onclick = () => this.selectLocalFile(params);
-          const vaultBtn = btnRow.createEl("button", {
-            text: "\u{1F4C1} " + this.t("publishModal_selectFromVault"),
-            cls: "wp-v3-feature-btn"
-          });
-          vaultBtn.onclick = () => this.selectVaultImage(params);
-          if (this.unsplashService) {
-            const unsplashBtn = btnRow.createEl("button", {
-              text: "\u{1F5BC}\uFE0F Unsplash",
-              cls: "wp-v3-feature-btn"
-            });
-            unsplashBtn.onclick = () => this.selectUnsplashImage(params);
-          }
-          if ((_a5 = this.aiService) == null ? void 0 : _a5.hasImageAIKey()) {
-            const aiBtn = btnRow.createEl("button", {
-              text: "\u{1F916} " + this.t("publishModal_aiGenerate"),
-              cls: "wp-v3-feature-btn"
-            });
-            aiBtn.onclick = () => this.generateFeaturedImage(params);
-          } else {
-            const aiBtn = btnRow.createEl("button", {
-              text: "\u{1F916} " + this.t("publishModal_aiGenerate"),
-              cls: "wp-v3-feature-btn disabled"
-            });
-            aiBtn.onclick = () => new import_obsidian10.Notice(this.t("notice_imageAIApiKeyRequired"));
-          }
-          updateHeaderActions();
-        };
-        if (hasImage) {
-          renderPreview();
-        } else {
-          renderSetup();
-        }
-        const SUPPORTED_MIME = ["image/jpeg", "image/png", "image/gif", "image/webp", "image/svg+xml"];
-        const SUPPORTED_EXT = ["jpg", "jpeg", "png", "gif", "webp", "svg"];
-        section.addEventListener("dragover", (e) => {
-          var _a5, _b, _c;
-          e.preventDefault();
-          e.stopPropagation();
-          const items = (_a5 = e.dataTransfer) == null ? void 0 : _a5.items;
-          if (items && items.length > 0 && items[0].kind === "file") {
-            body.addClass("drag-over");
-            (_b = body.querySelector(".wp-v3-featured-empty")) == null ? void 0 : _b.addClass("drag-over");
-            (_c = body.querySelector(".wp-v3-featured-img-container")) == null ? void 0 : _c.addClass("drag-over");
-          }
-        });
-        section.addEventListener("dragleave", (e) => {
-          var _a5, _b;
-          if (!section.contains(e.relatedTarget)) {
-            body.removeClass("drag-over");
-            (_a5 = body.querySelector(".wp-v3-featured-empty")) == null ? void 0 : _a5.removeClass("drag-over");
-            (_b = body.querySelector(".wp-v3-featured-img-container")) == null ? void 0 : _b.removeClass("drag-over");
-          }
-        });
-        section.addEventListener("drop", async (e) => {
-          var _a5, _b, _c, _d, _e;
-          e.preventDefault();
-          e.stopPropagation();
-          body.removeClass("drag-over");
-          (_a5 = body.querySelector(".wp-v3-featured-empty")) == null ? void 0 : _a5.removeClass("drag-over");
-          (_b = body.querySelector(".wp-v3-featured-img-container")) == null ? void 0 : _b.removeClass("drag-over");
-          const file = (_d = (_c = e.dataTransfer) == null ? void 0 : _c.files) == null ? void 0 : _d[0];
-          if (!file) return;
-          const ext = ((_e = file.name.split(".").pop()) == null ? void 0 : _e.toLowerCase()) || "";
-          const mimeOk = SUPPORTED_MIME.includes(file.type);
-          const extOk = SUPPORTED_EXT.includes(ext);
-          if (!mimeOk && !extOk) {
-            const errEl = body.createDiv("wp-v3-drop-error");
-            errEl.textContent = `\u274C \u4E0D\u652F\u6301\u7684\u56FE\u7247\u683C\u5F0F: .${ext}`;
-            setTimeout(() => errEl.remove(), 2500);
-            return;
-          }
-          try {
-            const arrayBuffer = await file.arrayBuffer();
-            const mimeType = mimeOk ? file.type : `image/${ext === "jpg" ? "jpeg" : ext}`;
-            this.featuredImage = {
-              fileName: file.name,
-              content: new Uint8Array(arrayBuffer),
-              mimeType
-            };
-            this.display(params);
-          } catch (err) {
-            new import_obsidian10.Notice(this.plugin.t("error_imageLoadFailed"));
-          }
-        });
-      }
-      // ==================== V3.1 摘要段 ====================
-      renderV3ExcerptSection(container, params) {
-        let isEditing = false;
-        let originalValue = "";
-        const section = this.createV3Section(
-          container,
-          this.t("publishModal_excerptLabel") || "Excerpt",
-          []
-          // 有内容时动态加入按钮
-        );
-        const body = section.createDiv("wp-v3-section-body");
-        const renderDisplay = () => {
-          body.empty();
-          section.removeClass("is-editing");
-          const actionsEl = section.querySelector(".wp-v3-section-actions");
-          if (actionsEl) {
-            actionsEl.empty();
-            if (params.excerpt) {
-              const editBtn = actionsEl.createEl("button", {
-                text: "\u270F\uFE0F",
-                cls: "wp-v3-icon-btn",
-                attr: { title: this.t("publishModal_editButton") || "Edit" }
-              });
-              editBtn.onclick = () => enterEdit();
-              const aiBtn = actionsEl.createEl("button", {
-                text: "\u{1F916}",
-                cls: "wp-v3-icon-btn",
-                attr: { title: this.t("publishModal_generateSummary") || "AI \u751F\u6210\u6458\u8981" }
-              });
-              aiBtn.onclick = () => this.generateSummary(params);
-            }
-          }
-          if (params.excerpt) {
-            const text5 = body.createDiv("wp-v3-excerpt-text");
-            text5.textContent = params.excerpt;
-          } else {
-            const row = body.createDiv("wp-v3-empty-action-row");
-            const editBtn = row.createEl("button", {
-              text: "\u270F\uFE0F " + (this.t("publishModal_editButton") || "\u7F16\u8F91\u6458\u8981"),
-              cls: "wp-v3-empty-action-btn"
-            });
-            editBtn.onclick = () => enterEdit();
-            const aiBtn = row.createEl("button", {
-              text: "\u{1F916} " + (this.t("publishModal_generateSummary") || "AI \u751F\u6210\u6458\u8981"),
-              cls: "wp-v3-empty-action-btn"
-            });
-            aiBtn.onclick = () => this.generateSummary(params);
-          }
-        };
-        const enterEdit = () => {
-          if (isEditing) return;
-          isEditing = true;
-          originalValue = params.excerpt || "";
-          section.addClass("is-editing");
-          body.empty();
-          const textarea = body.createEl("textarea", {
-            cls: "wp-v3-textarea",
-            attr: { placeholder: this.t("publishModal_excerptPlaceholder") || "Enter excerpt..." }
-          });
-          textarea.value = originalValue;
-          textarea.rows = 4;
-          const actions = body.createDiv("wp-v3-edit-actions");
-          const cancelBtn = actions.createEl("button", {
-            text: this.t("publishModal_cancel") || "Cancel",
-            cls: "wp-v3-cancel-btn"
-          });
-          const saveBtn = actions.createEl("button", {
-            text: this.t("publishModal_save") || "Save",
-            cls: "wp-v3-save-btn"
-          });
-          saveBtn.onclick = () => {
-            params.excerpt = textarea.value;
-            isEditing = false;
-            renderDisplay();
-          };
-          cancelBtn.onclick = () => {
-            params.excerpt = originalValue;
-            isEditing = false;
-            renderDisplay();
-          };
-          textarea.addEventListener("keydown", (e) => {
-            if (e.key === "Escape") {
-              e.preventDefault();
-              params.excerpt = originalValue;
-              isEditing = false;
-              renderDisplay();
-            } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-              e.preventDefault();
-              params.excerpt = textarea.value;
-              isEditing = false;
-              renderDisplay();
-            }
-          });
-          textarea.focus();
-        };
-        renderDisplay();
-      }
-      // ==================== V3.1 标签段 ====================
-      renderV3TagsSection(container, params) {
-        const paramsTagsStr = JSON.stringify(params.tags || []);
-        const editableTagsStr = JSON.stringify(this.editableTags);
-        if (paramsTagsStr !== editableTagsStr && (params.tags || []).length > 0) {
-          this.editableTags = params.tags ? [...params.tags] : [];
-        }
-        let isEditing = false;
-        let originalTags = [];
-        const section = this.createV3Section(
-          container,
-          this.t("publishModal_tagsLabel") || "Tags",
-          []
-          // 动态更新
-        );
-        const body = section.createDiv("wp-v3-section-body");
-        const renderTagsDisplay = () => {
-          body.empty();
-          section.removeClass("is-editing");
-          const actionsEl = section.querySelector(".wp-v3-section-actions");
-          if (actionsEl) {
-            actionsEl.empty();
-            if (this.editableTags.length > 0) {
-              const editBtn = actionsEl.createEl("button", {
-                text: "\u270F\uFE0F",
-                cls: "wp-v3-icon-btn",
-                attr: { title: this.t("publishModal_editButton") || "Edit" }
-              });
-              editBtn.onclick = () => enterEdit();
-              const aiBtn = actionsEl.createEl("button", {
-                text: "\u{1F916}",
-                cls: "wp-v3-icon-btn",
-                attr: { title: this.t("publishModal_generateTags") || "AI \u751F\u6210\u6807\u7B7E" }
-              });
-              aiBtn.onclick = () => this.generateTags(params);
-            }
-          }
-          if (this.editableTags.length > 0) {
-            const tagsWrap = body.createDiv("wp-v3-tags-container");
-            this.editableTags.forEach((tag) => {
-              const tagEl = tagsWrap.createEl("span", { cls: "wp-v3-tag-item" });
-              tagEl.style.backgroundColor = getTagColor(tag);
-              tagEl.createSpan({ text: tag });
-              const removeBtn = tagEl.createEl("button", { cls: "wp-v3-tag-remove", text: "\xD7" });
-              removeBtn.addEventListener("click", (e) => {
-                e.stopPropagation();
-                this.editableTags = this.editableTags.filter((t) => t !== tag);
-                params.tags = [...this.editableTags];
-                renderTagsDisplay();
-              });
-            });
-            const addBtn = tagsWrap.createEl("button", { cls: "wp-v3-tag-add-btn", text: "+" });
-            addBtn.addEventListener("click", () => showInlineTagInput(tagsWrap, addBtn));
-          } else {
-            const row = body.createDiv("wp-v3-empty-action-row");
-            const addTagBtn = row.createEl("button", {
-              text: this.t("publishModal_addTag"),
-              cls: "wp-v3-empty-action-btn"
-            });
-            addTagBtn.onclick = () => {
-              body.empty();
-              const tagsWrap = body.createDiv("wp-v3-tags-container");
-              const addBtn = tagsWrap.createEl("button", { cls: "wp-v3-tag-add-btn", text: "+" });
-              showInlineTagInput(tagsWrap, addBtn);
-            };
-            const aiBtn = row.createEl("button", {
-              text: "\u{1F916} " + (this.t("publishModal_generateTags") || "AI \u751F\u6210\u6807\u7B7E"),
-              cls: "wp-v3-empty-action-btn"
-            });
-            aiBtn.onclick = () => this.generateTags(params);
-          }
-        };
-        const showInlineTagInput = (parent2, addBtn) => {
-          addBtn.style.display = "none";
-          const input = parent2.createEl("input", { cls: "wp-v3-tag-input", type: "text" });
-          input.placeholder = this.plugin.t("publishModal_tagInputPlaceholder") || "\u8F93\u5165\u6807\u7B7E...";
-          input.focus();
-          let committed = false;
-          const commit = () => {
-            if (committed) return;
-            committed = true;
-            const val2 = input.value.trim();
-            if (val2 && !this.editableTags.includes(val2)) {
-              this.editableTags.push(val2);
-              params.tags = [...this.editableTags];
-            }
-            input.remove();
-            addBtn.style.display = "";
-            renderTagsDisplay();
-          };
-          input.addEventListener("keydown", (e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              commit();
-            } else if (e.key === "Escape") {
-              committed = true;
-              input.remove();
-              addBtn.style.display = "";
-            }
-          });
-          input.addEventListener("blur", () => setTimeout(commit, 200));
-        };
-        const enterEdit = () => {
-          if (isEditing) return;
-          isEditing = true;
-          originalTags = [...this.editableTags];
-          section.addClass("is-editing");
-          body.empty();
-          const textarea = body.createEl("textarea", {
-            cls: "wp-v3-textarea",
-            attr: { placeholder: this.t("publishModal_tagsPlaceholder") || "tag1, tag2, tag3..." }
-          });
-          textarea.value = this.editableTags.join(", ");
-          textarea.rows = 3;
-          const actions = body.createDiv("wp-v3-edit-actions");
-          const cancelBtn = actions.createEl("button", { text: this.t("publishModal_cancel") || "Cancel", cls: "wp-v3-cancel-btn" });
-          const saveBtn = actions.createEl("button", { text: this.t("publishModal_save") || "Save", cls: "wp-v3-save-btn" });
-          saveBtn.onclick = () => {
-            this.editableTags = textarea.value.split(",").map((t) => t.trim()).filter((t) => t.length > 0);
-            params.tags = [...this.editableTags];
-            isEditing = false;
-            renderTagsDisplay();
-          };
-          cancelBtn.onclick = () => {
-            this.editableTags = [...originalTags];
-            params.tags = [...originalTags];
-            isEditing = false;
-            renderTagsDisplay();
-          };
-          textarea.addEventListener("keydown", (e) => {
-            if (e.key === "Escape") {
-              e.preventDefault();
-              this.editableTags = [...originalTags];
-              params.tags = [...originalTags];
-              isEditing = false;
-              renderTagsDisplay();
-            } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-              e.preventDefault();
-              saveBtn.click();
-            }
-          });
-          textarea.focus();
-        };
-        renderTagsDisplay();
-      }
-      // ==================== V3.1 文章内容段（含嵌入摘要/标签） ====================
-      renderV3ContentSection(container, params) {
-        let isContentEditing = false;
-        let originalContent = "";
-        const section = this.createV3Section(
-          container,
-          this.t("publishModal_previewContent") || "Content Preview",
-          []
-        );
-        section.dataset.contentSection = "true";
-        const body = section.createDiv("wp-v3-section-body");
-        const renderHtmlPreview = () => {
-          body.empty();
-          section.removeClass("is-editing");
-          renderExcerptRow(body, params);
-          renderTagsRow(body, params);
-          const previewDiv = body.createDiv("wp-v3-content-preview");
-          const html4 = AppState.markdownParser.render(this.editableContent);
-          previewDiv.innerHTML = sanitizeHtml(html4);
-        };
-        const enterContentEdit = () => {
-          if (isContentEditing) return;
-          isContentEditing = true;
-          originalContent = this.editableContent;
-          section.addClass("is-editing");
-          body.empty();
-          const textarea = body.createEl("textarea", { cls: "wp-v3-content-edit-area" });
-          textarea.value = this.editableContent;
-          textarea.placeholder = this.t("publishModal_previewEditPlaceholder") || "Edit Markdown content...";
-          const actions = body.createDiv("wp-v3-edit-actions");
-          const cancelBtn = actions.createEl("button", { text: this.t("publishModal_cancel") || "Cancel", cls: "wp-v3-cancel-btn" });
-          const saveBtn = actions.createEl("button", { text: this.t("publishModal_save") || "Save", cls: "wp-v3-save-btn" });
-          saveBtn.onclick = () => {
-            this.editableContent = textarea.value;
-            isContentEditing = false;
-            renderHtmlPreview();
-          };
-          cancelBtn.onclick = () => {
-            this.editableContent = originalContent;
-            isContentEditing = false;
-            renderHtmlPreview();
-          };
-          textarea.addEventListener("keydown", (e) => {
-            if (e.key === "Escape") {
-              e.preventDefault();
-              this.editableContent = originalContent;
-              isContentEditing = false;
-              renderHtmlPreview();
-            } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-              e.preventDefault();
-              saveBtn.click();
-            }
-          });
-          textarea.focus();
-        };
-        section.__enterContentEdit = enterContentEdit;
-        const renderExcerptRow = (parent2, p) => {
-          const excerptWrap = parent2.createDiv("wp-v3-excerpt-row");
-          if (p.excerpt) {
-            const textEl = excerptWrap.createDiv("wp-v3-excerpt-inline-text");
-            textEl.textContent = p.excerpt;
-            const editBtn = excerptWrap.createEl("button", {
-              text: "\u270F\uFE0F",
-              cls: "wp-v3-inline-edit-btn",
-              attr: { title: this.t("publishModal_editButton") || "Edit excerpt" }
-            });
-            editBtn.onclick = () => openExcerptModal(p);
-          } else {
-            const placeholder = excerptWrap.createDiv("wp-v3-excerpt-placeholder");
-            const btnRow = placeholder.createDiv("wp-v3-placeholder-btn-row");
-            const aiBtn = btnRow.createEl("button", {
-              text: this.t("publishModal_aiGenerateSummary"),
-              cls: "wp-v3-placeholder-btn"
-            });
-            aiBtn.onclick = () => this.generateSummary(p);
-            const manualBtn = btnRow.createEl("button", {
-              text: this.t("publishModal_manualInput"),
-              cls: "wp-v3-placeholder-btn"
-            });
-            manualBtn.onclick = () => openExcerptModal(p);
-          }
-        };
-        const openExcerptModal = (p) => {
-          const overlay = body.createDiv("wp-v3-excerpt-edit-overlay");
-          const originalVal = p.excerpt || "";
-          const textarea = overlay.createEl("textarea", {
-            cls: "wp-v3-textarea",
-            attr: { placeholder: this.t("publishModal_excerptPlaceholder") || "Enter excerpt..." }
-          });
-          textarea.value = originalVal;
-          textarea.rows = 4;
-          const actions = overlay.createDiv("wp-v3-edit-actions");
-          const cancelBtn = actions.createEl("button", { text: this.t("publishModal_cancel") || "Cancel", cls: "wp-v3-cancel-btn" });
-          const saveBtn = actions.createEl("button", { text: this.t("publishModal_save") || "Save", cls: "wp-v3-save-btn" });
-          saveBtn.onclick = () => {
-            p.excerpt = textarea.value;
-            overlay.remove();
-            renderHtmlPreview();
-          };
-          cancelBtn.onclick = () => {
-            p.excerpt = originalVal;
-            overlay.remove();
-            renderHtmlPreview();
-          };
-          textarea.addEventListener("keydown", (e) => {
-            if (e.key === "Escape") {
-              p.excerpt = originalVal;
-              overlay.remove();
-              renderHtmlPreview();
-            } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-              e.preventDefault();
-              saveBtn.click();
-            }
-          });
-          textarea.focus();
-        };
-        const renderTagsRow = (parent2, p) => {
-          if ((p.tags || []).length > 0 && JSON.stringify(p.tags) !== JSON.stringify(this.editableTags)) {
-            this.editableTags = p.tags ? [...p.tags] : [];
-          }
-          const tagsWrap = parent2.createDiv("wp-v3-tags-row");
-          let isTagEditing = false;
-          const renderTagsContent = () => {
-            tagsWrap.empty();
-            if (this.editableTags.length > 0) {
-              const tagsContainer = tagsWrap.createDiv("wp-v3-tags-container");
-              if (isTagEditing) {
-                this.editableTags.forEach((tag, index2) => {
-                  const tagEl = tagsContainer.createEl("span", { cls: "wp-v3-tag-item is-shaking is-draggable" });
-                  tagEl.style.backgroundColor = getTagColor(tag);
-                  tagEl.dataset.tagIndex = String(index2);
-                  tagEl.createSpan({ text: tag });
-                  const xBtn = tagEl.createEl("button", { cls: "wp-v3-tag-delete-btn", text: "\xD7" });
-                  xBtn.addEventListener("click", (e) => {
-                    e.stopPropagation();
-                    this.editableTags = this.editableTags.filter((t) => t !== tag);
-                    p.tags = [...this.editableTags];
-                    renderTagsContent();
-                  });
-                });
-                const addBtn = tagsContainer.createEl("button", { cls: "wp-v3-tag-action-btn", text: "+", attr: { title: this.t("publishModal_addTag") } });
-                addBtn.onclick = () => showInlineTagInput(tagsContainer, addBtn, p, renderTagsContent);
-                this.enableTagDragSort(tagsContainer, p, renderTagsContent);
-                const actionsRow = tagsWrap.createDiv("wp-v3-tags-editing-actions");
-                const doneBtn = actionsRow.createEl("button", {
-                  text: this.t("publishModal_save") || "Done",
-                  cls: "wp-v3-tag-action-btn wp-v3-tag-done-btn"
-                });
-                doneBtn.onclick = () => {
-                  isTagEditing = false;
-                  renderTagsContent();
-                };
-              } else {
-                this.editableTags.forEach((tag) => {
-                  const tagEl = tagsContainer.createEl("span", { cls: "wp-v3-tag-item" });
-                  tagEl.style.backgroundColor = getTagColor(tag);
-                  tagEl.createSpan({ text: tag });
-                });
-                const editBtn = tagsContainer.createEl("button", {
-                  text: "\u270F\uFE0F",
-                  cls: "wp-v3-inline-edit-btn",
-                  attr: { title: this.t("publishModal_editButton") || "Edit tags" }
-                });
-                editBtn.onclick = () => {
-                  isTagEditing = true;
-                  renderTagsContent();
-                };
-              }
-            } else {
-              const emptyRow = tagsWrap.createDiv("wp-v3-tags-empty-row");
-              const addBtn = emptyRow.createEl("button", {
-                text: this.t("publishModal_addTag"),
-                cls: "wp-v3-placeholder-btn"
-              });
-              addBtn.onclick = () => {
-                isTagEditing = true;
-                tagsWrap.empty();
-                const tagsContainer = tagsWrap.createDiv("wp-v3-tags-container");
-                const btnArea = tagsWrap.createDiv("wp-v3-tags-btn-area");
-                const plusBtn = btnArea.createEl("button", { cls: "wp-v3-tag-action-btn", text: "+", attr: { title: this.t("publishModal_addTag") } });
-                plusBtn.onclick = () => showInlineTagInput(tagsContainer, plusBtn, p, renderTagsContent);
-                showInlineTagInput(tagsContainer, plusBtn, p, renderTagsContent);
-              };
-              const aiBtn = emptyRow.createEl("button", {
-                text: this.t("publishModal_aiGenerateTags"),
-                cls: "wp-v3-placeholder-btn"
-              });
-              aiBtn.onclick = () => this.generateTags(p);
-            }
-          };
-          renderTagsContent();
-        };
-        const showInlineTagInput = (parent2, triggerBtn, p, onDone) => {
-          triggerBtn.style.display = "none";
-          const input = parent2.createEl("input", { cls: "wp-v3-tag-input", type: "text" });
-          input.placeholder = this.plugin.t("publishModal_tagInputPlaceholder") || "\u8F93\u5165\u6807\u7B7E...";
-          input.focus();
-          let committed = false;
-          const commit = () => {
-            if (committed) return;
-            committed = true;
-            const val2 = input.value.trim();
-            if (val2 && !this.editableTags.includes(val2)) {
-              this.editableTags.push(val2);
-              p.tags = [...this.editableTags];
-            }
-            input.remove();
-            triggerBtn.style.display = "";
-            onDone();
-          };
-          input.addEventListener("keydown", (e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              commit();
-            } else if (e.key === "Escape") {
-              committed = true;
-              input.remove();
-              triggerBtn.style.display = "";
-            }
-          });
-          input.addEventListener("blur", () => setTimeout(commit, 200));
-        };
-        renderHtmlPreview();
-      }
-      // ==================== 标签拖拽排序（桌面 + 移动端） ====================
-      enableTagDragSort(container, p, onReorder) {
-        let draggingEl = null;
-        let ghost = null;
-        let placeholder = null;
-        let originIndex = -1;
-        const getTagEls = () => Array.from(container.querySelectorAll(".wp-v3-tag-item.is-draggable"));
-        const getIndexOf = (el) => getTagEls().indexOf(el);
-        const createGhost = (source, clientX, clientY) => {
-          ghost = source.cloneNode(true);
-          ghost.className = "wp-v3-tag-item wp-v3-drag-ghost";
-          ghost.style.backgroundColor = source.style.backgroundColor;
-          ghost.style.left = `${clientX - source.offsetWidth / 2}px`;
-          ghost.style.top = `${clientY - source.offsetHeight / 2}px`;
-          document.body.appendChild(ghost);
-        };
-        const moveGhost = (clientX, clientY) => {
-          if (!ghost || !draggingEl) return;
-          ghost.style.left = `${clientX - draggingEl.offsetWidth / 2}px`;
-          ghost.style.top = `${clientY - draggingEl.offsetHeight / 2}px`;
-        };
-        const getTargetEl = (clientX, clientY) => {
-          const els = getTagEls().filter((el) => el !== draggingEl);
-          for (const el of els) {
-            const rect = el.getBoundingClientRect();
-            if (clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom) {
-              return el;
-            }
-          }
-          return null;
-        };
-        const applyReorder = (targetEl) => {
-          const fromIdx = getIndexOf(draggingEl);
-          const toIdx = getIndexOf(targetEl);
-          if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return;
-          const arr = [...this.editableTags];
-          const [item] = arr.splice(fromIdx, 1);
-          arr.splice(toIdx, 0, item);
-          this.editableTags = arr;
-          p.tags = [...arr];
-        };
-        const endDrag = (clientX, clientY) => {
-          if (!draggingEl) return;
-          const target = getTargetEl(clientX, clientY);
-          if (target) applyReorder(target);
-          draggingEl.classList.remove("is-dragging");
-          if (ghost) {
-            ghost.remove();
-            ghost = null;
-          }
-          if (placeholder) {
-            placeholder.remove();
-            placeholder = null;
-          }
-          draggingEl = null;
-          onReorder();
-        };
-        getTagEls().forEach((tagEl) => {
-          tagEl.addEventListener("pointerdown", (e) => {
-            if (e.target.classList.contains("wp-v3-tag-delete-btn")) return;
-            e.preventDefault();
-            draggingEl = tagEl;
-            originIndex = getIndexOf(tagEl);
-            tagEl.classList.add("is-dragging");
-            tagEl.setPointerCapture(e.pointerId);
-            createGhost(tagEl, e.clientX, e.clientY);
-          });
-          tagEl.addEventListener("pointermove", (e) => {
-            if (!draggingEl || draggingEl !== tagEl) return;
-            e.preventDefault();
-            moveGhost(e.clientX, e.clientY);
-          });
-          tagEl.addEventListener("pointerup", (e) => {
-            if (!draggingEl || draggingEl !== tagEl) return;
-            endDrag(e.clientX, e.clientY);
-          });
-          tagEl.addEventListener("pointercancel", () => {
-            if (draggingEl) {
-              draggingEl.classList.remove("is-dragging");
-              if (ghost) {
-                ghost.remove();
-                ghost = null;
-              }
-              draggingEl = null;
-              onReorder();
-            }
-          });
-        });
-      }
-      // ==================== V3.1 右侧：基本设置卡片 ====================
-      renderV3SettingsCard(container, params) {
-        const card = container.createDiv("wp-v3-settings-card");
-        card.createDiv({
-          cls: "wp-v3-settings-card-title",
-          text: this.plugin.t("publishModal_basicSettings") || "Settings"
-        });
-        const body = card.createDiv("wp-v3-settings-body");
-        this.renderV3Field(body, this.t("publishModal_titleName"), "publishModal_titleInfo", (fieldEl) => {
-          const input = fieldEl.createEl("input", { cls: "wp-v3-input", type: "text" });
-          input.value = params.title || "";
-          input.placeholder = this.t("publishModal_titlePlaceholder");
-          this.titleInput = input;
-          input.addEventListener("input", () => {
-            params.title = input.value;
-          });
-          input.addEventListener("blur", () => {
-            if (this.plugin.settings.autoGenerateSlug && this.slugInput) {
-              if (!this.lastAutoGeneratedSlug || params.slug === this.lastAutoGeneratedSlug) {
-                this.generateDefaultSlug(params.title, params);
-                this.lastAutoGeneratedSlug = params.slug || "";
-                if (this.slugInput) this.slugInput.value = params.slug || "";
-              }
-            }
-          });
-        });
-        this.renderV3Field(body, this.t("publishModal_slugName"), "publishModal_slugInfo", (fieldEl) => {
-          const slugRow = fieldEl.createDiv();
-          slugRow.style.display = "flex";
-          slugRow.style.gap = "6px";
-          slugRow.style.alignItems = "center";
-          const input = fieldEl.createEl("input", { cls: "wp-v3-input", type: "text" });
-          input.value = params.slug || "";
-          input.placeholder = this.t("publishModal_slugPlaceholder");
-          this.slugInput = input;
-          const initialSlugValue = params.slug;
-          input.addEventListener("input", () => {
-            const sanitized = SlugGenerator.sanitizeSlug(input.value);
-            params.slug = sanitized;
-            if (sanitized && initialSlugValue && sanitized !== initialSlugValue) {
-              this.lastAutoGeneratedSlug = "";
-            }
-          });
-        });
-        body.createDiv("wp-v3-divider");
-        this.renderV3Field(body, this.t("publishModal_statusName"), "publishModal_statusDesc", (fieldEl) => {
-          const select2 = fieldEl.createEl("select", { cls: "wp-v3-select" });
-          [
-            ["draft" /* Draft */, this.plugin.t("publishModal_statusDraft")],
-            ["publish" /* Publish */, this.plugin.t("publishModal_statusPublish")],
-            ["private" /* Private */, this.plugin.t("publishModal_statusPrivate")],
-            ["future" /* Future */, this.plugin.t("publishModal_statusFuture")]
-          ].forEach(([val2, label]) => {
-            const opt = select2.createEl("option", { value: val2, text: label });
-            if (val2 === params.status) opt.selected = true;
-          });
-          select2.addEventListener("change", () => {
-            params.status = select2.value;
-            this.display(params);
-          });
-        });
-        if (params.status === "future" /* Future */) {
-          this.renderV3Field(body, this.t("publishModal_postDateTimeName"), "publishModal_postDateTimeDescFormat", (fieldEl) => {
-            const input = fieldEl.createEl("input", { cls: "wp-v3-input", type: "text" });
-            input.value = format(/* @__PURE__ */ new Date(), "yyyy-MM-dd HH:mm:ss");
-            this.setupDateMask(input, params);
-          });
-        } else {
-          delete params.datetime;
-        }
-        this.renderV3Field(body, this.t("publishModal_commentName"), "publishModal_commentDesc", (fieldEl) => {
-          const select2 = fieldEl.createEl("select", { cls: "wp-v3-select" });
-          [
-            ["open" /* Open */, this.plugin.t("publishModal_commentOpen")],
-            ["closed" /* Closed */, this.plugin.t("publishModal_commentClosed")]
-          ].forEach(([val2, label]) => {
-            const opt = select2.createEl("option", { value: val2, text: label });
-            if (val2 === params.commentStatus) opt.selected = true;
-          });
-          select2.addEventListener("change", () => {
-            params.commentStatus = select2.value;
-          });
-        });
-        this.renderV3Field(body, this.t("publishModal_postTypeName"), "publishModal_postTypeDesc", (fieldEl) => {
-          const select2 = fieldEl.createEl("select", { cls: "wp-v3-select" });
-          [
-            ["html", this.plugin.t("publishModal_formatHTML")],
-            ["markdown", this.plugin.t("publishModal_formatMarkdown")]
-          ].forEach(([val2, label]) => {
-            select2.createEl("option", { value: val2, text: label });
-          });
-          select2.addEventListener("change", () => {
-            params.contentFormat = select2.value;
-          });
-        });
-        const getValidCategoriesV3 = () => this.categories.items.filter((it) => it.name && it.name.trim());
-        body.createDiv("wp-v3-divider");
-        this.renderV3Field(body, this.t("publishModal_categoryName"), "publishModal_categoryInfo", (fieldEl) => {
-          const tagsWrap = fieldEl.createDiv();
-          tagsWrap.style.display = "flex";
-          tagsWrap.style.flexWrap = "wrap";
-          tagsWrap.style.gap = "4px";
-          if (params.categories.length === 0) {
-            const uncategorized = getValidCategoriesV3().find(
-              (it) => ["Uncategorized", "\u672A\u5206\u7C7B", this.plugin.t("publishModal_uncategorized")].includes(it.name)
-            );
-            if (uncategorized) params.categories = [Number(uncategorized.id)];
-          }
-          const renderCats = () => {
-            tagsWrap.empty();
-            const validCategories = getValidCategoriesV3();
-            params.categories.forEach((catId) => {
-              const cat = validCategories.find((c) => Number(c.id) === catId);
-              if (!cat) return;
-              const tag = tagsWrap.createEl("span", { cls: "wp-v3-tag-item" });
-              tag.style.backgroundColor = "var(--interactive-accent)";
-              tag.style.fontSize = "11px";
-              tag.createSpan({ text: cat.name });
-              const removeBtn = tag.createEl("button", { cls: "wp-v3-tag-delete-btn", text: "\xD7" });
-              removeBtn.addEventListener("click", (e) => {
-                e.stopPropagation();
-                params.categories = params.categories.filter((id) => id !== catId);
-                renderCats();
-              });
-            });
-            const btnRow = tagsWrap.createEl("span", { cls: "wp-v3-cat-btn-row" });
-            const available = validCategories.filter((cat) => !params.categories.includes(Number(cat.id)));
-            const select2 = btnRow.createEl("select", { cls: "wp-v3-select" });
-            select2.style.width = "auto";
-            select2.style.fontSize = "11px";
-            select2.createEl("option", { value: "", text: this.plugin.t("publishModal_selectCategory") || "\u9009\u62E9\u5206\u7C7B..." });
-            available.forEach((cat) => select2.createEl("option", { value: String(cat.id), text: cat.name }));
-            select2.addEventListener("change", () => {
-              if (select2.value) {
-                params.categories.push(Number(select2.value));
-                renderCats();
-              }
-            });
-            const addBtn = btnRow.createEl("button", { cls: "wp-v3-cat-add-btn", text: this.plugin.t("publishModal_addCategory") || "\u589E\u52A0" });
-            addBtn.addEventListener("click", () => {
-              addBtn.style.display = "none";
-              const input = btnRow.createEl("input", { cls: "wp-v3-input", type: "text" });
-              input.style.width = "80px";
-              input.style.fontSize = "11px";
-              input.placeholder = this.plugin.t("publishModal_newCategoryPlaceholder") || "\u65B0\u5206\u7C7B\u540D\u79F0";
-              const commit = () => {
-                const name = input.value.trim();
-                if (name) {
-                  const tempId = -(this.categories.items.length + 100 + params.categories.length);
-                  this.categories.items.push({ id: String(tempId), name, slug: name.toLowerCase().replace(/\s+/g, "-"), taxonomy: "category", description: "", count: 0 });
-                  params.categories.push(tempId);
-                }
-                input.remove();
-                addBtn.style.display = "";
-                renderCats();
-              };
-              let v3CatCommitted = false;
-              input.addEventListener("keydown", (e) => {
-                if (e.key === "Enter") {
-                  v3CatCommitted = true;
-                  commit();
-                }
-                if (e.key === "Escape") {
-                  v3CatCommitted = true;
-                  input.remove();
-                  addBtn.style.display = "";
-                }
-              });
-              input.addEventListener("blur", () => {
-                if (!v3CatCommitted) commit();
-              });
-              input.focus();
-            });
-          };
-          renderCats();
-        });
-        if (this.matterData.postId) {
-          body.createDiv("wp-v3-divider");
-          const toggleRow = body.createDiv("wp-v3-toggle-row");
-          const labelRow = toggleRow.createDiv("wp-v3-field-label-row");
-          labelRow.createSpan({ text: this.t("publishModal_publishAsNewName"), cls: "wp-v3-field-label" });
-          this.addV3HintBtn(labelRow, this.t("publishModal_publishAsNewDesc"));
-          const label = toggleRow.createEl("label", { cls: "wp-v3-toggle" });
-          const checkbox = label.createEl("input", { type: "checkbox" });
-          checkbox.checked = params.publishAsNew || false;
-          checkbox.addEventListener("change", () => {
-            params.publishAsNew = checkbox.checked;
-          });
-          label.createDiv("wp-v3-toggle-slider");
-        }
-      }
-      /**
-       * 渲染右侧设置区的单个字段（label + hint + control）
-       */
-      renderV3Field(container, label, hintKey, renderControl) {
-        const field = container.createDiv("wp-v3-field");
-        const labelRow = field.createDiv("wp-v3-field-label-row");
-        labelRow.createSpan({ text: label, cls: "wp-v3-field-label" });
-        if (hintKey) {
-          this.addV3HintBtn(labelRow, this.t(hintKey) || hintKey);
-        }
-        renderControl(field);
-      }
-      /**
-       * 添加 ⓘ hover tooltip 图标（非按钮，纯显示）
-       */
-      addV3HintBtn(container, hintText) {
-        const icon = container.createEl("span", { cls: "wp-v3-hint-icon", text: "\u24D8" });
-        const tooltip = icon.createDiv("wp-v3-tooltip");
-        tooltip.textContent = hintText;
-      }
-      // ==================== V3.1 右侧：历史记录卡片 ====================
-      renderV3HistoryCard(container, params) {
-        const card = container.createDiv("wp-v3-settings-card wp-v3-collapsible-card");
-        card.addClass("is-collapsed");
-        const titleRow = card.createDiv("wp-v3-settings-card-title wp-v3-card-title-clickable");
-        titleRow.createSpan({ text: this.plugin.t("publishModal_historyPanel") || "History" });
-        const chevron = titleRow.createSpan({ cls: "wp-v3-collapse-chevron", text: "\u25B6" });
-        const body = card.createDiv("wp-v3-settings-body wp-v3-collapsible-body");
-        body.style.display = "none";
-        const historyList = body.createDiv("wp-v3-history-list");
-        historyList.createDiv({ cls: "wp-v3-history-empty", text: this.plugin.t("publishModal_noHistory") || "No history yet" });
-        titleRow.addEventListener("click", () => {
-          const collapsed = card.hasClass("is-collapsed");
-          if (collapsed) {
-            card.removeClass("is-collapsed");
-            body.style.display = "";
-            chevron.textContent = "\u25BC";
-          } else {
-            card.addClass("is-collapsed");
-            body.style.display = "none";
-            chevron.textContent = "\u25B6";
-          }
-        });
+        new SettingsSidebar(this).render(container, params);
       }
       // ==================== V3.1 底部操作栏 ====================
       renderV3Footer(container, params) {
@@ -110646,438 +110450,31 @@ var init_wp_publish_modal_v2 = __esm({
       /**
        * 设置滚动监听，为 sticky 元素添加阴影效果
        */
-      setupStickyScrollListener(container) {
-        const tabBar = container.querySelector(".wp-publish-tabs");
-        const bottomBar = container.querySelector(".wp-publish-bottom-bar");
-        if (!tabBar || !bottomBar) {
-          return;
-        }
-        const handleScroll = () => {
-          const scrollTop = container.scrollTop;
-          const scrollHeight = container.scrollHeight;
-          const clientHeight = container.clientHeight;
-          const scrollBottom = scrollHeight - scrollTop - clientHeight;
-          if (scrollTop > 10) {
-            tabBar.addClass("scrolled");
-          } else {
-            tabBar.removeClass("scrolled");
-          }
-          if (scrollBottom > 10) {
-            bottomBar.addClass("scrolled");
-          } else {
-            bottomBar.removeClass("scrolled");
-          }
-        };
-        container.addEventListener("scroll", handleScroll);
-        handleScroll();
-      }
-      renderTabBar(container, params) {
-        const tabContainer = container.createDiv("wp-publish-tabs");
-        const tabs = [
-          { id: "settings", label: this.plugin.t("publishModal_settingsTab") },
-          { id: "preview", label: this.plugin.t("publishModal_previewTab") }
-        ];
-        tabs.forEach((tab) => {
-          const tabEl = tabContainer.createDiv({
-            cls: `wp-publish-tab-item ${this.currentTab === tab.id ? "active" : ""}`
-          });
-          tabEl.createSpan({ text: tab.label });
-          tabEl.onclick = () => {
-            this.currentTab = tab.id;
-            this.display(params);
-          };
-        });
-      }
       // ==================== 新布局：预览区 ====================
-      renderPreviewArea(container, params) {
-        const previewContainer = container.createDiv("wp-preview-container");
-        this.renderFeaturedImageSection(previewContainer, params);
-        this.renderExcerptSection(previewContainer, params);
-        this.renderTagsSection(previewContainer, params);
-        this.renderContentSection(previewContainer, params);
-      }
       // ==================== 新布局：面板区 ====================
-      renderPanelsArea(container, params) {
-        const settingsPanel = container.createDiv("wp-panel wp-panel-settings");
-        this.renderCollapsiblePanel(
-          settingsPanel,
-          this.plugin.t("publishModal_settingsPanel") || "Settings",
-          "settings",
-          (content) => this.renderSettingsPanel(content, params)
-        );
-        const historyPanel = container.createDiv("wp-panel wp-panel-history");
-        this.renderCollapsiblePanel(
-          historyPanel,
-          this.plugin.t("publishModal_historyPanel") || "History",
-          "history",
-          (content) => this.renderHistoryPanel(content, params)
-        );
-      }
       /**
        * 渲染可折叠面板
        */
-      renderCollapsiblePanel(container, title, panelId, renderContent) {
-        const header = container.createDiv("wp-panel-header");
-        const collapseIcon = header.createSpan("wp-panel-collapse-icon");
-        (0, import_obsidian10.setIcon)(collapseIcon, "chevron-down");
-        header.createSpan({ text: title, cls: "wp-panel-title" });
-        const content = container.createDiv("wp-panel-content");
-        renderContent(content);
-        let isCollapsed = false;
-        header.onclick = () => {
-          isCollapsed = !isCollapsed;
-          if (isCollapsed) {
-            container.addClass("collapsed");
-            (0, import_obsidian10.setIcon)(collapseIcon, "chevron-right");
-          } else {
-            container.removeClass("collapsed");
-            (0, import_obsidian10.setIcon)(collapseIcon, "chevron-down");
-          }
-        };
-        this.setupPanelResize(container);
-      }
       /**
        * 设置面板拖拽调整大小
        */
-      setupPanelResize(panel) {
-        const resizeHandle = panel.createDiv("wp-panel-resize-handle");
-        let isResizing = false;
-        let startY = 0;
-        let startHeight = 0;
-        resizeHandle.addEventListener("mousedown", (e) => {
-          isResizing = true;
-          startY = e.clientY;
-          startHeight = panel.offsetHeight;
-          document.body.addClass("wp-resizing");
-          panel.addClass("resizing");
-          e.preventDefault();
-        });
-        document.addEventListener("mousemove", (e) => {
-          if (!isResizing) return;
-          const deltaY = e.clientY - startY;
-          const newHeight = startHeight + deltaY;
-          const minHeight = 100;
-          const maxHeight = window.innerHeight * 0.8;
-          if (newHeight >= minHeight && newHeight <= maxHeight) {
-            panel.style.height = `${newHeight}px`;
-          }
-        });
-        document.addEventListener("mouseup", () => {
-          if (isResizing) {
-            isResizing = false;
-            document.body.removeClass("wp-resizing");
-            panel.removeClass("resizing");
-          }
-        });
-      }
-      renderSettingsPanel(container, params) {
-        const aiSection = container.createDiv("wp-settings-ai");
-        this.renderAIAssistSection(aiSection, params);
-        const basicSection = container.createDiv("wp-settings-bottom");
-        this.renderBasicSettings(basicSection, params);
-      }
-      renderHistoryPanel(container, params) {
-        container.createSpan({ text: this.plugin.t("publishModal_noHistory") || "No history yet", cls: "wp-panel-empty" });
-      }
       // ==================== 四段式预览区 ====================
       /**
        * 1. 特色图片段落
        */
-      renderFeaturedImageSection(container, params) {
-        const section = container.createDiv("wp-preview-section wp-preview-featured-image-section");
-        const header = section.createDiv("wp-preview-section-header");
-        header.createEl("h4", { text: this.t("publishModal_previewFeaturedImage"), cls: "wp-preview-section-title" });
-        const editBtn = header.createEl("button", {
-          text: "\u270F\uFE0F",
-          cls: "wp-preview-edit-btn",
-          attr: { "aria-label": "Edit featured image" }
-        });
-        editBtn.onclick = () => {
-          const imageSection = this.contentEl.querySelector(".wp-ai-featured-image");
-          if (imageSection) {
-            imageSection.scrollIntoView({ behavior: "smooth", block: "center" });
-            imageSection.classList.add("wp-highlight-section");
-            setTimeout(() => imageSection.classList.remove("wp-highlight-section"), 2e3);
-          }
-        };
-        const content = section.createDiv("wp-preview-section-content");
-        const imageToDisplay = this.featuredImage || this.autoFeaturedImage;
-        if (imageToDisplay) {
-          const imgContainer = content.createDiv("wp-preview-image-container");
-          const blob = new Blob([imageToDisplay.content], { type: imageToDisplay.mimeType });
-          const url = URL.createObjectURL(blob);
-          const img = imgContainer.createEl("img", { cls: "wp-preview-image" });
-          img.src = url;
-          img.alt = "Featured Image";
-          const info = content.createDiv("wp-preview-image-info");
-          info.createSpan({ text: `${imageToDisplay.fileName} (${formatFileSize(imageToDisplay.content.byteLength)})` });
-        } else if (this.matterData.featurePicture) {
-          const imgContainer = content.createDiv("wp-preview-image-container");
-          const img = imgContainer.createEl("img", { cls: "wp-preview-image" });
-          img.src = this.matterData.featurePicture;
-          img.alt = "Featured Image";
-          const info = content.createDiv("wp-preview-image-info");
-          info.createSpan({ text: this.t("publishModal_previewFeaturedImageUploaded") });
-        } else {
-          content.createDiv("wp-preview-empty").createSpan({
-            text: this.t("publishModal_noFeaturedImage") || "No featured image",
-            cls: "wp-preview-empty-text"
-          });
-        }
-      }
       /**
        * 2. 摘要段落
        */
-      renderExcerptSection(container, params) {
-        const section = container.createDiv("wp-preview-section wp-preview-excerpt-section");
-        const header = section.createDiv("wp-preview-section-header");
-        header.createEl("h4", { text: this.t("publishModal_excerptLabel") || "Excerpt", cls: "wp-preview-section-title" });
-        const editBtn = header.createEl("button", {
-          text: "\u270F\uFE0F",
-          cls: "wp-preview-edit-btn",
-          attr: { "aria-label": "Edit excerpt" }
-        });
-        const content = section.createDiv("wp-preview-section-content");
-        const renderDisplay = () => {
-          content.empty();
-          if (params.excerpt) {
-            const excerptText = content.createDiv("wp-preview-excerpt-text");
-            excerptText.textContent = params.excerpt;
-          } else {
-            content.createDiv("wp-preview-empty").createSpan({
-              text: this.t("publishModal_noExcerpt") || "No excerpt",
-              cls: "wp-preview-empty-text"
-            });
-          }
-        };
-        renderDisplay();
-        let isEditing = false;
-        let originalValue = "";
-        const exitEdit = () => {
-          isEditing = false;
-          section.removeClass("is-editing");
-          editBtn.textContent = "\u270F\uFE0F";
-          renderDisplay();
-        };
-        const saveEdit = (newValue) => {
-          params.excerpt = newValue;
-          exitEdit();
-        };
-        editBtn.onclick = () => {
-          if (isEditing) return;
-          isEditing = true;
-          originalValue = params.excerpt || "";
-          section.addClass("is-editing");
-          content.empty();
-          const textarea = content.createEl("textarea", {
-            cls: "wp-preview-textarea",
-            attr: { placeholder: this.t("publishModal_excerptPlaceholder") || "Enter excerpt..." }
-          });
-          textarea.value = originalValue;
-          textarea.style.width = "100%";
-          textarea.style.minHeight = "100px";
-          const btnGroup = content.createDiv("wp-preview-edit-actions");
-          const saveBtn = btnGroup.createEl("button", { text: this.t("publishModal_save") || "Save", cls: "wp-preview-save-btn" });
-          const cancelBtn = btnGroup.createEl("button", { text: this.t("publishModal_cancel") || "Cancel", cls: "wp-preview-cancel-btn" });
-          saveBtn.onclick = () => saveEdit(textarea.value);
-          cancelBtn.onclick = () => {
-            params.excerpt = originalValue;
-            exitEdit();
-          };
-          textarea.addEventListener("keydown", (e) => {
-            if (e.key === "Escape") {
-              e.preventDefault();
-              params.excerpt = originalValue;
-              exitEdit();
-            } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-              e.preventDefault();
-              saveEdit(textarea.value);
-            }
-          });
-          textarea.focus();
-        };
-      }
       /**
        * 3. 标签段落
        */
-      renderTagsSection(container, params) {
-        const section = container.createDiv("wp-preview-section wp-preview-tags-section");
-        const header = section.createDiv("wp-preview-section-header");
-        header.createEl("h4", { text: this.t("publishModal_tagsLabel") || "Tags", cls: "wp-preview-section-title" });
-        const editBtn = header.createEl("button", {
-          text: "\u270F\uFE0F",
-          cls: "wp-preview-edit-btn",
-          attr: { "aria-label": "Edit tags" }
-        });
-        const content = section.createDiv("wp-preview-section-content");
-        const renderDisplay = () => {
-          content.empty();
-          if (this.editableTags && this.editableTags.length > 0) {
-            const tagsContainer = content.createDiv("wp-preview-tags-container");
-            this.editableTags.forEach((tag) => {
-              const tagEl = tagsContainer.createDiv("wp-preview-tag");
-              tagEl.textContent = tag;
-            });
-          } else {
-            content.createDiv("wp-preview-empty").createSpan({
-              text: this.t("publishModal_noTags") || "No tags",
-              cls: "wp-preview-empty-text"
-            });
-          }
-        };
-        renderDisplay();
-        let isEditing = false;
-        let originalTags = [];
-        const exitEdit = () => {
-          isEditing = false;
-          section.removeClass("is-editing");
-          editBtn.textContent = "\u270F\uFE0F";
-          renderDisplay();
-        };
-        const saveEdit = (tagsStr) => {
-          this.editableTags = tagsStr.split(",").map((t) => t.trim()).filter((t) => t.length > 0);
-          params.tags = [...this.editableTags];
-          exitEdit();
-        };
-        editBtn.onclick = () => {
-          if (isEditing) return;
-          isEditing = true;
-          originalTags = [...this.editableTags];
-          section.addClass("is-editing");
-          content.empty();
-          const textarea = content.createEl("textarea", {
-            cls: "wp-preview-textarea",
-            attr: { placeholder: this.t("publishModal_tagsPlaceholder") || "Enter tags, separated by commas..." }
-          });
-          textarea.value = this.editableTags.join(", ");
-          textarea.style.width = "100%";
-          textarea.style.minHeight = "60px";
-          const btnGroup = content.createDiv("wp-preview-edit-actions");
-          const saveBtn = btnGroup.createEl("button", { text: this.t("publishModal_save") || "Save", cls: "wp-preview-save-btn" });
-          const cancelBtn = btnGroup.createEl("button", { text: this.t("publishModal_cancel") || "Cancel", cls: "wp-preview-cancel-btn" });
-          saveBtn.onclick = () => saveEdit(textarea.value);
-          cancelBtn.onclick = () => {
-            this.editableTags = [...originalTags];
-            params.tags = [...originalTags];
-            exitEdit();
-          };
-          textarea.addEventListener("keydown", (e) => {
-            if (e.key === "Escape") {
-              e.preventDefault();
-              this.editableTags = [...originalTags];
-              params.tags = [...originalTags];
-              exitEdit();
-            } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-              e.preventDefault();
-              saveEdit(textarea.value);
-            }
-          });
-          textarea.focus();
-        };
-      }
       /**
        * 4. 文章内容段落
        */
-      renderContentSection(container, params) {
-        const section = container.createDiv("wp-preview-section wp-preview-content-section");
-        const header = section.createDiv("wp-preview-section-header");
-        header.createEl("h4", { text: this.t("publishModal_previewContent") || "Content", cls: "wp-preview-section-title" });
-        const editBtn = header.createEl("button", {
-          text: "\u270F\uFE0F",
-          cls: "wp-preview-edit-btn",
-          attr: { "aria-label": "Edit content" }
-        });
-        const content = section.createDiv("wp-preview-section-content");
-        const renderDisplay = () => {
-          content.empty();
-          const previewDiv = content.createDiv("wp-preview-html-content");
-          previewDiv.innerHTML = sanitizeHtml(this.editableContent);
-        };
-        renderDisplay();
-        let isEditing = false;
-        let originalContent = "";
-        const exitEdit = () => {
-          isEditing = false;
-          section.removeClass("is-editing");
-          editBtn.textContent = "\u270F\uFE0F";
-          renderDisplay();
-        };
-        const saveEdit = (newContent) => {
-          this.editableContent = newContent;
-          exitEdit();
-        };
-        editBtn.onclick = () => {
-          if (isEditing) return;
-          isEditing = true;
-          originalContent = this.editableContent;
-          section.addClass("is-editing");
-          content.empty();
-          const textarea = content.createEl("textarea", {
-            cls: "wp-preview-textarea",
-            attr: { placeholder: this.t("publishModal_previewEditPlaceholder") || "Edit HTML content..." }
-          });
-          textarea.value = this.editableContent;
-          textarea.style.width = "100%";
-          textarea.style.minHeight = "300px";
-          textarea.style.fontFamily = "var(--font-mono)";
-          const btnGroup = content.createDiv("wp-preview-edit-actions");
-          const saveBtn = btnGroup.createEl("button", { text: this.t("publishModal_save") || "Save", cls: "wp-preview-save-btn" });
-          const cancelBtn = btnGroup.createEl("button", { text: this.t("publishModal_cancel") || "Cancel", cls: "wp-preview-cancel-btn" });
-          saveBtn.onclick = () => saveEdit(textarea.value);
-          cancelBtn.onclick = () => {
-            this.editableContent = originalContent;
-            exitEdit();
-          };
-          textarea.addEventListener("keydown", (e) => {
-            if (e.key === "Escape") {
-              e.preventDefault();
-              this.editableContent = originalContent;
-              exitEdit();
-            } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-              e.preventDefault();
-              saveEdit(textarea.value);
-            }
-          });
-          textarea.focus();
-        };
-      }
       // ==================== 设置标签 ====================
-      renderSettingsTab(container, params) {
-        const aiSection = container.createDiv("wp-settings-ai");
-        this.renderAIAssistSection(aiSection, params);
-        const bottomSection = container.createDiv("wp-settings-bottom");
-        this.renderBasicSettings(bottomSection, params);
-      }
-      selectLocalImage(params) {
-        const fileInput = document.createElement("input");
-        fileInput.type = "file";
-        fileInput.accept = "image/*";
-        fileInput.onchange = async (e) => {
-          var _a5;
-          const file = (_a5 = e.target.files) == null ? void 0 : _a5[0];
-          if (file) {
-            try {
-              let arrayBuffer = await file.arrayBuffer();
-              this.featuredImage = {
-                fileName: file.name,
-                mimeType: file.type,
-                content: arrayBuffer,
-                width: 1200
-              };
-              this.imageSource = "local";
-              await this.saveImageToCache(arrayBuffer, file.name, file.type, "local");
-              this.display(params);
-              new import_obsidian10.Notice(this.t("publishModal_imageSelected_simple"));
-            } catch (error2) {
-              new import_obsidian10.Notice(this.t("publishModal_imageSelectFailed", { error: error2 instanceof Error ? error2.message : "Unknown error" }));
-            }
-          }
-        };
-        fileInput.click();
-      }
       selectUnsplashImage(params) {
         if (!this.unsplashService) {
-          new import_obsidian10.Notice(this.t("publishModal_unsplashKeyRequiredSimple"));
+          new import_obsidian11.Notice(this.t("publishModal_unsplashKeyRequiredSimple"));
           return;
         }
         const tagsQuery = this.getSearchQuery(params);
@@ -111100,7 +110497,7 @@ var init_wp_publish_modal_v2 = __esm({
             this.imageSource = "unsplash";
             await this.saveImageToCache(finalBuffer, fileName, "image/jpeg", "unsplash");
             this.display(params);
-            new import_obsidian10.Notice(this.t("publishModal_imageSelected_simple"));
+            new import_obsidian11.Notice(this.t("publishModal_imageSelected_simple"));
           },
           tagsQuery
         );
@@ -111119,11 +110516,11 @@ var init_wp_publish_modal_v2 = __esm({
       }
       async generateAImage(params) {
         if (!this.plugin.settings.aiConfig || !this.aiService) {
-          new import_obsidian10.Notice(this.t("publishModal_aiServiceRequired"));
+          new import_obsidian11.Notice(this.t("publishModal_aiServiceRequired"));
           return;
         }
         if (!this.aiService.hasImageAIKey()) {
-          new import_obsidian10.Notice(this.t("notice_imageAIApiKeyRequired"));
+          new import_obsidian11.Notice(this.t("notice_imageAIApiKeyRequired"));
           return;
         }
         try {
@@ -111135,9 +110532,9 @@ var init_wp_publish_modal_v2 = __esm({
           const basePrompt = this.imageGenerationPrompt || this.plugin.t("defaultPrompt_image");
           const localizedPrompt = getLocalizedPrompt(this.plugin, language, "image");
           const imageDescriptionPrompt = localizedPrompt.replace("{title}", params.title || "").replace("{content}", imagePromptContent);
-          new import_obsidian10.Notice(this.t("publishModal_aiGeneratingImage"));
+          new import_obsidian11.Notice(this.t("publishModal_aiGeneratingImage"));
           const imageUrl = await this.aiService.generateImage(imageDescriptionPrompt);
-          const response = await (0, import_obsidian10.requestUrl)({ url: imageUrl, method: "GET" });
+          const response = await (0, import_obsidian11.requestUrl)({ url: imageUrl, method: "GET" });
           const arrayBuffer = response.arrayBuffer;
           const fileName = `ai-generated-${Date.now()}.png`;
           this.featuredImage = {
@@ -111149,10 +110546,10 @@ var init_wp_publish_modal_v2 = __esm({
           this.imageSource = "ai";
           await this.saveImageToCache(arrayBuffer, fileName, "image/png", "ai");
           this.display(params);
-          new import_obsidian10.Notice(this.t("publishModal_aiImageGenerated"));
+          new import_obsidian11.Notice(this.t("publishModal_aiImageGenerated"));
         } catch (error2) {
           log5.error("AI image generation error:", error2);
-          new import_obsidian10.Notice(this.t("publishModal_aiImageGenerateFailed", { error: error2 instanceof Error ? error2.message : "Unknown error" }));
+          new import_obsidian11.Notice(this.t("publishModal_aiImageGenerateFailed", { error: error2 instanceof Error ? error2.message : "Unknown error" }));
         }
       }
       /**
@@ -111170,20 +110567,20 @@ var init_wp_publish_modal_v2 = __esm({
           return params.tags.join(", ");
         }
         if (!this.aiService) {
-          new import_obsidian10.Notice(this.t("notice_aiConfigRequired"));
+          new import_obsidian11.Notice(this.t("notice_aiConfigRequired"));
           return null;
         }
         if (!this.aiService.hasTextAIKey()) {
-          new import_obsidian10.Notice(this.t("notice_textAIApiKeyRequired"));
+          new import_obsidian11.Notice(this.t("notice_textAIApiKeyRequired"));
           return null;
         }
         const contentToUse = this.editableContent || this.articleContent;
         if (!contentToUse) {
-          new import_obsidian10.Notice(this.t("publishModal_emptyContent"));
+          new import_obsidian11.Notice(this.t("publishModal_emptyContent"));
           return null;
         }
         try {
-          new import_obsidian10.Notice(this.t("publishModal_generatingSummary"));
+          new import_obsidian11.Notice(this.t("publishModal_generatingSummary"));
           const cleanContent = this.sanitizeContentForAI(contentToUse, 2e3);
           const language = detectLanguage(cleanContent);
           log5.info("Detected language for image summary:", language);
@@ -111192,12 +110589,12 @@ var init_wp_publish_modal_v2 = __esm({
           const prompt = localizedPrompt.replace("{content}", cleanContent);
           const summary = await this.aiService.generateText(prompt);
           params.excerpt = summary.trim();
-          new import_obsidian10.Notice(this.t("publishModal_generatingSummary"));
+          new import_obsidian11.Notice(this.t("publishModal_generatingSummary"));
           this.display(params);
           return params.excerpt;
         } catch (error2) {
           log5.error("Generate summary for image error:", error2);
-          new import_obsidian10.Notice(this.t("publishModal_summaryGenerateFailed", { error: error2 instanceof Error ? error2.message : "Unknown error" }));
+          new import_obsidian11.Notice(this.t("publishModal_summaryGenerateFailed", { error: error2 instanceof Error ? error2.message : "Unknown error" }));
           return null;
         }
       }
@@ -111215,7 +110612,7 @@ var init_wp_publish_modal_v2 = __esm({
             this.imageSource = "vault";
             await this.saveImageToCache(arrayBuffer, file.name, mimeType, "vault");
             this.display(params);
-            new import_obsidian10.Notice(this.t("publishModal_imageFromGallery", { fileName: file.name }));
+            new import_obsidian11.Notice(this.t("publishModal_imageFromGallery", { fileName: file.name }));
           }
         );
         modal.open();
@@ -111233,12 +110630,12 @@ var init_wp_publish_modal_v2 = __esm({
           const file = (_a5 = input.files) == null ? void 0 : _a5[0];
           if (!file) return;
           if (!file.type.match(/^image\/(jpeg|png|gif|webp)$/)) {
-            new import_obsidian10.Notice(this.t("notice_invalidImageFormat"));
+            new import_obsidian11.Notice(this.t("notice_invalidImageFormat"));
             return;
           }
           const maxSize = 10 * 1024 * 1024;
           if (file.size > maxSize) {
-            new import_obsidian10.Notice(this.t("notice_imageTooLarge"));
+            new import_obsidian11.Notice(this.t("notice_imageTooLarge"));
             return;
           }
           try {
@@ -111252,7 +110649,7 @@ var init_wp_publish_modal_v2 = __esm({
             );
             if (processed) {
               arrayBuffer = processed;
-              new import_obsidian10.Notice(this.t("featuredImageModal_imageCropped", {
+              new import_obsidian11.Notice(this.t("featuredImageModal_imageCropped", {
                 width: (this.plugin.settings.imageCropWidth || 1200).toString(),
                 height: Math.round((this.plugin.settings.imageCropWidth || 1200) * this.getAspectRatio()).toString(),
                 ratio
@@ -111267,9 +110664,9 @@ var init_wp_publish_modal_v2 = __esm({
             this.imageSource = "local";
             await this.saveImageToCache(arrayBuffer, file.name, file.type, "local");
             this.display(params);
-            new import_obsidian10.Notice(this.t("publishModal_imageFromLocal", { fileName: file.name }));
+            new import_obsidian11.Notice(this.t("publishModal_imageFromLocal", { fileName: file.name }));
           } catch (error2) {
-            new import_obsidian10.Notice(this.t("notice_imageLoadFailed"));
+            new import_obsidian11.Notice(this.t("notice_imageLoadFailed"));
             log5.error("Failed to load local image:", error2);
           }
         };
@@ -111288,508 +110685,19 @@ var init_wp_publish_modal_v2 = __esm({
       /**
        * 为 Setting 添加信息按钮
        */
-      addInfoButton(setting, infoKey) {
-        setting.addExtraButton((btn) => {
-          btn.setIcon("info").setTooltip(this.t(infoKey)).onClick(() => {
-            new import_obsidian10.Notice(this.t(infoKey), 5e3);
-          });
-          btn.extraSettingsEl.addClass("wp-info-button");
-        });
-      }
-      renderBasicSettings(container, params) {
-        var _a5;
-        const card = container.createDiv("wp-settings-card");
-        card.createEl("h3", { text: this.plugin.t("publishModal_basicSettings"), cls: "wp-settings-section-title" });
-        const gridContainer = card.createDiv("wp-settings-grid");
-        const titleWrapper = gridContainer.createDiv("wp-grid-full");
-        const titleSetting = new import_obsidian10.Setting(titleWrapper).setName(this.t("publishModal_titleName")).addText((text5) => {
-          this.titleInput = text5.inputEl;
-          text5.setPlaceholder(this.t("publishModal_titlePlaceholder")).setValue(params.title || "").onChange((value) => {
-            params.title = value;
-          });
-          text5.inputEl.style.width = "100%";
-          const autoUpdateSlug = () => {
-            if (this.plugin.settings.autoGenerateSlug && this.slugInput) {
-              if (!this.lastAutoGeneratedSlug || params.slug === this.lastAutoGeneratedSlug) {
-                this.generateDefaultSlug(params.title, params);
-                this.lastAutoGeneratedSlug = params.slug || "";
-                new import_obsidian10.Notice(this.t("publishModal_slugAutoUpdated"));
-              }
-            }
-          };
-          text5.inputEl.addEventListener("keydown", (e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              autoUpdateSlug();
-            }
-          });
-          text5.inputEl.addEventListener("blur", () => {
-            autoUpdateSlug();
-          });
-        });
-        this.addInfoButton(titleSetting, "publishModal_titleInfo");
-        const slugWrapper = gridContainer.createDiv("wp-grid-full");
-        const slugSetting = new import_obsidian10.Setting(slugWrapper).setName(this.t("publishModal_slugName"));
-        const initialSlugValue = params.slug;
-        slugSetting.addText((text5) => {
-          this.slugInput = text5.inputEl;
-          text5.setPlaceholder(this.t("publishModal_slugPlaceholder")).setValue(params.slug || "").onChange((value) => {
-            const sanitized = SlugGenerator.sanitizeSlug(value);
-            params.slug = sanitized;
-            if (sanitized && initialSlugValue && sanitized !== initialSlugValue) {
-              this.lastAutoGeneratedSlug = "";
-            }
-          });
-          text5.inputEl.style.width = "100%";
-        });
-        if (this.plugin.settings.slugGenerationMode === "ai-translate") {
-          if (!this.plugin.settings.aiConfig) {
-            slugSetting.addButton((btn) => {
-              btn.setButtonText(this.t("publishModal_slugAIButtonNeedConfig")).setTooltip(this.t("publishModal_aiServiceRequired")).setDisabled(true);
-            });
-          } else if (!((_a5 = this.aiService) == null ? void 0 : _a5.hasTextAIKey())) {
-            slugSetting.addButton((btn) => {
-              btn.setButtonText(this.t("publishModal_slugAIButtonNeedConfig")).setTooltip(this.t("notice_textAIApiKeyRequired")).setDisabled(true);
-            });
-          } else {
-            slugSetting.addButton((btn) => {
-              btn.setButtonText(this.t("publishModal_slugAIButton")).setTooltip(this.t("publishModal_slugAIButton")).onClick(async () => {
-                if (!params.title) {
-                  new import_obsidian10.Notice(this.t("publishModal_slugNeedTitle"));
-                  return;
-                }
-                btn.setDisabled(true);
-                btn.setButtonText(this.t("publishModal_slugAIButtonTranslating"));
-                try {
-                  const slug = await this.aiService.translateToSlug(params.title);
-                  if (this.slugInput) {
-                    this.slugInput.value = slug;
-                    params.slug = slug;
-                  }
-                  new import_obsidian10.Notice(this.t("publishModal_slugGenerated"));
-                } catch (error2) {
-                  new import_obsidian10.Notice(this.t("publishModal_slugTranslateFailed", { error: error2 instanceof Error ? error2.message : "Unknown error" }));
-                } finally {
-                  btn.setDisabled(false);
-                  btn.setButtonText(this.t("publishModal_slugAIButton"));
-                }
-              });
-            });
-          }
-        }
-        this.addInfoButton(slugSetting, "publishModal_slugInfo");
-        const getValidCategories = () => this.categories.items.filter((it) => it.name && it.name.trim());
-        {
-          const categoryWrapper = gridContainer.createDiv("wp-grid-full");
-          const categoryHeader = categoryWrapper.createDiv("wp-category-header");
-          const titleRow = categoryHeader.createDiv("wp-category-title-row");
-          titleRow.createEl("div", { cls: "setting-item-name", text: this.t("publishModal_categoryName") });
-          const infoBtn = titleRow.createEl("button", { cls: "wp-info-button clickable-icon" });
-          infoBtn.setAttribute("aria-label", this.t("publishModal_categoryInfo"));
-          (0, import_obsidian10.setIcon)(infoBtn, "info");
-          infoBtn.addEventListener("click", () => {
-            new import_obsidian10.Notice(this.t("publishModal_categoryInfo"), 5e3);
-          });
-          const tagsContainer = document.createElement("div");
-          tagsContainer.className = "wp-category-tags-container";
-          categoryHeader.appendChild(tagsContainer);
-          const getAvailableCategories = () => {
-            return getValidCategories().filter(
-              (cat) => !params.categories.includes(Number(cat.id))
-            );
-          };
-          const renderCategoryTags = () => {
-            Array.from(tagsContainer.children).forEach((child) => {
-              if (!child.classList.contains("wp-category-action-row")) {
-                tagsContainer.removeChild(child);
-              }
-            });
-            const actionRow = tagsContainer.querySelector(".wp-category-action-row");
-            params.categories.forEach((catId) => {
-              const cat = getValidCategories().find((c) => Number(c.id) === catId);
-              if (cat) {
-                const tag = document.createElement("span");
-                tag.className = "wp-category-tag";
-                tag.textContent = cat.name;
-                const removeBtn = document.createElement("span");
-                removeBtn.className = "wp-category-tag-remove";
-                removeBtn.textContent = "\xD7";
-                removeBtn.onclick = (e) => {
-                  e.stopPropagation();
-                  params.categories = params.categories.filter((id) => id !== catId);
-                  renderCategoryTags();
-                  renderActionButtons();
-                };
-                tag.appendChild(removeBtn);
-                if (actionRow) {
-                  tagsContainer.insertBefore(tag, actionRow);
-                } else {
-                  tagsContainer.appendChild(tag);
-                }
-              }
-            });
-          };
-          const renderActionButtons = () => {
-            const oldRow = tagsContainer.querySelector(".wp-category-action-row");
-            if (oldRow) oldRow.remove();
-            const actionRow = document.createElement("div");
-            actionRow.className = "wp-category-action-row";
-            const available = getAvailableCategories();
-            const select2 = document.createElement("select");
-            select2.className = "wp-category-dropdown";
-            const placeholder = document.createElement("option");
-            placeholder.value = "";
-            placeholder.textContent = this.plugin.t("publishModal_selectCategory") || "\u9009\u62E9\u5206\u7C7B...";
-            select2.appendChild(placeholder);
-            available.forEach((cat) => {
-              const opt = document.createElement("option");
-              opt.value = String(cat.id);
-              opt.textContent = cat.name;
-              select2.appendChild(opt);
-            });
-            select2.onchange = () => {
-              if (select2.value) {
-                params.categories.push(Number(select2.value));
-                renderCategoryTags();
-                renderActionButtons();
-              }
-            };
-            actionRow.appendChild(select2);
-            const addBtn = document.createElement("button");
-            addBtn.className = "wp-category-add-btn";
-            addBtn.textContent = this.plugin.t("publishModal_addCategory") || "\u589E\u52A0";
-            addBtn.onclick = () => {
-              addBtn.style.display = "none";
-              const input = document.createElement("input");
-              input.className = "wp-category-new-input";
-              input.placeholder = this.plugin.t("publishModal_newCategoryPlaceholder") || "\u65B0\u5206\u7C7B\u540D\u79F0";
-              const commit = () => {
-                const name = input.value.trim();
-                if (name) {
-                  const tempId = -(this.categories.items.length + 100 + params.categories.length);
-                  this.categories.items.push({ id: String(tempId), name, slug: name.toLowerCase().replace(/\s+/g, "-"), taxonomy: "category", description: "", count: 0 });
-                  params.categories.push(tempId);
-                  renderCategoryTags();
-                  renderActionButtons();
-                }
-                input.remove();
-                addBtn.style.display = "";
-              };
-              let gridCatCommitted = false;
-              input.onkeydown = (e) => {
-                if (e.key === "Enter") {
-                  gridCatCommitted = true;
-                  commit();
-                }
-                if (e.key === "Escape") {
-                  gridCatCommitted = true;
-                  input.remove();
-                  addBtn.style.display = "";
-                }
-              };
-              input.onblur = () => {
-                if (!gridCatCommitted) commit();
-              };
-              actionRow.insertBefore(input, addBtn);
-              input.focus();
-            };
-            actionRow.appendChild(addBtn);
-            tagsContainer.appendChild(actionRow);
-          };
-          if (params.categories.length === 0) {
-            const uncategorized = getValidCategories().find(
-              (it) => it.name === this.plugin.t("publishModal_uncategorized") || it.name === "Uncategorized" || it.name === "\u672A\u5206\u7C7B"
-            );
-            if (uncategorized) {
-              params.categories = [Number(uncategorized.id)];
-            }
-          }
-          renderCategoryTags();
-          renderActionButtons();
-        }
-        const statusWrapper = gridContainer.createDiv();
-        new import_obsidian10.Setting(statusWrapper).setName(this.t("publishModal_statusName")).setDesc(this.t("publishModal_statusDesc")).addDropdown((dropdown) => {
-          dropdown.addOption("draft" /* Draft */, this.plugin.t("publishModal_statusDraft")).addOption("publish" /* Publish */, this.plugin.t("publishModal_statusPublish")).addOption("private" /* Private */, this.plugin.t("publishModal_statusPrivate")).addOption("future" /* Future */, this.plugin.t("publishModal_statusFuture")).setValue(params.status).onChange((value) => {
-            params.status = value;
-            this.display(params);
-          });
-        });
-        if (params.status === "future" /* Future */) {
-          const dateWrapper = gridContainer.createDiv("wp-grid-full");
-          new import_obsidian10.Setting(dateWrapper).setName(this.t("publishModal_postDateTimeName")).setDesc(this.t("publishModal_postDateTimeDescFormat")).addText((text5) => {
-            text5.setValue(format(/* @__PURE__ */ new Date(), "yyyy-MM-dd HH:mm:ss"));
-            this.setupDateMask(text5.inputEl, params);
-          });
-        } else {
-          delete params.datetime;
-        }
-        const commentWrapper = gridContainer.createDiv();
-        new import_obsidian10.Setting(commentWrapper).setName(this.t("publishModal_commentName")).setDesc(this.t("publishModal_commentDesc")).addDropdown((dropdown) => {
-          dropdown.addOption("open" /* Open */, this.plugin.t("publishModal_commentOpen")).addOption("closed" /* Closed */, this.plugin.t("publishModal_commentClosed")).setValue(params.commentStatus).onChange((value) => {
-            params.commentStatus = value;
-          });
-        });
-        const formatWrapper = gridContainer.createDiv();
-        new import_obsidian10.Setting(formatWrapper).setName(this.t("publishModal_postTypeName")).setDesc(this.t("publishModal_postTypeDesc")).addDropdown((dropdown) => {
-          dropdown.addOption("html", this.plugin.t("publishModal_formatHTML")).addOption("markdown", this.plugin.t("publishModal_formatMarkdown")).setValue("html").onChange((value) => {
-            params.contentFormat = value;
-          });
-        });
-        if (this.matterData.postId) {
-          const publishAsNewWrapper = gridContainer.createDiv();
-          new import_obsidian10.Setting(publishAsNewWrapper).setName(this.t("publishModal_publishAsNewName")).setDesc(this.t("publishModal_publishAsNewDesc")).addToggle((toggle) => {
-            toggle.setValue(params.publishAsNew || false).onChange((value) => {
-              params.publishAsNew = value;
-            });
-          });
-        }
-      }
       // ==================== AI 辅助区域 ====================
-      renderAIAssistSection(container, params) {
-        const card = container.createDiv("wp-settings-card");
-        this.renderAITabBar(card, params);
-        const aiContentContainer = card.createDiv("wp-ai-tab-content");
-        if (this.currentAITab === "featured-image") {
-          this.renderAIFeaturedImageTab(aiContentContainer, params);
-        } else if (this.currentAITab === "excerpt") {
-          this.renderAIExcerptTab(aiContentContainer, params);
-        } else if (this.currentAITab === "tags") {
-          this.renderAITagsTab(aiContentContainer, params);
-        }
-      }
       /**
        * 渲染 AI 标签页导航栏
        */
-      renderAITabBar(container, params) {
-        const tabContainer = container.createDiv("wp-ai-tabs");
-        const tabs = [
-          { id: "featured-image", label: this.plugin.t("publishModal_featuredImage") },
-          { id: "excerpt", label: this.plugin.t("publishModal_aiExcerpt") },
-          { id: "tags", label: this.plugin.t("publishModal_aiTags") }
-        ];
-        tabs.forEach((tab) => {
-          const tabEl = tabContainer.createDiv({
-            cls: `wp-ai-tab-item ${this.currentAITab === tab.id ? "active" : ""}`
-          });
-          tabEl.createSpan({ text: tab.label });
-          tabEl.onclick = () => {
-            this.currentAITab = tab.id;
-            this.display(params);
-          };
-        });
-      }
       /**
        * 渲染特色图片标签页（从基本设置迁移过来）
        */
-      renderAIFeaturedImageTab(container, params) {
-        var _a5;
-        const previewContainer = container.createDiv("featured-image-preview-large");
-        if (this.isLoadingRemoteImage) {
-          const loadingDiv = previewContainer.createDiv("featured-image-loading");
-          loadingDiv.style.display = "flex";
-          loadingDiv.style.flexDirection = "column";
-          loadingDiv.style.alignItems = "center";
-          loadingDiv.style.justifyContent = "center";
-          loadingDiv.style.padding = "40px 20px";
-          loadingDiv.style.color = "var(--text-muted)";
-          const spinner = loadingDiv.createDiv("featured-image-spinner");
-          spinner.style.width = "32px";
-          spinner.style.height = "32px";
-          spinner.style.border = "3px solid var(--background-modifier-border)";
-          spinner.style.borderTop = "3px solid var(--interactive-accent)";
-          spinner.style.borderRadius = "50%";
-          spinner.style.animation = "spin 1s linear infinite";
-          spinner.style.marginBottom = "12px";
-          loadingDiv.createEl("p", {
-            text: this.t("publishModal_loadingRemoteImage") || "\u6B63\u5728\u52A0\u8F7D\u8FDC\u7A0B\u56FE\u7247...",
-            cls: "featured-image-loading-text"
-          });
-          if (!document.getElementById("featured-image-spinner-style")) {
-            const style = document.createElement("style");
-            style.id = "featured-image-spinner-style";
-            style.textContent = `
-          @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-          }
-        `;
-            document.head.appendChild(style);
-          }
-        } else if (this.remoteImageLoadFailed) {
-          const errorDiv = previewContainer.createDiv("featured-image-error");
-          errorDiv.style.display = "flex";
-          errorDiv.style.flexDirection = "column";
-          errorDiv.style.alignItems = "center";
-          errorDiv.style.justifyContent = "center";
-          errorDiv.style.padding = "40px 20px";
-          errorDiv.style.color = "var(--text-error)";
-          errorDiv.createEl("p", {
-            text: "\u274C " + (this.remoteImageError || this.t("publishModal_remoteImageLoadFailed")),
-            cls: "featured-image-error-text"
-          });
-          const btnRow2 = errorDiv.createDiv("featured-image-btn-row");
-          btnRow2.style.marginTop = "16px";
-          const retryBtn = btnRow2.createEl("button", {
-            text: this.t("publishModal_retryLoadImage") || "\u91CD\u8BD5",
-            cls: "feature-btn"
-          });
-          retryBtn.onclick = async () => {
-            if (this.remoteImagePostId) {
-              this.remoteImageLoadFailed = false;
-              this.remoteImageError = null;
-              await this.loadRemoteFeaturedImage(this.remoteImagePostId, params);
-            }
-          };
-          const skipBtn = btnRow2.createEl("button", {
-            text: this.t("publishModal_skipRemoteImage") || "\u8DF3\u8FC7",
-            cls: "feature-btn"
-          });
-          skipBtn.onclick = () => {
-            this.remoteImageLoadFailed = false;
-            this.remoteImageError = null;
-            this.remoteImagePostId = null;
-            this.display(params);
-          };
-        } else if (this.featuredImage) {
-          const img = previewContainer.createEl("img", {
-            cls: "featured-image-full"
-          });
-          img.src = `data:${this.featuredImage.mimeType};base64,${this.arrayBufferToBase64(this.featuredImage.content)}`;
-          const info = previewContainer.createDiv("featured-image-info");
-          info.textContent = `${this.featuredImage.fileName} (${formatFileSize(this.featuredImage.content.byteLength)})`;
-          const removeBtn = previewContainer.createEl("button", {
-            text: this.t("publishModal_removeImage"),
-            cls: "featured-image-remove-btn"
-          });
-          removeBtn.onclick = async () => {
-            this.featuredImage = null;
-            this.imageSource = "auto";
-            await this.clearImageCache();
-            this.display(params);
-          };
-        } else {
-          previewContainer.createEl("p", {
-            text: this.t("publishModal_noImageSelected"),
-            cls: "featured-image-placeholder-text"
-          });
-        }
-        const btnRow = container.createDiv("featured-image-btn-row");
-        const localBtn = btnRow.createEl("button", {
-          text: "\u{1F4C2} " + this.t("publishModal_selectFromLocal"),
-          cls: "feature-btn"
-        });
-        localBtn.onclick = () => this.selectLocalFile(params);
-        const vaultBtn = btnRow.createEl("button", {
-          text: "\u{1F4C1} " + this.t("publishModal_selectFromVault"),
-          cls: "feature-btn"
-        });
-        vaultBtn.onclick = () => this.selectVaultImage(params);
-        if (this.unsplashService) {
-          const unsplashBtn = btnRow.createEl("button", {
-            text: "\u{1F5BC}\uFE0F Unsplash",
-            cls: "feature-btn"
-          });
-          unsplashBtn.onclick = () => this.selectUnsplashImage(params);
-        }
-        if ((_a5 = this.aiService) == null ? void 0 : _a5.hasImageAIKey()) {
-          const aiBtn = btnRow.createEl("button", {
-            text: "\u{1F916} " + this.t("publishModal_aiGenerate"),
-            cls: "feature-btn"
-          });
-          aiBtn.onclick = () => this.generateFeaturedImage(params);
-        } else {
-          const aiBtn = btnRow.createEl("button", {
-            text: "\u{1F916} " + this.t("publishModal_aiGenerate"),
-            cls: "feature-btn disabled"
-          });
-          aiBtn.onclick = () => {
-            new import_obsidian10.Notice(this.t("notice_imageAIApiKeyRequired"));
-          };
-        }
-      }
       /**
        * 渲染摘要标签页（支持编辑）
        */
-      renderAIExcerptTab(container, params) {
-        const btnContainer = container.createDiv("wp-ai-buttons");
-        const generateBtn = btnContainer.createEl("button", { text: this.t("publishModal_generateSummary") });
-        if (!this.aiService) {
-          generateBtn.addClass("disabled");
-          generateBtn.onclick = () => {
-            new import_obsidian10.Notice(this.t("notice_aiConfigRequired"));
-          };
-        } else if (!this.aiService.hasTextAIKey()) {
-          generateBtn.addClass("disabled");
-          generateBtn.onclick = () => {
-            new import_obsidian10.Notice(this.t("notice_textAIApiKeyRequired"));
-          };
-        } else {
-          generateBtn.onclick = () => this.generateSummary(params);
-        }
-        const excerptEditor = container.createDiv("wp-ai-excerpt-editor");
-        excerptEditor.style.marginTop = "16px";
-        const label = excerptEditor.createEl("label", {
-          text: this.t("publishModal_excerptLabel") || "\u6458\u8981\u5185\u5BB9",
-          cls: "wp-ai-editor-label"
-        });
-        label.style.display = "block";
-        label.style.marginBottom = "8px";
-        label.style.fontWeight = "500";
-        label.style.color = "var(--text-normal)";
-        const textarea = excerptEditor.createEl("textarea", {
-          cls: "wp-preview-textarea"
-        });
-        textarea.value = params.excerpt || "";
-        textarea.placeholder = this.t("publishModal_excerptPlaceholder") || "\u5728\u6B64\u8F93\u5165\u6216\u751F\u6210\u6458\u8981...";
-        textarea.style.width = "100%";
-        textarea.style.minHeight = "120px";
-        textarea.style.padding = "12px";
-        textarea.style.borderRadius = "6px";
-        textarea.style.border = "1px solid var(--background-modifier-border)";
-        textarea.style.backgroundColor = "var(--background-primary)";
-        textarea.style.color = "var(--text-normal)";
-        textarea.style.fontFamily = "var(--font-text)";
-        textarea.style.fontSize = "14px";
-        textarea.style.lineHeight = "1.6";
-        textarea.style.resize = "vertical";
-        textarea.addEventListener("input", () => {
-          params.excerpt = textarea.value;
-        });
-      }
       /**
        * 渲染标签标签页（支持编辑）
        */
-      renderAITagsTab(container, params) {
-        const btnContainer = container.createDiv("wp-ai-buttons");
-        const generateBtn = btnContainer.createEl("button", { text: this.t("publishModal_generateTags") });
-        if (!this.aiService) {
-          generateBtn.addClass("disabled");
-          generateBtn.onclick = () => {
-            new import_obsidian10.Notice(this.t("notice_aiConfigRequired"));
-          };
-        } else if (!this.aiService.hasTextAIKey()) {
-          generateBtn.addClass("disabled");
-          generateBtn.onclick = () => {
-            new import_obsidian10.Notice(this.t("notice_textAIApiKeyRequired"));
-          };
-        } else {
-          generateBtn.onclick = () => this.generateTags(params);
-        }
-        const tagsEditor = container.createDiv("wp-ai-tags-editor");
-        tagsEditor.style.marginTop = "16px";
-        const label = tagsEditor.createEl("label", {
-          text: this.t("publishModal_tagsLabel") || "\u6807\u7B7E",
-          cls: "wp-ai-editor-label"
-        });
-        label.style.display = "block";
-        label.style.marginBottom = "8px";
-        label.style.fontWeight = "500";
-        label.style.color = "var(--text-normal)";
-        const tagsContainer = tagsEditor.createDiv("wp-preview-tags-editable");
-        this.tagsContainer = tagsContainer;
-        this.editableTags = params.tags ? [...params.tags] : [];
-        this.refreshTagsPreview(params);
-      }
       setupDateMask(inputEl, params) {
         const dateTimeFormat = "yyyy-MM-dd HH:mm:ss";
         const dateBlocks = {
@@ -111823,331 +110731,24 @@ var init_wp_publish_modal_v2 = __esm({
         });
       }
       // ==================== Preview Tab ====================
-      renderPreviewTab(container, params) {
-        const card = container.createDiv("wp-preview-card");
-        card.createEl("h3", { text: this.plugin.t("publishModal_previewTitle"), cls: "wp-preview-card-title" });
-        if (this.isEditingPreview) {
-          this.renderPreviewEditor(card);
-        } else {
-          this.renderPreviewContent(card, params);
-        }
-      }
-      renderPreviewEditor(card) {
-        const editorArea = card.createDiv("wp-preview-editor-area");
-        const textarea = editorArea.createEl("textarea", {
-          cls: "wp-preview-textarea",
-          attr: { placeholder: this.plugin.t("publishModal_previewEditPlaceholder") }
-        });
-        textarea.value = this.editableContent;
-        textarea.style.width = "100%";
-        textarea.style.minHeight = "300px";
-        textarea.style.fontFamily = "var(--font-mono)";
-        textarea.oninput = () => {
-          this.editableContent = textarea.value;
-        };
-      }
-      renderPreviewContent(card, params) {
-        const paramsTagsStr = JSON.stringify(params.tags || []);
-        const editableTagsStr = JSON.stringify(this.editableTags);
-        if (paramsTagsStr !== editableTagsStr) {
-          this.editableTags = params.tags ? [...params.tags] : [];
-        }
-        const hasImageId = this.matterData.featuredImageId && this.matterData.featuredImageId !== "";
-        if (hasImageId && !this.featuredImage && !this.autoFeaturedImage) {
-          const warningDiv = card.createDiv("wp-preview-warning");
-          warningDiv.createEl("strong", { text: "\u26A0\uFE0F " + this.plugin.t("publishModal_previewInconsistencyWarning") });
-          warningDiv.createEl("p", {
-            text: this.plugin.t("publishModal_previewInconsistencyDesc"),
-            cls: "wp-preview-warning-desc"
-          });
-        }
-        const imageToDisplay = this.featuredImage || this.autoFeaturedImage;
-        if (imageToDisplay) {
-          this.renderFeaturedImagePreview(card, imageToDisplay);
-        } else if (this.matterData.featurePicture) {
-          this.renderUploadedImagePreview(card, this.matterData.featurePicture);
-        }
-        if (params.excerpt) {
-          this.renderExcerptPreview(card, params.excerpt);
-        }
-        this.renderTagsPreview(card, params);
-        this.renderArticlePreview(card);
-      }
-      renderFeaturedImagePreview(card, image2) {
-        const section = this.createImageSection(card, this.plugin.t("publishModal_previewFeaturedImage"));
-        const blob = new Blob([image2.content], { type: image2.mimeType });
-        const url = URL.createObjectURL(blob);
-        this.createPreviewImage(section, url);
-      }
-      renderUploadedImagePreview(card, imageUrl) {
-        const section = this.createImageSection(card, this.plugin.t("publishModal_previewFeaturedImageUploaded"));
-        this.createPreviewImage(section, imageUrl);
-      }
-      createImageSection(card, labelText) {
-        const section = card.createDiv("wp-preview-featured-image");
-        section.style.marginBottom = "16px";
-        section.style.textAlign = "center";
-        const label = section.createEl("div", { text: labelText });
-        label.style.fontSize = "12px";
-        label.style.color = "var(--text-muted)";
-        label.style.marginBottom = "8px";
-        return section;
-      }
-      createPreviewImage(section, src) {
-        const imgContainer = section.createDiv();
-        Object.assign(imgContainer.style, {
-          maxWidth: "100%",
-          borderRadius: "8px",
-          overflow: "hidden",
-          border: "1px solid var(--background-modifier-border)"
-        });
-        const img = imgContainer.createEl("img", { attr: { src } });
-        Object.assign(img.style, {
-          maxWidth: "100%",
-          maxHeight: "180px",
-          objectFit: "cover",
-          display: "block",
-          width: "100%"
-        });
-      }
-      renderExcerptPreview(card, excerpt) {
-        const section = card.createDiv("wp-preview-excerpt");
-        Object.assign(section.style, {
-          padding: "10px 14px",
-          backgroundColor: "var(--background-secondary)",
-          borderRadius: "6px",
-          marginBottom: "16px",
-          fontSize: "13px",
-          color: "var(--text-muted)",
-          borderLeft: "3px solid var(--interactive-accent)"
-        });
-        section.createEl("strong", { text: this.plugin.t("publishModal_previewSummary") });
-        section.createSpan({ text: excerpt });
-      }
-      renderTagsPreview(card, params) {
-        let section;
-        if (this.tagsContainer && this.tagsContainer.parentElement === card) {
-          section = this.tagsContainer;
-          section.empty();
-        } else {
-          section = card.createDiv("wp-preview-tags-editable");
-          this.tagsContainer = section;
-          Object.assign(section.style, {
-            marginBottom: "16px",
-            display: "flex",
-            flexWrap: "wrap",
-            gap: "8px",
-            alignItems: "center",
-            padding: "12px",
-            backgroundColor: "var(--background-primary)",
-            borderRadius: "6px",
-            border: "1px solid var(--background-modifier-border)"
-          });
-        }
-        const label = section.createEl("span", { text: this.plugin.t("publishModal_previewTags") });
-        Object.assign(label.style, {
-          fontSize: "12px",
-          color: "var(--text-muted)",
-          fontWeight: "500"
-        });
-        this.editableTags.forEach((tag) => {
-          this.renderTagItem(section, tag, params);
-        });
-        this.renderAddTagButton(section, params);
-      }
       /**
        * 渲染单个标签项（带删除按钮）
        */
-      renderTagItem(container, tag, params) {
-        const tagEl = container.createEl("span");
-        tagEl.addClass("wp-tag-item");
-        const bgColor = getTagColor(tag);
-        Object.assign(tagEl.style, {
-          display: "inline-flex",
-          alignItems: "center",
-          gap: "4px",
-          padding: "4px 10px",
-          backgroundColor: bgColor,
-          color: "#fff",
-          borderRadius: "12px",
-          fontSize: "12px",
-          fontWeight: "500",
-          cursor: "default",
-          transition: "all 0.2s ease"
-        });
-        const textSpan = tagEl.createEl("span", { text: tag });
-        textSpan.addClass("wp-tag-text");
-        const removeBtn = tagEl.createEl("span", { text: "\xD7" });
-        removeBtn.addClass("wp-tag-remove");
-        Object.assign(removeBtn.style, {
-          cursor: "pointer",
-          fontSize: "16px",
-          fontWeight: "bold",
-          lineHeight: "1",
-          opacity: "0.7",
-          transition: "opacity 0.2s ease"
-        });
-        removeBtn.addEventListener("mouseenter", () => {
-          removeBtn.style.opacity = "1";
-        });
-        removeBtn.addEventListener("mouseleave", () => {
-          removeBtn.style.opacity = "0.7";
-        });
-        removeBtn.addEventListener("click", (e) => {
-          e.stopPropagation();
-          this.removeTag(tag, params);
-        });
-        tagEl.addEventListener("mouseenter", () => {
-          tagEl.style.transform = "translateY(-1px)";
-          tagEl.style.boxShadow = "var(--wp-shadow-hover)";
-        });
-        tagEl.addEventListener("mouseleave", () => {
-          tagEl.style.transform = "translateY(0)";
-          tagEl.style.boxShadow = "none";
-        });
-      }
       /**
        * 渲染添加标签按钮
        */
-      renderAddTagButton(container, params) {
-        const addBtn = container.createEl("span", { text: "+" });
-        addBtn.addClass("wp-tag-add-btn");
-        Object.assign(addBtn.style, {
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          width: "24px",
-          height: "24px",
-          backgroundColor: "var(--interactive-accent)",
-          color: "var(--text-on-accent)",
-          borderRadius: "50%",
-          fontSize: "18px",
-          fontWeight: "bold",
-          cursor: "pointer",
-          transition: "all 0.2s ease",
-          lineHeight: "1"
-        });
-        addBtn.addEventListener("mouseenter", () => {
-          addBtn.style.transform = "scale(1.1)";
-          addBtn.style.backgroundColor = "var(--interactive-accent-hover)";
-        });
-        addBtn.addEventListener("mouseleave", () => {
-          addBtn.style.transform = "scale(1)";
-          addBtn.style.backgroundColor = "var(--interactive-accent)";
-        });
-        addBtn.addEventListener("click", () => {
-          this.showTagInput(container, addBtn, params);
-        });
-      }
       /**
        * 显示标签输入框
        */
-      showTagInput(container, addBtn, params) {
-        addBtn.style.display = "none";
-        const input = container.createEl("input");
-        input.addClass("wp-tag-input");
-        input.type = "text";
-        input.placeholder = this.plugin.t("publishModal_tagInputPlaceholder") || "\u8F93\u5165\u6807\u7B7E\u540D...";
-        Object.assign(input.style, {
-          padding: "4px 10px",
-          fontSize: "12px",
-          border: "1px solid var(--interactive-accent)",
-          borderRadius: "12px",
-          outline: "none",
-          minWidth: "120px",
-          backgroundColor: "var(--background-primary)",
-          color: "var(--text-normal)"
-        });
-        input.focus();
-        let tagAdded = false;
-        input.addEventListener("keydown", (e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            const tagName = input.value.trim();
-            if (tagName && !tagAdded) {
-              this.addTag(tagName, params);
-              tagAdded = true;
-            }
-            input.remove();
-            addBtn.style.display = "inline-flex";
-          } else if (e.key === "Escape") {
-            tagAdded = true;
-            input.remove();
-            addBtn.style.display = "inline-flex";
-          }
-        });
-        input.addEventListener("blur", () => {
-          setTimeout(() => {
-            if (!tagAdded) {
-              const tagName = input.value.trim();
-              if (tagName) {
-                this.addTag(tagName, params);
-                tagAdded = true;
-              }
-            }
-            input.remove();
-            addBtn.style.display = "inline-flex";
-          }, 200);
-        });
-      }
       /**
        * 删除标签（通过标签名而不是索引）
        */
-      removeTag(tagName, params) {
-        const index2 = this.editableTags.indexOf(tagName);
-        if (index2 > -1) {
-          this.editableTags.splice(index2, 1);
-          params.tags = [...this.editableTags];
-          this.refreshTagsPreview(params);
-        }
-      }
       /**
        * 添加标签
        */
-      addTag(tagName, params) {
-        const trimmed = tagName.trim();
-        if (!trimmed) return;
-        if (this.editableTags.includes(trimmed)) {
-          new import_obsidian10.Notice(this.plugin.t("publishModal_tagExists") || "\u6807\u7B7E\u5DF2\u5B58\u5728");
-          return;
-        }
-        this.editableTags.push(trimmed);
-        params.tags = [...this.editableTags];
-        this.refreshTagsPreview(params);
-        new import_obsidian10.Notice(this.plugin.t("publishModal_tagAdded") || "\u6807\u7B7E\u5DF2\u6DFB\u52A0");
-      }
       /**
        * 刷新标签预览
        */
-      refreshTagsPreview(params) {
-        if (!this.tagsContainer) return;
-        const card = this.tagsContainer.parentElement;
-        if (!card) return;
-        this.renderTagsPreview(card, params);
-      }
-      renderArticlePreview(card) {
-        const previewContent = card.createDiv("wp-preview-rendered");
-        const html4 = AppState.markdownParser.render(this.editableContent);
-        previewContent.innerHTML = sanitizeHtml(html4);
-        const style = document.createElement("style");
-        style.textContent = `
-      .wp-preview-rendered h1, .wp-preview-rendered h2, .wp-preview-rendered h3 {
-        margin-top: 1em; margin-bottom: 0.5em; font-weight: 600;
-      }
-      .wp-preview-rendered p { margin-bottom: 1em; line-height: 1.6; }
-      .wp-preview-rendered img { max-width: 100%; max-height: 300px; object-fit: contain; height: auto; }
-      .wp-preview-rendered code {
-        background: var(--background-secondary); padding: 2px 4px; border-radius: 3px;
-      }
-      .wp-preview-rendered pre {
-        background: var(--background-secondary); padding: 12px; border-radius: 5px; overflow-x: auto;
-      }
-      .wp-preview-rendered blockquote {
-        border-left: 3px solid var(--text-accent); padding-left: 12px; color: var(--text-muted);
-      }
-    `;
-        previewContent.appendChild(style);
-      }
       // ==================== Advanced Settings Tab ====================
       // ==================== API Warning Display ====================
       renderApiWarning(container, apiType) {
@@ -112180,57 +110781,26 @@ var init_wp_publish_modal_v2 = __esm({
         showApiInfoModal(this.plugin, apiType);
       }
       // ==================== Bottom Action Bar ====================
-      renderBottomBar(container, params) {
-        const bottomContainer = container.createDiv("wp-publish-bottom-bar");
-        if (this.currentTab === "preview") {
-          const editBtn = bottomContainer.createEl("button", {
-            text: this.isEditingPreview ? this.plugin.t("publishModal_saveButton") : this.plugin.t("publishModal_editButton"),
-            cls: "mod-cta"
-          });
-          editBtn.onclick = () => {
-            if (this.isEditingPreview) {
-              this.isEditingPreview = false;
-              new import_obsidian10.Notice(this.t("publishModal_contentSaved"));
-            } else {
-              this.isEditingPreview = true;
-            }
-            this.display(params);
-          };
-          const publishBtn = bottomContainer.createEl("button", {
-            text: this.t("publishModal_publishButton"),
-            cls: "mod-cta publish-btn"
-          });
-          this.publishBtn = publishBtn;
-          publishBtn.onclick = () => this.doPublish(params, publishBtn);
-        } else {
-          const publishBtn = bottomContainer.createEl("button", {
-            text: this.t("publishModal_publishButton"),
-            cls: "mod-cta publish-btn-full"
-          });
-          this.publishBtn = publishBtn;
-          publishBtn.onclick = () => this.doPublish(params, publishBtn);
-        }
-      }
       sanitizeContentForAI(content, maxLen = 2e3) {
         let cleaned = content.replace(/^---[\s\S]*?---\n?/m, "").replace(/```[\s\S]*?```/g, "").replace(/!\[.*?\]\(.*?\)/g, "").replace(/!\[\[.*?\]\]/g, "").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/\[\[([^\]|]*)\|?([^\]]*)\]\]/g, "$2$1").replace(/#{1,6}\s*/g, "").replace(/[*_~`]+/g, "").replace(/\n{3,}/g, "\n\n").trim();
         return cleaned.substring(0, maxLen);
       }
       async generateSummary(params) {
         if (!this.aiService) {
-          new import_obsidian10.Notice(this.t("publishModal_aiServiceRequired"));
+          new import_obsidian11.Notice(this.t("publishModal_aiServiceRequired"));
           return;
         }
         if (!this.aiService.hasTextAIKey()) {
-          new import_obsidian10.Notice(this.t("notice_textAIApiKeyRequired"));
+          new import_obsidian11.Notice(this.t("notice_textAIApiKeyRequired"));
           return;
         }
         const contentToUse = this.editableContent || this.articleContent;
         if (!contentToUse) {
-          new import_obsidian10.Notice(this.t("publishModal_emptyContentForTags"));
+          new import_obsidian11.Notice(this.t("publishModal_emptyContentForTags"));
           return;
         }
         try {
-          new import_obsidian10.Notice(this.t("publishModal_generatingSummary"));
+          new import_obsidian11.Notice(this.t("publishModal_generatingSummary"));
           const cleanContent = this.sanitizeContentForAI(contentToUse, 2e3);
           log5.info("Generating summary from content length:", cleanContent.length);
           const language = detectLanguage(cleanContent);
@@ -112240,29 +110810,29 @@ var init_wp_publish_modal_v2 = __esm({
           const prompt = localizedPrompt.replace("{content}", cleanContent);
           const summary = await this.aiService.generateText(prompt);
           params.excerpt = summary.trim();
-          new import_obsidian10.Notice(this.t("publishModal_summaryGenerated", { summary: params.excerpt.substring(0, 50) }));
+          new import_obsidian11.Notice(this.t("publishModal_summaryGenerated", { summary: params.excerpt.substring(0, 50) }));
           this.display(params);
         } catch (error2) {
           log5.error("Generate summary error:", error2);
-          new import_obsidian10.Notice(this.t("publishModal_summaryGenerateFailed", { error: error2 instanceof Error ? error2.message : "Unknown error" }));
+          new import_obsidian11.Notice(this.t("publishModal_summaryGenerateFailed", { error: error2 instanceof Error ? error2.message : "Unknown error" }));
         }
       }
       async generateTags(params) {
         if (!this.aiService) {
-          new import_obsidian10.Notice(this.t("notice_aiConfigRequired"));
+          new import_obsidian11.Notice(this.t("notice_aiConfigRequired"));
           return;
         }
         if (!this.aiService.hasTextAIKey()) {
-          new import_obsidian10.Notice(this.t("notice_textAIApiKeyRequired"));
+          new import_obsidian11.Notice(this.t("notice_textAIApiKeyRequired"));
           return;
         }
         const contentToUse = this.editableContent || this.articleContent;
         if (!contentToUse) {
-          new import_obsidian10.Notice(this.t("publishModal_emptyContentForTags"));
+          new import_obsidian11.Notice(this.t("publishModal_emptyContentForTags"));
           return;
         }
         try {
-          new import_obsidian10.Notice(this.t("publishModal_generatingTags"));
+          new import_obsidian11.Notice(this.t("publishModal_generatingTags"));
           const cleanContent = this.sanitizeContentForAI(contentToUse, 2e3);
           log5.info("Generating tags from content length:", cleanContent.length);
           const language = detectLanguage(cleanContent);
@@ -112272,11 +110842,11 @@ var init_wp_publish_modal_v2 = __esm({
           const prompt = localizedPrompt.replace("{content}", cleanContent);
           const tags = await this.aiService.generateText(prompt);
           params.tags = tags.split(/[,，]/).map((t) => t.trim()).filter((t) => t).slice(0, 4);
-          new import_obsidian10.Notice(this.t("publishModal_tagsGenerated", { tags: params.tags.join(", ") }));
+          new import_obsidian11.Notice(this.t("publishModal_tagsGenerated", { tags: params.tags.join(", ") }));
           this.display(params);
         } catch (error2) {
           log5.error("Generate tags error:", error2);
-          new import_obsidian10.Notice(this.t("publishModal_tagsGenerateFailed", { error: error2 instanceof Error ? error2.message : "Unknown error" }));
+          new import_obsidian11.Notice(this.t("publishModal_tagsGenerateFailed", { error: error2 instanceof Error ? error2.message : "Unknown error" }));
         }
       }
       doPublish(params, btn) {
@@ -112359,7 +110929,7 @@ var init_wp_publish_modal_v2 = __esm({
        * 显示发布成功提示
        */
       showSuccessNotice() {
-        new import_obsidian10.Notice(this.t("publishModal_publishSuccess"), 5e3);
+        new import_obsidian11.Notice(this.t("publishModal_publishSuccess"), 5e3);
         setTimeout(() => {
           this.close();
         }, 2e3);
@@ -112435,60 +111005,15 @@ var init_wp_publish_modal_v2 = __esm({
       /**
        * 添加涟漪效果到按钮
        */
-      addRippleEffect(button) {
-        button.addEventListener("click", (e) => {
-          const ripple = button.createDiv("wp-ripple-effect");
-          const rect = button.getBoundingClientRect();
-          const size = Math.max(rect.width, rect.height);
-          const x = e.clientX - rect.left - size / 2;
-          const y = e.clientY - rect.top - size / 2;
-          ripple.style.width = ripple.style.height = `${size}px`;
-          ripple.style.left = `${x}px`;
-          ripple.style.top = `${y}px`;
-          setTimeout(() => ripple.remove(), 600);
-        });
-      }
       /**
        * 显示工具提示
        */
-      showTooltip(element, text5, duration = 2e3) {
-        const tooltip = document.body.createDiv("wp-tooltip");
-        tooltip.setText(text5);
-        const rect = element.getBoundingClientRect();
-        tooltip.style.left = `${rect.left + rect.width / 2}px`;
-        tooltip.style.top = `${rect.top - 40}px`;
-        tooltip.style.transform = "translateX(-50%)";
-        setTimeout(() => tooltip.addClass("show"), 10);
-        setTimeout(() => {
-          tooltip.removeClass("show");
-          setTimeout(() => tooltip.remove(), 200);
-        }, duration);
-      }
       /**
        * 添加输入框焦点动画
        */
-      enhanceInputFocus(input) {
-        input.addEventListener("focus", () => {
-          var _a5;
-          (_a5 = input.parentElement) == null ? void 0 : _a5.addClass("wp-input-focused");
-        });
-        input.addEventListener("blur", () => {
-          var _a5;
-          (_a5 = input.parentElement) == null ? void 0 : _a5.removeClass("wp-input-focused");
-        });
-      }
       /**
        * 添加平滑滚动到元素
        */
-      scrollToElement(element, offset = 20) {
-        const rect = element.getBoundingClientRect();
-        const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-        const targetY = rect.top + scrollTop - offset;
-        window.scrollTo({
-          top: targetY,
-          behavior: "smooth"
-        });
-      }
       generateDefaultSlug(title, params) {
         if (!title || !this.slugInput) return;
         try {
@@ -114483,12 +113008,12 @@ function openPostPublishedModal(plugin4) {
     });
   });
 }
-var import_obsidian11, PostPublishedModal;
+var import_obsidian12, PostPublishedModal;
 var init_post_published_modal = __esm({
   "src/post-published-modal.ts"() {
     "use strict";
-    import_obsidian11 = require("obsidian");
-    PostPublishedModal = class extends import_obsidian11.Modal {
+    import_obsidian12 = require("obsidian");
+    PostPublishedModal = class extends import_obsidian12.Modal {
       constructor(plugin4, onOpenClicked) {
         super(plugin4.app);
         this.plugin = plugin4;
@@ -114500,8 +113025,8 @@ var init_post_published_modal = __esm({
         };
         const { contentEl } = this;
         contentEl.createEl("h1", { text: t("publishedModal_title") });
-        new import_obsidian11.Setting(contentEl).setName(t("publishedModal_confirmEditInWP"));
-        new import_obsidian11.Setting(contentEl).addButton(
+        new import_obsidian12.Setting(contentEl).setName(t("publishedModal_confirmEditInWP"));
+        new import_obsidian12.Setting(contentEl).addButton(
           (button) => button.setButtonText(t("publishedModal_cancel")).onClick(() => {
             this.close();
           })
@@ -114537,11 +113062,11 @@ function openLoginModal(plugin4, profile, validateUser) {
     modal.open();
   });
 }
-var import_obsidian12, WpLoginModal;
+var import_obsidian13, WpLoginModal;
 var init_wp_login_modal = __esm({
   "src/wp-login-modal.ts"() {
     "use strict";
-    import_obsidian12 = require("obsidian");
+    import_obsidian13 = require("obsidian");
     init_utils5();
     init_abstract_modal();
     WpLoginModal = class extends AbstractModal {
@@ -114556,7 +113081,7 @@ var init_wp_login_modal = __esm({
         this.createHeader(this.t("loginModal_title"));
         let username = this.profile.username;
         let password = this.profile.password;
-        new import_obsidian12.Setting(contentEl).setName(this.t("loginModal_username")).setDesc(this.t("loginModal_usernameDesc", { url: this.profile.endpoint })).addText((text5) => {
+        new import_obsidian13.Setting(contentEl).setName(this.t("loginModal_username")).setDesc(this.t("loginModal_usernameDesc", { url: this.profile.endpoint })).addText((text5) => {
           var _a5;
           text5.setValue((_a5 = this.profile.username) != null ? _a5 : "").onChange(async (value) => {
             username = value;
@@ -114571,7 +113096,7 @@ var init_wp_login_modal = __esm({
             });
           }
         });
-        new import_obsidian12.Setting(contentEl).setName(this.t("loginModal_password")).setDesc(this.t("loginModal_passwordDesc", { url: this.profile.endpoint })).addText((text5) => {
+        new import_obsidian13.Setting(contentEl).setName(this.t("loginModal_password")).setDesc(this.t("loginModal_passwordDesc", { url: this.profile.endpoint })).addText((text5) => {
           var _a5;
           text5.setValue((_a5 = this.profile.password) != null ? _a5 : "").onChange(async (value) => {
             password = value;
@@ -114586,7 +113111,7 @@ var init_wp_login_modal = __esm({
             });
           }
         });
-        new import_obsidian12.Setting(contentEl).addButton(
+        new import_obsidian13.Setting(contentEl).addButton(
           (button) => button.setButtonText(this.t("loginModal_loginButtonText")).setCta().onClick(() => {
             if (!username) {
               showError(this.t("error_noUsername"));
@@ -114848,12 +113373,12 @@ function openConflictModal(app, plugin4, conflicts) {
     new FrontmatterConflictModal(app, plugin4, conflicts, resolve).open();
   });
 }
-var import_obsidian13, FrontmatterConflictModal;
+var import_obsidian14, FrontmatterConflictModal;
 var init_frontmatter_conflict_modal = __esm({
   "src/frontmatter-conflict-modal.ts"() {
     "use strict";
-    import_obsidian13 = require("obsidian");
-    FrontmatterConflictModal = class extends import_obsidian13.Modal {
+    import_obsidian14 = require("obsidian");
+    FrontmatterConflictModal = class extends import_obsidian14.Modal {
       constructor(app, plugin4, conflicts, onResolve) {
         super(app);
         this.resolution = "cancel";
@@ -114885,19 +113410,19 @@ var init_frontmatter_conflict_modal = __esm({
           remoteValue.createEl("span", { text: this.formatValue(conflict.remoteValue) });
         }
         const optionsContainer = contentEl.createDiv("wp-conflict-options");
-        new import_obsidian13.Setting(optionsContainer).setName(this.plugin.t("conflictModal_useLocalName")).setDesc(this.plugin.t("conflictModal_useLocalDesc")).addButton(
+        new import_obsidian14.Setting(optionsContainer).setName(this.plugin.t("conflictModal_useLocalName")).setDesc(this.plugin.t("conflictModal_useLocalDesc")).addButton(
           (btn) => btn.setButtonText(this.plugin.t("conflictModal_useLocalButton")).setCta().onClick(() => {
             this.resolution = "local";
             this.close();
           })
         );
-        new import_obsidian13.Setting(optionsContainer).setName(this.plugin.t("conflictModal_useRemoteName")).setDesc(this.plugin.t("conflictModal_useRemoteDesc")).addButton(
+        new import_obsidian14.Setting(optionsContainer).setName(this.plugin.t("conflictModal_useRemoteName")).setDesc(this.plugin.t("conflictModal_useRemoteDesc")).addButton(
           (btn) => btn.setButtonText(this.plugin.t("conflictModal_useRemoteButton")).onClick(() => {
             this.resolution = "remote";
             this.close();
           })
         );
-        new import_obsidian13.Setting(optionsContainer).setName(this.plugin.t("conflictModal_cancelName")).setDesc(this.plugin.t("conflictModal_cancelDesc")).addButton(
+        new import_obsidian14.Setting(optionsContainer).setName(this.plugin.t("conflictModal_cancelName")).setDesc(this.plugin.t("conflictModal_cancelDesc")).addButton(
           (btn) => btn.setButtonText(this.plugin.t("conflictModal_cancelButton")).setWarning().onClick(() => {
             this.resolution = "cancel";
             this.close();
@@ -114970,11 +113495,11 @@ function getImages(content) {
   }
   return paths;
 }
-var import_obsidian14, import_file_type_checker, globalAuthCache, AbstractWordPressClient;
+var import_obsidian15, import_file_type_checker, globalAuthCache, AbstractWordPressClient;
 var init_abstract_wp_client = __esm({
   "src/abstract-wp-client.ts"() {
     "use strict";
-    import_obsidian14 = require("obsidian");
+    import_obsidian15 = require("obsidian");
     init_wp_types();
     init_wp_publish_modal_v2();
     init_featured_image_modal();
@@ -115320,7 +113845,7 @@ var init_abstract_wp_client = __esm({
                 continue;
               }
               const imgFile = this.plugin.app.metadataCache.getFirstLinkpathDest(img.src, fileName);
-              if (imgFile instanceof import_obsidian14.TFile) {
+              if (imgFile instanceof import_obsidian15.TFile) {
                 const content = await this.plugin.app.vault.readBinary(imgFile);
                 const fileType = import_file_type_checker.default.detectFile(content);
                 const result = await this.uploadMedia({
@@ -115342,7 +113867,7 @@ var init_abstract_wp_client = __esm({
                     name: imgFile.name
                   });
                   console.error("[updatePostImages] Image upload failed:", imgFile.name, errorMsg);
-                  new import_obsidian14.Notice(errorMsg, ERROR_NOTICE_TIMEOUT);
+                  new import_obsidian15.Notice(errorMsg, ERROR_NOTICE_TIMEOUT);
                 }
               }
             } else {
@@ -115382,7 +113907,7 @@ var init_abstract_wp_client = __esm({
               if (conflicts.length > 0) {
                 const resolution = await openConflictModal(this.plugin.app, this.plugin, conflicts);
                 if (resolution === "cancel") {
-                  new import_obsidian14.Notice(this.plugin.t("notice_publishCancelled"));
+                  new import_obsidian15.Notice(this.plugin.t("notice_publishCancelled"));
                   return {
                     code: 1 /* Error */,
                     error: {
@@ -115518,7 +114043,7 @@ var init_abstract_wp_client = __esm({
                         if (compressedContent) {
                           const originalSizeKB = (featuredImage.content.byteLength / 1024).toFixed(1);
                           const compressedSizeKB = (compressedContent.byteLength / 1024).toFixed(1);
-                          new import_obsidian14.Notice(this.plugin.i18n.t("notice_imageCompressed", {
+                          new import_obsidian15.Notice(this.plugin.i18n.t("notice_imageCompressed", {
                             originalSize: originalSizeKB,
                             compressedSize: compressedSizeKB
                           }));
@@ -115544,7 +114069,7 @@ var init_abstract_wp_client = __esm({
                           name: featuredImage.fileName
                         });
                         console.error("[WpPublishModalV2] Featured image upload failed:", errorMsg);
-                        new import_obsidian14.Notice(errorMsg, ERROR_NOTICE_TIMEOUT);
+                        new import_obsidian15.Notice(errorMsg, ERROR_NOTICE_TIMEOUT);
                       }
                     } else {
                       const cachedImageId = publishModal.getCachedFeaturedImageId();
@@ -115671,7 +114196,7 @@ var init_abstract_wp_client = __esm({
             if (result.code === 0 /* OK */) {
               if (attempt2 > 0) {
                 console.log(`[uploadMediaWithRetry] Upload succeeded after ${attempt2 + 1} attempts`);
-                new import_obsidian14.Notice(this.plugin.i18n.t("notice_featuredImageUploadRetrySuccess", {
+                new import_obsidian15.Notice(this.plugin.i18n.t("notice_featuredImageUploadRetrySuccess", {
                   fileName,
                   attempts: String(attempt2 + 1)
                 }), 5e3);
@@ -115683,7 +114208,7 @@ var init_abstract_wp_client = __esm({
               attempt2++;
               if (attempt2 <= FEATURED_IMAGE_UPLOAD_MAX_RETRIES) {
                 console.log(`[uploadMediaWithRetry] Transient error detected, retrying in ${FEATURED_IMAGE_UPLOAD_RETRY_DELAY_MS}ms...`, result.error);
-                new import_obsidian14.Notice(this.plugin.i18n.t("notice_featuredImageUploadRetrying", {
+                new import_obsidian15.Notice(this.plugin.i18n.t("notice_featuredImageUploadRetrying", {
                   fileName,
                   attempt: String(attempt2),
                   maxRetries: String(FEATURED_IMAGE_UPLOAD_MAX_RETRIES)
@@ -115700,7 +114225,7 @@ var init_abstract_wp_client = __esm({
               attempt2++;
               if (attempt2 <= FEATURED_IMAGE_UPLOAD_MAX_RETRIES) {
                 console.log(`[uploadMediaWithRetry] Transient exception detected, retrying in ${FEATURED_IMAGE_UPLOAD_RETRY_DELAY_MS}ms...`, error2);
-                new import_obsidian14.Notice(this.plugin.i18n.t("notice_featuredImageUploadRetrying", {
+                new import_obsidian15.Notice(this.plugin.i18n.t("notice_featuredImageUploadRetrying", {
                   fileName,
                   attempt: String(attempt2),
                   maxRetries: String(FEATURED_IMAGE_UPLOAD_MAX_RETRIES)
@@ -116269,11 +114794,11 @@ var init_constants3 = __esm({
 });
 
 // src/rest-client.ts
-var import_obsidian15, RestClient;
+var import_obsidian16, RestClient;
 var init_rest_client = __esm({
   "src/rest-client.ts"() {
     "use strict";
-    import_obsidian15 = require("obsidian");
+    import_obsidian16 = require("obsidian");
     init_utils5();
     init_types2();
     init_constants3();
@@ -116305,7 +114830,7 @@ var init_rest_client = __esm({
         const timeoutMs = (_a5 = options == null ? void 0 : options.timeout) != null ? _a5 : this.timeout;
         try {
           const response = await Promise.race([
-            (0, import_obsidian15.requestUrl)({
+            (0, import_obsidian16.requestUrl)({
               url: endpoint,
               method: "GET",
               headers: {
@@ -116357,7 +114882,7 @@ var init_rest_client = __esm({
         const timeoutMs = (_a5 = options == null ? void 0 : options.timeout) != null ? _a5 : this.timeout;
         try {
           const response = await Promise.race([
-            (0, import_obsidian15.requestUrl)({
+            (0, import_obsidian16.requestUrl)({
               url: endpoint,
               method: "POST",
               headers: {
@@ -116936,7 +115461,7 @@ function rendererProfile(profile, container) {
       desc += " / \u{1F512} ******";
     }
   }
-  return new import_obsidian16.Setting(container).setName(name).setDesc(desc);
+  return new import_obsidian17.Setting(container).setName(name).setDesc(desc);
 }
 function isValidUrl(url) {
   try {
@@ -116979,7 +115504,7 @@ function showError(error2) {
   } else {
     errorMessage = String(error2);
   }
-  new import_obsidian16.Notice(`\u274C ${errorMessage}`, ERROR_NOTICE_TIMEOUT);
+  new import_obsidian17.Notice(`\u274C ${errorMessage}`, ERROR_NOTICE_TIMEOUT);
   return {
     code: 1 /* Error */,
     error: {
@@ -117005,11 +115530,11 @@ async function processFile(file, app) {
 function sleep2(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
-var import_obsidian16;
+var import_obsidian17;
 var init_utils5 = __esm({
   "src/utils.ts"() {
     "use strict";
-    import_obsidian16 = require("obsidian");
+    import_obsidian17 = require("obsidian");
     init_markdown_it_mathjax3_plugin();
     init_wp_types();
     init_wp_clients();
@@ -117026,23 +115551,23 @@ __export(main_exports, {
   default: () => WordpressPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian23 = require("obsidian");
+var import_obsidian24 = require("obsidian");
 
 // src/settings.ts
-var import_obsidian20 = require("obsidian");
+var import_obsidian21 = require("obsidian");
 init_wp_api();
 
 // src/wp-profile-manage-modal.ts
-var import_obsidian19 = require("obsidian");
+var import_obsidian20 = require("obsidian");
 
 // src/wp-profile-modal.ts
-var import_obsidian18 = require("obsidian");
+var import_obsidian19 = require("obsidian");
 init_consts();
 init_wp_types();
 
 // src/oauth2-client.ts
 init_utils5();
-var import_obsidian17 = require("obsidian");
+var import_obsidian18 = require("obsidian");
 init_wp_types();
 init_consts();
 init_logger();
@@ -117085,7 +115610,7 @@ var OAuth2Client = class _OAuth2Client {
       code: params.code,
       redirect_uri: params.redirectUri
     };
-    return (0, import_obsidian17.requestUrl)({
+    return (0, import_obsidian18.requestUrl)({
       url: this.options.tokenEndpoint,
       method: "POST",
       headers: {
@@ -117110,7 +115635,7 @@ var OAuth2Client = class _OAuth2Client {
       throw new Error("No validate token endpoint set.");
     }
     try {
-      const response = await (0, import_obsidian17.requestUrl)({
+      const response = await (0, import_obsidian18.requestUrl)({
         url: `${this.options.validateTokenEndpoint}?client_id=${this.options.clientId}&token=${params.token}`,
         method: "GET",
         headers: {
@@ -117224,7 +115749,7 @@ var WpProfileModal = class extends AbstractModal {
     let apiDesc = getApiTypeDesc(this.profileData.apiType);
     const renderProfile = () => {
       content.empty();
-      new import_obsidian18.Setting(content).setName(this.t("profileModal_name")).setDesc(this.t("profileModal_nameDesc")).addText(
+      new import_obsidian19.Setting(content).setName(this.t("profileModal_name")).setDesc(this.t("profileModal_nameDesc")).addText(
         (text5) => {
           var _a5;
           return text5.setPlaceholder("Profile name").setValue((_a5 = this.profileData.name) != null ? _a5 : "").onChange((value) => {
@@ -117232,12 +115757,12 @@ var WpProfileModal = class extends AbstractModal {
           });
         }
       );
-      new import_obsidian18.Setting(content).setName(this.t("settings_url")).setDesc(this.t("settings_urlDesc")).addText((text5) => text5.setPlaceholder(this.t("settings_urlPlaceholder")).setValue(this.profileData.endpoint).onChange((value) => {
+      new import_obsidian19.Setting(content).setName(this.t("settings_url")).setDesc(this.t("settings_urlDesc")).addText((text5) => text5.setPlaceholder(this.t("settings_urlPlaceholder")).setValue(this.profileData.endpoint).onChange((value) => {
         if (this.profileData.endpoint !== value) {
           this.profileData.endpoint = value;
         }
       }));
-      new import_obsidian18.Setting(content).setName(this.t("settings_apiType")).setDesc(this.t("settings_apiTypeDesc")).addDropdown((dropdown) => {
+      new import_obsidian19.Setting(content).setName(this.t("settings_apiType")).setDesc(this.t("settings_apiTypeDesc")).addDropdown((dropdown) => {
         dropdown.addOption("xml-rpc" /* XML_RPC */, this.t("settings_apiTypeXmlRpc")).addOption("miniOrange" /* RestAPI_miniOrange */, this.t("settings_apiTypeRestMiniOrange")).addOption("application-passwords" /* RestApi_ApplicationPasswords */, this.t("settings_apiTypeRestApplicationPasswords")).addOption("WpComOAuth2" /* RestApi_WpComOAuth2 */, this.t("settings_apiTypeRestWpComOAuth2")).setValue(this.profileData.apiType).onChange(async (value) => {
           let hasError = false;
           let newApiType = value;
@@ -117271,14 +115796,14 @@ var WpProfileModal = class extends AbstractModal {
         cls: "setting-item-description"
       });
       if (this.profileData.apiType === "xml-rpc" /* XML_RPC */) {
-        new import_obsidian18.Setting(content).setName(this.t("settings_xmlRpcPath")).setDesc(this.t("settings_xmlRpcPathDesc")).addText((text5) => {
+        new import_obsidian19.Setting(content).setName(this.t("settings_xmlRpcPath")).setDesc(this.t("settings_xmlRpcPathDesc")).addText((text5) => {
           var _a5;
           return text5.setPlaceholder("/xmlrpc.php").setValue((_a5 = this.profileData.xmlRpcPath) != null ? _a5 : "").onChange((value) => {
             this.profileData.xmlRpcPath = value;
           });
         });
       } else if (this.profileData.apiType === "WpComOAuth2" /* RestApi_WpComOAuth2 */) {
-        new import_obsidian18.Setting(content).setName(this.t("settings_wpComOAuth2RefreshToken")).setDesc(this.t("settings_wpComOAuth2RefreshTokenDesc")).addButton((button) => button.setButtonText(this.t("settings_wpComOAuth2ValidateTokenButtonText")).onClick(() => {
+        new import_obsidian19.Setting(content).setName(this.t("settings_wpComOAuth2RefreshToken")).setDesc(this.t("settings_wpComOAuth2RefreshTokenDesc")).addButton((button) => button.setButtonText(this.t("settings_wpComOAuth2ValidateTokenButtonText")).onClick(() => {
           if (this.profileData.wpComOAuth2Token) {
             OAuth2Client.getWpOAuth2Client(this.plugin).validateToken({
               token: this.profileData.wpComOAuth2Token.accessToken
@@ -117287,7 +115812,7 @@ var WpProfileModal = class extends AbstractModal {
               if (result.code === 1 /* Error */) {
                 showError(((_a5 = result.error) == null ? void 0 : _a5.message) + "");
               } else {
-                new import_obsidian18.Notice(this.t("message_wpComTokenValidated"));
+                new import_obsidian19.Notice(this.t("message_wpComTokenValidated"));
               }
             });
           }
@@ -117296,7 +115821,7 @@ var WpProfileModal = class extends AbstractModal {
         }));
       }
       if (this.profileData.apiType !== "WpComOAuth2" /* RestApi_WpComOAuth2 */) {
-        const usernameSetting = new import_obsidian18.Setting(content).setName(this.t("profileModal_rememberUsername"));
+        const usernameSetting = new import_obsidian19.Setting(content).setName(this.t("profileModal_rememberUsername"));
         if (this.profileData.saveUsername) {
           usernameSetting.addText(
             (text5) => {
@@ -117313,7 +115838,7 @@ var WpProfileModal = class extends AbstractModal {
             renderProfile();
           })
         );
-        const passwordSetting = new import_obsidian18.Setting(content).setName(this.t("profileModal_rememberPassword"));
+        const passwordSetting = new import_obsidian19.Setting(content).setName(this.t("profileModal_rememberPassword"));
         if (this.profileData.savePassword) {
           passwordSetting.addText(
             (text5) => {
@@ -117331,12 +115856,12 @@ var WpProfileModal = class extends AbstractModal {
           })
         );
       }
-      new import_obsidian18.Setting(content).setName(this.t("profileModal_setDefault")).addToggle(
+      new import_obsidian19.Setting(content).setName(this.t("profileModal_setDefault")).addToggle(
         (toggle) => toggle.setValue(this.profileData.isDefault).onChange((value) => {
           this.profileData.isDefault = value;
         })
       );
-      new import_obsidian18.Setting(content).addButton(
+      new import_obsidian19.Setting(content).addButton(
         (button) => button.setButtonText(this.t("profileModal_Save")).setCta().onClick(() => {
           if (!isValidUrl(this.profileData.endpoint)) {
             showError(this.t("error_invalidUrl"));
@@ -117429,7 +115954,7 @@ var WpProfileManageModal = class extends AbstractModal {
     };
     this.createHeader(this.t("profilesManageModal_title"));
     const { contentEl } = this;
-    new import_obsidian19.Setting(contentEl).setName(this.t("profilesManageModal_create")).setDesc(this.t("profilesManageModal_createDesc")).addButton((button) => button.setButtonText(this.t("profilesManageModal_create")).setCta().onClick(async () => {
+    new import_obsidian20.Setting(contentEl).setName(this.t("profilesManageModal_create")).setDesc(this.t("profilesManageModal_createDesc")).addButton((button) => button.setButtonText(this.t("profilesManageModal_create")).setCta().onClick(async () => {
       const { profile } = await openProfileModal(
         this.plugin
       );
@@ -117459,7 +115984,7 @@ init_utils5();
 init_app_state();
 init_ai_service();
 init_unsplash_service();
-var WordpressSettingTab = class extends import_obsidian20.PluginSettingTab {
+var WordpressSettingTab = class extends import_obsidian21.PluginSettingTab {
   constructor(plugin4) {
     super(plugin4.app, plugin4);
     this.plugin = plugin4;
@@ -117494,29 +116019,29 @@ var WordpressSettingTab = class extends import_obsidian20.PluginSettingTab {
     containerEl.createEl("h1", { text: t("settings_title") });
     let mathJaxOutputTypeDesc = getMathJaxOutputTypeDesc(this.plugin.settings.mathJaxOutputType);
     let commentConvertModeDesc = getCommentConvertModeDesc(this.plugin.settings.commentConvertMode);
-    new import_obsidian20.Setting(containerEl).setName(t("settings_profiles")).setDesc(t("settings_profilesDesc")).addButton((button) => button.setButtonText(t("settings_profilesModal")).onClick(() => {
+    new import_obsidian21.Setting(containerEl).setName(t("settings_profiles")).setDesc(t("settings_profilesDesc")).addButton((button) => button.setButtonText(t("settings_profilesModal")).onClick(() => {
       new WpProfileManageModal(this.plugin).open();
     }));
-    new import_obsidian20.Setting(containerEl).setName(t("settings_showRibbonIcon")).setDesc(t("settings_showRibbonIconDesc")).addToggle(
+    new import_obsidian21.Setting(containerEl).setName(t("settings_showRibbonIcon")).setDesc(t("settings_showRibbonIconDesc")).addToggle(
       (toggle) => toggle.setValue(this.plugin.settings.showRibbonIcon).onChange(async (value) => {
         this.plugin.settings.showRibbonIcon = value;
         await this.plugin.saveSettings();
         this.plugin.updateRibbonIcon();
       })
     );
-    new import_obsidian20.Setting(containerEl).setName(t("settings_defaultPostStatus")).setDesc(t("settings_defaultPostStatusDesc")).addDropdown((dropdown) => {
+    new import_obsidian21.Setting(containerEl).setName(t("settings_defaultPostStatus")).setDesc(t("settings_defaultPostStatusDesc")).addDropdown((dropdown) => {
       dropdown.addOption("draft" /* Draft */, t("settings_defaultPostStatusDraft")).addOption("publish" /* Publish */, t("settings_defaultPostStatusPublish")).addOption("private" /* Private */, t("settings_defaultPostStatusPrivate")).setValue(this.plugin.settings.defaultPostStatus).onChange(async (value) => {
         this.plugin.settings.defaultPostStatus = value;
         await this.plugin.saveSettings();
       });
     });
-    new import_obsidian20.Setting(containerEl).setName(t("settings_defaultPostComment")).setDesc(t("settings_defaultPostCommentDesc")).addDropdown((dropdown) => {
+    new import_obsidian21.Setting(containerEl).setName(t("settings_defaultPostComment")).setDesc(t("settings_defaultPostCommentDesc")).addDropdown((dropdown) => {
       dropdown.addOption("open" /* Open */, t("settings_defaultPostCommentOpen")).addOption("closed" /* Closed */, t("settings_defaultPostCommentClosed")).setValue(this.plugin.settings.defaultCommentStatus).onChange(async (value) => {
         this.plugin.settings.defaultCommentStatus = value;
         await this.plugin.saveSettings();
       });
     });
-    new import_obsidian20.Setting(containerEl).setName(t("settings_rememberLastSelectedCategories")).setDesc(t("settings_rememberLastSelectedCategoriesDesc")).addToggle(
+    new import_obsidian21.Setting(containerEl).setName(t("settings_rememberLastSelectedCategories")).setDesc(t("settings_rememberLastSelectedCategoriesDesc")).addToggle(
       (toggle) => toggle.setValue(this.plugin.settings.rememberLastSelectedCategories).onChange(async (value) => {
         this.plugin.settings.rememberLastSelectedCategories = value;
         if (!value) {
@@ -117529,13 +116054,13 @@ var WordpressSettingTab = class extends import_obsidian20.PluginSettingTab {
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian20.Setting(containerEl).setName(t("settings_showWordPressEditPageModal")).setDesc(t("settings_showWordPressEditPageModalDesc")).addToggle(
+    new import_obsidian21.Setting(containerEl).setName(t("settings_showWordPressEditPageModal")).setDesc(t("settings_showWordPressEditPageModalDesc")).addToggle(
       (toggle) => toggle.setValue(this.plugin.settings.showWordPressEditConfirm).onChange(async (value) => {
         this.plugin.settings.showWordPressEditConfirm = value;
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian20.Setting(containerEl).setName(t("settings_mathJaxOutputType")).setDesc(t("settings_mathJaxOutputTypeDesc")).addDropdown((dropdown) => {
+    new import_obsidian21.Setting(containerEl).setName(t("settings_mathJaxOutputType")).setDesc(t("settings_mathJaxOutputTypeDesc")).addDropdown((dropdown) => {
       dropdown.addOption("tex" /* TeX */, t("settings_mathJaxOutputTypeTeX")).addOption("svg" /* SVG */, t("settings_mathJaxOutputTypeSVG")).setValue(this.plugin.settings.mathJaxOutputType).onChange(async (value) => {
         this.plugin.settings.mathJaxOutputType = value;
         mathJaxOutputTypeDesc = getMathJaxOutputTypeDesc(this.plugin.settings.mathJaxOutputType);
@@ -117548,7 +116073,7 @@ var WordpressSettingTab = class extends import_obsidian20.PluginSettingTab {
       text: mathJaxOutputTypeDesc,
       cls: "setting-item-description"
     });
-    new import_obsidian20.Setting(containerEl).setName(t("settings_commentConvertMode")).setDesc(t("settings_commentConvertModeDesc")).addDropdown((dropdown) => {
+    new import_obsidian21.Setting(containerEl).setName(t("settings_commentConvertMode")).setDesc(t("settings_commentConvertModeDesc")).addDropdown((dropdown) => {
       dropdown.addOption("ignore" /* Ignore */, t("settings_commentConvertModeIgnore")).addOption("html" /* HTML */, t("settings_commentConvertModeHTML")).setValue(this.plugin.settings.commentConvertMode).onChange(async (value) => {
         this.plugin.settings.commentConvertMode = value;
         commentConvertModeDesc = getCommentConvertModeDesc(this.plugin.settings.commentConvertMode);
@@ -117561,7 +116086,7 @@ var WordpressSettingTab = class extends import_obsidian20.PluginSettingTab {
       text: commentConvertModeDesc,
       cls: "setting-item-description"
     });
-    new import_obsidian20.Setting(containerEl).setName(t("settings_enableHtml")).setDesc(t("settings_enableHtmlDesc")).addToggle(
+    new import_obsidian21.Setting(containerEl).setName(t("settings_enableHtml")).setDesc(t("settings_enableHtmlDesc")).addToggle(
       (toggle) => toggle.setValue(this.plugin.settings.enableHtml).onChange(async (value) => {
         this.plugin.settings.enableHtml = value;
         await this.plugin.saveSettings();
@@ -117570,20 +116095,20 @@ var WordpressSettingTab = class extends import_obsidian20.PluginSettingTab {
         });
       })
     );
-    new import_obsidian20.Setting(containerEl).setName(t("settings_replaceMediaLinks")).setDesc(t("settings_replaceMediaLinksDesc")).addToggle(
+    new import_obsidian21.Setting(containerEl).setName(t("settings_replaceMediaLinks")).setDesc(t("settings_replaceMediaLinksDesc")).addToggle(
       (toggle) => toggle.setValue(this.plugin.settings.replaceMediaLinks).onChange(async (value) => {
         this.plugin.settings.replaceMediaLinks = value;
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian20.Setting(containerEl).setName(t("settings_language")).setDesc(t("settings_languageDesc")).addDropdown((dropdown) => {
+    new import_obsidian21.Setting(containerEl).setName(t("settings_language")).setDesc(t("settings_languageDesc")).addDropdown((dropdown) => {
       dropdown.addOption("auto", t("settings_languageAuto")).addOption("en", t("settings_languageEn")).addOption("zh_cn", t("settings_languageZhCn")).setValue(this.plugin.settings.lang).onChange(async (value) => {
         this.plugin.settings.lang = value;
         await this.plugin.saveSettings();
         this.display();
       });
     });
-    new import_obsidian20.Setting(containerEl).setName(t("settings_authCacheDuration")).setDesc(t("settings_authCacheDurationDesc")).addDropdown((dropdown) => {
+    new import_obsidian21.Setting(containerEl).setName(t("settings_authCacheDuration")).setDesc(t("settings_authCacheDurationDesc")).addDropdown((dropdown) => {
       var _a6;
       dropdown.addOption("1d" /* OneDay */, t("settings_authCacheDurationOneDay")).addOption("1w" /* OneWeek */, t("settings_authCacheDurationOneWeek")).addOption("1m" /* OneMonth */, t("settings_authCacheDurationOneMonth")).addOption("6m" /* SixMonths */, t("settings_authCacheDurationSixMonths")).addOption("forever" /* Forever */, t("settings_authCacheDurationForever")).setValue((_a6 = this.plugin.settings.authCacheDuration) != null ? _a6 : "1m" /* OneMonth */).onChange(async (value) => {
         this.plugin.settings.authCacheDuration = value;
@@ -117592,19 +116117,19 @@ var WordpressSettingTab = class extends import_obsidian20.PluginSettingTab {
     });
     containerEl.createEl("h2", { text: t("settings_aiConfig") });
     containerEl.createEl("h3", { text: t("settings_slugGeneration") });
-    new import_obsidian20.Setting(containerEl).setName(t("settings_autoGenerateSlug")).setDesc(t("settings_autoGenerateSlugDesc")).addToggle(
+    new import_obsidian21.Setting(containerEl).setName(t("settings_autoGenerateSlug")).setDesc(t("settings_autoGenerateSlugDesc")).addToggle(
       (toggle) => toggle.setValue(this.plugin.settings.autoGenerateSlug).onChange(async (value) => {
         this.plugin.settings.autoGenerateSlug = value;
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian20.Setting(containerEl).setName(t("settings_slugGenerationMode")).setDesc(t("settings_slugGenerationModeDesc")).addDropdown((dropdown) => {
+    new import_obsidian21.Setting(containerEl).setName(t("settings_slugGenerationMode")).setDesc(t("settings_slugGenerationModeDesc")).addDropdown((dropdown) => {
       dropdown.addOption("pinyin", t("settings_slugGenerationModePinyin")).addOption("ai-translate", t("settings_slugGenerationModeAI")).setValue(this.plugin.settings.slugGenerationMode).onChange(async (value) => {
         var _a6, _b2;
         const newMode = value;
         if (newMode === "ai-translate") {
           if (!((_b2 = (_a6 = this.plugin.settings.aiConfig) == null ? void 0 : _a6.textAI) == null ? void 0 : _b2.apiKey)) {
-            new import_obsidian20.Notice(t("notice_slugModeRequiresAI"));
+            new import_obsidian21.Notice(t("notice_slugModeRequiresAI"));
             dropdown.setValue("pinyin");
             this.plugin.settings.slugGenerationMode = "pinyin";
             await this.plugin.saveSettings();
@@ -117616,7 +116141,7 @@ var WordpressSettingTab = class extends import_obsidian20.PluginSettingTab {
       });
     });
     containerEl.createEl("h3", { text: t("settings_tagFormat") });
-    new import_obsidian20.Setting(containerEl).setName(t("settings_tagFormat")).setDesc(t("settings_tagFormatDesc")).addDropdown((dropdown) => {
+    new import_obsidian21.Setting(containerEl).setName(t("settings_tagFormat")).setDesc(t("settings_tagFormatDesc")).addDropdown((dropdown) => {
       var _a6;
       dropdown.addOption("inline" /* Inline */, t("settings_tagFormatInline")).addOption("yaml" /* YAML */, t("settings_tagFormatYAML")).setValue((_a6 = this.plugin.settings.tagFormat) != null ? _a6 : "inline" /* Inline */).onChange(async (value) => {
         this.plugin.settings.tagFormat = value;
@@ -117624,13 +116149,13 @@ var WordpressSettingTab = class extends import_obsidian20.PluginSettingTab {
       });
     });
     containerEl.createEl("h3", { text: t("settings_imageCropSettings") });
-    new import_obsidian20.Setting(containerEl).setName(t("settings_imageCropRatio")).setDesc(t("settings_imageCropRatioDesc")).addDropdown((dropdown) => {
+    new import_obsidian21.Setting(containerEl).setName(t("settings_imageCropRatio")).setDesc(t("settings_imageCropRatioDesc")).addDropdown((dropdown) => {
       dropdown.addOption("16:9", "16:9").addOption("4:3", "4:3").addOption("1:1", "1:1").addOption("3:2", "3:2").addOption("21:9", "21:9").setValue(this.plugin.settings.imageCropRatio || "16:9").onChange(async (value) => {
         this.plugin.settings.imageCropRatio = value;
         await this.plugin.saveSettings();
       });
     });
-    new import_obsidian20.Setting(containerEl).setName(t("settings_imageCropWidth")).setDesc(t("settings_imageCropWidthDesc")).addText((text5) => {
+    new import_obsidian21.Setting(containerEl).setName(t("settings_imageCropWidth")).setDesc(t("settings_imageCropWidthDesc")).addText((text5) => {
       text5.setPlaceholder("1200").setValue(String(this.plugin.settings.imageCropWidth || 1200)).onChange(async (value) => {
         const num = parseInt(value);
         if (!isNaN(num) && num > 0) {
@@ -117640,7 +116165,7 @@ var WordpressSettingTab = class extends import_obsidian20.PluginSettingTab {
       });
     });
     containerEl.createEl("h3", { text: t("settings_unsplashConfig") });
-    new import_obsidian20.Setting(containerEl).setName(t("settings_unsplashAccessKey")).setDesc(t("settings_unsplashAccessKeyDesc")).addText((text5) => {
+    new import_obsidian21.Setting(containerEl).setName(t("settings_unsplashAccessKey")).setDesc(t("settings_unsplashAccessKeyDesc")).addText((text5) => {
       text5.setPlaceholder(t("settings_unsplashAccessKeyPlaceholder")).setValue(this.plugin.settings.unsplashAccessKey || "").onChange(async (value) => {
         this.plugin.settings.unsplashAccessKey = value;
         await this.plugin.saveSettings();
@@ -117649,7 +116174,7 @@ var WordpressSettingTab = class extends import_obsidian20.PluginSettingTab {
     }).addButton((btn) => {
       btn.setButtonText(t("settings_validateButton")).onClick(async () => {
         if (!this.plugin.settings.unsplashAccessKey) {
-          new import_obsidian20.Notice(t("notice_unsplashKeyRequired"));
+          new import_obsidian21.Notice(t("notice_unsplashKeyRequired"));
           return;
         }
         btn.setDisabled(true);
@@ -117658,12 +116183,12 @@ var WordpressSettingTab = class extends import_obsidian20.PluginSettingTab {
           const service = new UnsplashService(this.plugin.settings.unsplashAccessKey);
           const isValid2 = await service.validateApiKey();
           if (isValid2) {
-            new import_obsidian20.Notice(t("notice_unsplashKeyValid"));
+            new import_obsidian21.Notice(t("notice_unsplashKeyValid"));
           } else {
-            new import_obsidian20.Notice(t("notice_unsplashKeyInvalid"));
+            new import_obsidian21.Notice(t("notice_unsplashKeyInvalid"));
           }
         } catch (error2) {
-          new import_obsidian20.Notice(t("notice_validationFailed", { error: error2 instanceof Error ? error2.message : "Unknown error" }));
+          new import_obsidian21.Notice(t("notice_validationFailed", { error: error2 instanceof Error ? error2.message : "Unknown error" }));
         } finally {
           btn.setDisabled(false);
           btn.setButtonText(t("settings_validateButton"));
@@ -117677,7 +116202,7 @@ var WordpressSettingTab = class extends import_obsidian20.PluginSettingTab {
       apiKey: "",
       model: "gpt-3.5-turbo"
     };
-    new import_obsidian20.Setting(containerEl).setName(t("settings_aiProvider")).setDesc(t("settings_aiProviderDesc")).addDropdown((dropdown) => {
+    new import_obsidian21.Setting(containerEl).setName(t("settings_aiProvider")).setDesc(t("settings_aiProviderDesc")).addDropdown((dropdown) => {
       dropdown.addOption("openai", t("settings_aiProviderOpenAI")).addOption("claude", t("settings_aiProviderClaude")).setValue(textAIConfig.provider).onChange(async (value) => {
         if (!this.plugin.settings.aiConfig) {
           this.plugin.settings.aiConfig = {
@@ -117690,7 +116215,7 @@ var WordpressSettingTab = class extends import_obsidian20.PluginSettingTab {
         this.display();
       });
     });
-    new import_obsidian20.Setting(containerEl).setName(t("settings_aiBaseURL")).setDesc(t("settings_aiBaseURLDesc")).addText((text5) => {
+    new import_obsidian21.Setting(containerEl).setName(t("settings_aiBaseURL")).setDesc(t("settings_aiBaseURLDesc")).addText((text5) => {
       text5.setPlaceholder(t("settings_aiBaseURLPlaceholder")).setValue(textAIConfig.baseURL).onChange(async (value) => {
         if (!this.plugin.settings.aiConfig) {
           this.plugin.settings.aiConfig = {
@@ -117703,7 +116228,7 @@ var WordpressSettingTab = class extends import_obsidian20.PluginSettingTab {
       });
       text5.inputEl.style.width = "100%";
     });
-    new import_obsidian20.Setting(containerEl).setName(t("settings_aiAPIKey")).setDesc(t("settings_aiAPIKeyDesc")).addText((text5) => {
+    new import_obsidian21.Setting(containerEl).setName(t("settings_aiAPIKey")).setDesc(t("settings_aiAPIKeyDesc")).addText((text5) => {
       var _a6;
       text5.setPlaceholder(t("settings_aiAPIKeyPlaceholder")).setValue((_a6 = textAIConfig.apiKey) != null ? _a6 : "").onChange(async (value) => {
         if (!this.plugin.settings.aiConfig) {
@@ -117718,7 +116243,7 @@ var WordpressSettingTab = class extends import_obsidian20.PluginSettingTab {
       text5.inputEl.type = "password";
       text5.inputEl.style.width = "100%";
     });
-    new import_obsidian20.Setting(containerEl).setName(t("settings_aiModel")).setDesc(t("settings_aiModelDesc")).addText((text5) => {
+    new import_obsidian21.Setting(containerEl).setName(t("settings_aiModel")).setDesc(t("settings_aiModelDesc")).addText((text5) => {
       text5.setPlaceholder(t("settings_aiModelPlaceholder")).setValue(textAIConfig.model).onChange(async (value) => {
         if (!this.plugin.settings.aiConfig) {
           this.plugin.settings.aiConfig = {
@@ -117733,7 +116258,7 @@ var WordpressSettingTab = class extends import_obsidian20.PluginSettingTab {
       btn.setButtonText(t("settings_validateConnection")).onClick(async () => {
         var _a6;
         if (!((_a6 = this.plugin.settings.aiConfig) == null ? void 0 : _a6.textAI)) {
-          new import_obsidian20.Notice(t("notice_aiConfigRequired"));
+          new import_obsidian21.Notice(t("notice_aiConfigRequired"));
           return;
         }
         btn.setDisabled(true);
@@ -117742,12 +116267,12 @@ var WordpressSettingTab = class extends import_obsidian20.PluginSettingTab {
           const service = new AIService(this.plugin.settings.aiConfig);
           const result = await service.validateConfig(this.plugin.settings.aiConfig.textAI);
           if (result.valid) {
-            new import_obsidian20.Notice(t("notice_aiConfigValid"));
+            new import_obsidian21.Notice(t("notice_aiConfigValid"));
           } else {
-            new import_obsidian20.Notice(t("notice_aiConfigInvalid", { error: result.error || "Unknown error" }));
+            new import_obsidian21.Notice(t("notice_aiConfigInvalid", { error: result.error || "Unknown error" }));
           }
         } catch (error2) {
-          new import_obsidian20.Notice(t("notice_validationFailed", { error: error2 instanceof Error ? error2.message : "Unknown error" }));
+          new import_obsidian21.Notice(t("notice_validationFailed", { error: error2 instanceof Error ? error2.message : "Unknown error" }));
         } finally {
           btn.setDisabled(false);
           btn.setButtonText(t("settings_validateConnection"));
@@ -117761,7 +116286,7 @@ var WordpressSettingTab = class extends import_obsidian20.PluginSettingTab {
       apiKey: "",
       model: "dall-e-3"
     };
-    new import_obsidian20.Setting(containerEl).setName(t("settings_aiProvider")).setDesc(t("settings_imageAIProviderDesc")).addDropdown((dropdown) => {
+    new import_obsidian21.Setting(containerEl).setName(t("settings_aiProvider")).setDesc(t("settings_imageAIProviderDesc")).addDropdown((dropdown) => {
       dropdown.addOption("openai", t("settings_aiProviderOpenAIImage")).setValue(imageAIConfig.provider).onChange(async (value) => {
         if (!this.plugin.settings.aiConfig) {
           this.plugin.settings.aiConfig = {
@@ -117774,7 +116299,7 @@ var WordpressSettingTab = class extends import_obsidian20.PluginSettingTab {
         this.display();
       });
     });
-    new import_obsidian20.Setting(containerEl).setName(t("settings_aiBaseURL")).setDesc(t("settings_aiBaseURLDesc")).addText((text5) => {
+    new import_obsidian21.Setting(containerEl).setName(t("settings_aiBaseURL")).setDesc(t("settings_aiBaseURLDesc")).addText((text5) => {
       text5.setPlaceholder(t("settings_aiBaseURLPlaceholder")).setValue(imageAIConfig.baseURL).onChange(async (value) => {
         if (!this.plugin.settings.aiConfig) {
           this.plugin.settings.aiConfig = {
@@ -117787,7 +116312,7 @@ var WordpressSettingTab = class extends import_obsidian20.PluginSettingTab {
       });
       text5.inputEl.style.width = "100%";
     });
-    new import_obsidian20.Setting(containerEl).setName(t("settings_aiAPIKey")).setDesc(t("settings_aiAPIKeyDesc")).addText((text5) => {
+    new import_obsidian21.Setting(containerEl).setName(t("settings_aiAPIKey")).setDesc(t("settings_aiAPIKeyDesc")).addText((text5) => {
       var _a6;
       text5.setPlaceholder(t("settings_aiAPIKeyPlaceholder")).setValue((_a6 = imageAIConfig.apiKey) != null ? _a6 : "").onChange(async (value) => {
         if (!this.plugin.settings.aiConfig) {
@@ -117802,7 +116327,7 @@ var WordpressSettingTab = class extends import_obsidian20.PluginSettingTab {
       text5.inputEl.type = "password";
       text5.inputEl.style.width = "100%";
     });
-    new import_obsidian20.Setting(containerEl).setName(t("settings_aiModel")).setDesc(t("settings_aiModelDesc")).addText((text5) => {
+    new import_obsidian21.Setting(containerEl).setName(t("settings_aiModel")).setDesc(t("settings_aiModelDesc")).addText((text5) => {
       text5.setPlaceholder(t("settings_aiImageModelPlaceholder")).setValue(imageAIConfig.model).onChange(async (value) => {
         if (!this.plugin.settings.aiConfig) {
           this.plugin.settings.aiConfig = {
@@ -117817,7 +116342,7 @@ var WordpressSettingTab = class extends import_obsidian20.PluginSettingTab {
       btn.setButtonText(t("settings_validateConnection")).onClick(async () => {
         var _a6;
         if (!((_a6 = this.plugin.settings.aiConfig) == null ? void 0 : _a6.imageAI)) {
-          new import_obsidian20.Notice(t("notice_imageAIConfigRequired"));
+          new import_obsidian21.Notice(t("notice_imageAIConfigRequired"));
           return;
         }
         btn.setDisabled(true);
@@ -117826,12 +116351,12 @@ var WordpressSettingTab = class extends import_obsidian20.PluginSettingTab {
           const service = new AIService(this.plugin.settings.aiConfig);
           const result = await service.validateConfig(this.plugin.settings.aiConfig.imageAI, true);
           if (result.valid) {
-            new import_obsidian20.Notice(t("notice_imageAIConfigValid"));
+            new import_obsidian21.Notice(t("notice_imageAIConfigValid"));
           } else {
-            new import_obsidian20.Notice(t("notice_imageAIConfigInvalid", { error: result.error || "Unknown error" }));
+            new import_obsidian21.Notice(t("notice_imageAIConfigInvalid", { error: result.error || "Unknown error" }));
           }
         } catch (error2) {
-          new import_obsidian20.Notice(t("notice_validationFailed", { error: error2 instanceof Error ? error2.message : "Unknown error" }));
+          new import_obsidian21.Notice(t("notice_validationFailed", { error: error2 instanceof Error ? error2.message : "Unknown error" }));
         } finally {
           btn.setDisabled(false);
           btn.setButtonText(t("settings_validateConnection"));
@@ -117842,7 +116367,7 @@ var WordpressSettingTab = class extends import_obsidian20.PluginSettingTab {
 };
 
 // src/icons.ts
-var import_obsidian21 = require("obsidian");
+var import_obsidian22 = require("obsidian");
 var icons = {
   "wp-logo": `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
@@ -117857,7 +116382,7 @@ var icons = {
 };
 var addIcons = () => {
   Object.keys(icons).forEach((key) => {
-    (0, import_obsidian21.addIcon)(key, icons[key]);
+    (0, import_obsidian22.addIcon)(key, icons[key]);
   });
 };
 
@@ -120491,7 +119016,7 @@ var LANGUAGES = {
 };
 
 // src/i18n.ts
-var import_obsidian22 = require("obsidian");
+var import_obsidian23 = require("obsidian");
 init_lodash();
 var _I18n_instances, get_fn;
 var I18n = class {
@@ -120513,8 +119038,8 @@ var I18n = class {
 _I18n_instances = new WeakSet();
 get_fn = function(key) {
   let lang;
-  if (this.lang === "auto" && import_obsidian22.moment.locale().replace("-", "_") in LANGUAGES) {
-    lang = import_obsidian22.moment.locale().replace("-", "_");
+  if (this.lang === "auto" && import_obsidian23.moment.locale().replace("-", "_") in LANGUAGES) {
+    lang = import_obsidian23.moment.locale().replace("-", "_");
   } else {
     lang = "en";
   }
@@ -120716,7 +119241,7 @@ var FeaturePictureCacheManager = class {
 
 // src/main.ts
 var log7 = createModuleLogger("WordpressPlugin");
-var WordpressPlugin = class extends import_obsidian23.Plugin {
+var WordpressPlugin = class extends import_obsidian24.Plugin {
   constructor() {
     super(...arguments);
     /** Ribbon icon element reference */
