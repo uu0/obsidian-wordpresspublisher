@@ -4,7 +4,7 @@ import { addIcons } from './icons';
 import { createModuleLogger } from './utils/logger';
 
 const log = createModuleLogger('WordpressPlugin');
-import { WordPressPostParams } from './wp-client';
+import { WordPressPostParams } from './wp-types';
 import { I18n, TranslateKey } from './i18n';
 import { EventType, WP_OAUTH2_REDIRECT_URI, WP_OAUTH2_URL_ACTION } from './consts';
 import { OAuth2Client } from './oauth2-client';

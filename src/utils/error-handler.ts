@@ -3,7 +3,7 @@
  * Provides consistent error handling across different WordPress clients
  */
 
-import { WordPressClientResult, WordPressClientReturnCode } from '../wp-client';
+import { WordPressClientResult, WordPressClientReturnCode } from '../wp-types';
 import { logger } from './logger';
 import { ERROR_CODES } from '../constants';
 

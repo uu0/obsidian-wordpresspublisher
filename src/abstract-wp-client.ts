@@ -8,7 +8,7 @@ import {
   WordPressMediaUploadResult,
   WordPressPostParams,
   WordPressPublishResult
-} from './wp-client';
+} from './wp-types';
 import { WpPublishModalV2 } from './wp-publish-modal-v2';
 import { compressImage } from './featured-image-modal';
 import { PostType, PostTypeConst, Term } from './wp-api';

@@ -11,7 +11,7 @@ import {
   createUploadErrorMessage,
   validateResponse,
 } from '../../src/utils/error-handler';
-import { WordPressClientReturnCode } from '../../src/wp-client';
+import { WordPressClientReturnCode } from '../../src/wp-types';
 import { ERROR_CODES } from '../../src/constants';
 
 describe('error-handler', () => {

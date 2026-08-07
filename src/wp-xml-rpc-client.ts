@@ -6,7 +6,7 @@ import {
   WordPressMediaUploadResult,
   WordPressPostParams,
   WordPressPublishResult
-} from './wp-client';
+} from './wp-types';
 import { XmlRpcClient } from './xmlrpc-client';
 import { AbstractWordPressClient } from './abstract-wp-client';
 import { PostStatus, PostType, PostTypeConst, Term } from './wp-api';

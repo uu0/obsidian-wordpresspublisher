@@ -2,7 +2,7 @@ import { Notice, Setting } from 'obsidian';
 import WordpressPlugin from './main';
 import { WpProfile } from './wp-profile';
 import { EventType, WP_OAUTH2_REDIRECT_URI } from './consts';
-import { WordPressClientReturnCode } from './wp-client';
+import { WordPressClientReturnCode } from './wp-types';
 import { generateCodeVerifier, OAuth2Client, WordPressOAuth2Token } from './oauth2-client';
 import { AppState } from './app-state';
 import { isValidUrl, showError } from './utils';

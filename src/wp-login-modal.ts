@@ -1,7 +1,7 @@
 import { Modal, Setting } from 'obsidian';
 import WordpressPlugin from './main';
 import { WpProfile } from './wp-profile';
-import { WordPressAuthParams } from './wp-client';
+import { WordPressAuthParams } from './wp-types';
 import { showError } from './utils';
 import { AbstractModal } from './abstract-modal';
 

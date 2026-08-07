@@ -2,7 +2,7 @@ import { App, Notice, Setting, TFile } from 'obsidian';
 import { WpProfile } from './wp-profile';
 import { WordpressPluginSettings } from './plugin-settings';
 import { MarkdownItMathJax3PluginInstance } from './markdown-it-mathjax3-plugin';
-import { WordPressClientResult, WordPressClientReturnCode, WordPressPostParams } from './wp-client';
+import { WordPressClientResult, WordPressClientReturnCode, WordPressPostParams } from './wp-types';
 import { getWordPressClient } from './wp-clients';
 import WordpressPlugin from './main';
 import { isString } from 'lodash-es';

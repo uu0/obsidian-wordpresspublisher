@@ -4,7 +4,7 @@ import { format, parse } from 'date-fns';
 import IMask, { DynamicMaskType, InputMask } from 'imask';
 
 import WordpressPlugin from './main';
-import { WordPressPostParams } from './wp-client';
+import { WordPressPostParams } from './wp-types';
 import { CommentStatus, PostStatus, PostType, PostTypeConst, Term } from './wp-api';
 import { MatterData } from './types';
 import { ConfirmCode, openConfirmModal } from './confirm-modal';

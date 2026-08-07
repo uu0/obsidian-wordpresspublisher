@@ -6,7 +6,7 @@ import {
   WpRestClientMiniOrangeContext,
   WpRestClientWpComOAuth2Context
 } from './wp-rest-client';
-import { WordPressClient } from './wp-client';
+import { WordPressClient } from './wp-types';
 import { WpProfile } from './wp-profile';
 import { ApiType } from './plugin-settings';
 import { showError } from './utils';

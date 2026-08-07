@@ -1,6 +1,6 @@
 import { generateQueryString, openWithBrowser } from './utils';
 import { requestUrl } from 'obsidian';
-import { WordPressClientResult, WordPressClientReturnCode } from './wp-client';
+import { WordPressClientResult, WordPressClientReturnCode } from './wp-types';
 import WordpressPlugin from './main';
 import {
   WP_OAUTH2_AUTHORIZE_ENDPOINT,
