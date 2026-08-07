@@ -107,6 +107,8 @@ export interface WordpressPluginSettings {
     encrypted: string;
     key?: string;
     vector?: string;
+    /** PBKDF2 salt used by the current encryption format. */
+    salt?: string;
   };
 
   /**

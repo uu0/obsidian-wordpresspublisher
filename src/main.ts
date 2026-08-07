@@ -193,7 +193,8 @@ export default class WordpressPlugin extends Plugin {
         profile.password = await crypto.decrypt(
           encryptedPassword.encrypted,
           encryptedPassword.key,
-          encryptedPassword.vector
+          encryptedPassword.vector,
+          encryptedPassword.salt
         );
       }
     }
@@ -205,14 +206,16 @@ export default class WordpressPlugin extends Plugin {
         aiConfig.textAI.apiKey = await crypto.decrypt(
           aiConfig.textAI.encryptedApiKey.encrypted,
           aiConfig.textAI.encryptedApiKey.key,
-          aiConfig.textAI.encryptedApiKey.vector
+          aiConfig.textAI.encryptedApiKey.vector,
+          aiConfig.textAI.encryptedApiKey.salt
         );
       }
       if (aiConfig.imageAI?.encryptedApiKey) {
         aiConfig.imageAI.apiKey = await crypto.decrypt(
           aiConfig.imageAI.encryptedApiKey.encrypted,
           aiConfig.imageAI.encryptedApiKey.key,
-          aiConfig.imageAI.encryptedApiKey.vector
+          aiConfig.imageAI.encryptedApiKey.vector,
+          aiConfig.imageAI.encryptedApiKey.salt
         );
       }
     }
@@ -223,7 +226,8 @@ export default class WordpressPlugin extends Plugin {
       this._settings!.unsplashAccessKey = await crypto.decrypt(
         encryptedUnsplash.encrypted,
         encryptedUnsplash.key,
-        encryptedUnsplash.vector
+        encryptedUnsplash.vector,
+        encryptedUnsplash.salt
       );
     }
 

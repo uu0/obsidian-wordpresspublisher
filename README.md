@@ -151,7 +151,7 @@ manifest.json                  # Plugin manifest
 - Unsplash API is free but has rate limits
 - OpenAI/Claude APIs are billed by usage
 - Stable network connection recommended
-- API keys are encrypted with AES-256-GCM; regular rotation recommended
+- API keys are encrypted with AES-256-GCM (key derived via PBKDF2 from an app-scoped secret; only a random salt is stored alongside the ciphertext); regular rotation recommended
 
 ## License
 
