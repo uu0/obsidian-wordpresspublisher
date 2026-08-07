@@ -108832,7 +108832,65 @@ var init_api_capability = __esm({
   }
 });
 
-// src/wp-publish-modal-v2.ts
+// src/api-info-modal.ts
+function showApiInfoModal(app, apiType) {
+  var _a5, _b, _c, _d;
+  const capabilities = getApiCapabilities(apiType);
+  const limitations = getApiLimitations(apiType);
+  const recommendation = getApiRecommendation(apiType);
+  const message2 = `
+# API Capabilities: ${apiType}
+
+## Supported Features
+${capabilities.supportsCategoryCreation ? "\u2705 Category Creation" : "\u274C Category Creation"}
+${capabilities.supportsTagCreation ? "\u2705 Tag Creation" : "\u274C Tag Creation"}
+${capabilities.supportsRichCategoryProperties ? "\u2705 Rich Category Properties" : "\u274C Rich Category Properties"}
+${capabilities.supportsBatchOperations ? "\u2705 Batch Operations" : "\u274C Batch Operations"}
+${capabilities.supportsCustomPostTypes ? "\u2705 Custom Post Types" : "\u274C Custom Post Types"}
+
+## Limitations
+${limitations.map((l) => `\u2022 ${l}`).join("\n")}
+
+## Recommendation
+${recommendation}
+
+## Security Note
+XML-RPC uses basic authentication which may be less secure than REST API with Application Passwords.
+Consider migrating to REST API for better security and feature support.
+  `;
+  const modal = (_a5 = app.workspace.activeLeaf) == null ? void 0 : _a5.view.containerEl.createEl("div");
+  if (modal) {
+    modal.innerHTML = `
+      <div class="modal-bg" style="position:fixed;top:0;left:0;width:100%;height:100%;background:var(--wp-modal-overlay);z-index:9999;">
+        <div class="modal" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--background-primary);padding:20px;border-radius:8px;max-width:600px;max-height:80vh;overflow:auto;">
+          <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
+            <h3 style="margin:0;">API Information</h3>
+            <button class="modal-close" style="background:none;border:none;font-size:20px;cursor:pointer;">\xD7</button>
+          </div>
+          <div class="modal-content">${message2}</div>
+          <div class="modal-footer" style="margin-top:15px;text-align:right;">
+            <button class="mod-cta" style="padding:5px 15px;">Close</button>
+          </div>
+        </div>
+      </div>
+    `;
+    (_b = modal.querySelector(".modal-close")) == null ? void 0 : _b.addEventListener("click", () => modal.remove());
+    (_c = modal.querySelector(".mod-cta")) == null ? void 0 : _c.addEventListener("click", () => modal.remove());
+    (_d = modal.querySelector(".modal-bg")) == null ? void 0 : _d.addEventListener("click", (e) => {
+      if (e.target === modal.querySelector(".modal-bg")) {
+        modal.remove();
+      }
+    });
+  }
+}
+var init_api_info_modal = __esm({
+  "src/api-info-modal.ts"() {
+    "use strict";
+    init_api_capability();
+  }
+});
+
+// src/modal-helpers.ts
 function getTagColor(tagName) {
   const hash = tagName.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
   return TAG_COLORS[hash % TAG_COLORS.length];
@@ -108876,7 +108934,63 @@ function getLocalizedPrompt(plugin4, language, type) {
     return plugin4.t("defaultPrompt_image");
   }
 }
-var import_obsidian9, log5, TAG_COLORS, WpPublishModalV2;
+function getMimeTypeFromResponse(contentType, url) {
+  var _a5, _b;
+  if (contentType == null ? void 0 : contentType.startsWith("image/")) {
+    return contentType.split(";")[0];
+  }
+  const ext = (_b = (_a5 = url.split(".").pop()) == null ? void 0 : _a5.toLowerCase()) == null ? void 0 : _b.split("?")[0];
+  return getMimeType(ext || "jpg");
+}
+function extractFileName(url) {
+  var _a5;
+  const urlParts = url.split("/");
+  const lastPart = (_a5 = urlParts[urlParts.length - 1]) == null ? void 0 : _a5.split("?")[0];
+  return lastPart && lastPart.includes(".") ? lastPart : "featured-image.jpg";
+}
+function getMimeType(extension) {
+  return MIME_TYPES2[extension.toLowerCase()] || "image/jpeg";
+}
+function formatFileSize(bytes) {
+  if (bytes < 1024) return bytes + " B";
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+  return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+}
+function truncateMiddle(str, prefixLen = 10, suffixLen = 8) {
+  if (str.length <= prefixLen + suffixLen + 3) return str;
+  return str.slice(0, prefixLen) + "..." + str.slice(str.length - suffixLen);
+}
+function normalizeTags(tags) {
+  return TagFormatter.parseToArray(tags);
+}
+var TAG_COLORS, MIME_TYPES2;
+var init_modal_helpers = __esm({
+  "src/modal-helpers.ts"() {
+    "use strict";
+    init_tag_formatter();
+    TAG_COLORS = [
+      "var(--wp-tag-color-1)",
+      "var(--wp-tag-color-2)",
+      "var(--wp-tag-color-3)",
+      "var(--wp-tag-color-4)",
+      "var(--wp-tag-color-5)",
+      "var(--wp-tag-color-6)",
+      "var(--wp-tag-color-7)",
+      "var(--wp-tag-color-8)",
+      "var(--wp-tag-color-9)"
+    ];
+    MIME_TYPES2 = {
+      "jpg": "image/jpeg",
+      "jpeg": "image/jpeg",
+      "png": "image/png",
+      "gif": "image/gif",
+      "webp": "image/webp"
+    };
+  }
+});
+
+// src/wp-publish-modal-v2.ts
+var import_obsidian9, log5, WpPublishModalV2;
 var init_wp_publish_modal_v2 = __esm({
   "src/wp-publish-modal-v2.ts"() {
     "use strict";
@@ -108896,18 +109010,9 @@ var init_wp_publish_modal_v2 = __esm({
     init_tag_formatter();
     init_html_sanitizer();
     init_api_capability();
+    init_api_info_modal();
+    init_modal_helpers();
     log5 = createModuleLogger("WpPublishModalV2");
-    TAG_COLORS = [
-      "var(--wp-tag-color-1)",
-      "var(--wp-tag-color-2)",
-      "var(--wp-tag-color-3)",
-      "var(--wp-tag-color-4)",
-      "var(--wp-tag-color-5)",
-      "var(--wp-tag-color-6)",
-      "var(--wp-tag-color-7)",
-      "var(--wp-tag-color-8)",
-      "var(--wp-tag-color-9)"
-    ];
     WpPublishModalV2 = class extends AbstractModal {
       constructor(plugin4, categories, postTypes, onSubmit, matterData, articleContent = "", noteTitle = "", notePath = "") {
         super(plugin4);
@@ -109097,8 +109202,8 @@ var init_wp_publish_modal_v2 = __esm({
             method: "GET"
           });
           const contentType = response.headers["content-type"];
-          const mimeType = this.getMimeTypeFromResponse(contentType, url);
-          const fileName = this.extractFileName(url);
+          const mimeType = getMimeTypeFromResponse(contentType, url);
+          const fileName = extractFileName(url);
           this.autoFeaturedImage = {
             fileName,
             mimeType,
@@ -109184,20 +109289,6 @@ var init_wp_publish_modal_v2 = __esm({
       getCachedFeaturedImageId() {
         return this.cachedFeaturedImageId;
       }
-      getMimeTypeFromResponse(contentType, url) {
-        var _a5, _b;
-        if (contentType == null ? void 0 : contentType.startsWith("image/")) {
-          return contentType.split(";")[0];
-        }
-        const ext = (_b = (_a5 = url.split(".").pop()) == null ? void 0 : _a5.toLowerCase()) == null ? void 0 : _b.split("?")[0];
-        return this.getMimeType(ext || "jpg");
-      }
-      extractFileName(url) {
-        var _a5;
-        const urlParts = url.split("/");
-        const lastPart = (_a5 = urlParts[urlParts.length - 1]) == null ? void 0 : _a5.split("?")[0];
-        return lastPart && lastPart.includes(".") ? lastPart : "featured-image.jpg";
-      }
       // 检测文章第一张图片
       async detectFirstImage() {
         try {
@@ -109231,7 +109322,7 @@ var init_wp_publish_modal_v2 = __esm({
           const binaryContent = await this.app.vault.readBinary(file);
           this.autoFeaturedImage = {
             fileName: file.name,
-            mimeType: this.getMimeType(file.extension.toLowerCase()),
+            mimeType: getMimeType(file.extension.toLowerCase()),
             content: binaryContent,
             width: 1200
           };
@@ -109249,7 +109340,7 @@ var init_wp_publish_modal_v2 = __esm({
           });
           const arrayBuffer = response.arrayBuffer;
           const contentType = response.headers["content-type"];
-          const mimeType = this.getMimeTypeFromResponse(contentType, imagePath);
+          const mimeType = getMimeTypeFromResponse(contentType, imagePath);
           this.autoFeaturedImage = {
             fileName: `featured-${Date.now()}.jpg`,
             mimeType,
@@ -109279,16 +109370,6 @@ var init_wp_publish_modal_v2 = __esm({
           log5.info("Could not load empty.png:", e);
         }
       }
-      getMimeType(extension) {
-        const mimeTypes = {
-          "jpg": "image/jpeg",
-          "jpeg": "image/jpeg",
-          "png": "image/png",
-          "gif": "image/gif",
-          "webp": "image/webp"
-        };
-        return mimeTypes[extension.toLowerCase()] || "image/jpeg";
-      }
       /**
        * 将 ArrayBuffer 转换为 Base64 字符串
        */
@@ -109299,23 +109380,6 @@ var init_wp_publish_modal_v2 = __esm({
           binary += String.fromCharCode(bytes[i]);
         }
         return btoa(binary);
-      }
-      /**
-       * 格式化文件大小
-       */
-      formatFileSize(bytes) {
-        if (bytes < 1024) return bytes + " B";
-        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
-        return (bytes / (1024 * 1024)).toFixed(1) + " MB";
-      }
-      /**
-       * 中间截断文件名：保留前 prefixLen 个字符 + "..." + 后 suffixLen 个字符
-       * 当字符串长度 <= prefixLen + suffixLen + 3 时原样返回
-       * 默认 prefix=10, suffix=8 → 最长 21 字符（适合 header 有限宽度）
-       */
-      truncateMiddle(str, prefixLen = 10, suffixLen = 8) {
-        if (str.length <= prefixLen + suffixLen + 3) return str;
-        return str.slice(0, prefixLen) + "..." + str.slice(str.length - suffixLen);
       }
       /**
        * 加载远程特色图片（别名方法）
@@ -109330,7 +109394,7 @@ var init_wp_publish_modal_v2 = __esm({
           commentStatus: this.plugin.settings.defaultCommentStatus,
           postType: this.postTypes.selected,
           categories: this.categories.selected,
-          tags: this.normalizeTags(this.matterData.tags),
+          tags: normalizeTags(this.matterData.tags),
           title: this.noteTitle || "",
           content: "",
           slug: this.matterData.slug || "",
@@ -109546,7 +109610,7 @@ var init_wp_publish_modal_v2 = __esm({
           }
           if (opts.fileName) {
             const nameEl = actionsEl.createSpan({ cls: "wp-v3-img-filename" });
-            nameEl.textContent = this.truncateMiddle(opts.fileName);
+            nameEl.textContent = truncateMiddle(opts.fileName);
             nameEl.title = opts.fileName;
           }
           if (opts.showDelete) {
@@ -109606,7 +109670,7 @@ var init_wp_publish_modal_v2 = __esm({
               updateHeaderActions({
                 sourceLabel: "\u{1F4C2} Local",
                 sourceCls: "wp-v3-source-local",
-                fileName: `${imageToDisplay.fileName} (${this.formatFileSize(imageToDisplay.content.byteLength)})`,
+                fileName: `${imageToDisplay.fileName} (${formatFileSize(imageToDisplay.content.byteLength)})`,
                 showDelete: true
               });
             } else {
@@ -110717,7 +110781,7 @@ var init_wp_publish_modal_v2 = __esm({
           img.src = url;
           img.alt = "Featured Image";
           const info = content.createDiv("wp-preview-image-info");
-          info.createSpan({ text: `${imageToDisplay.fileName} (${this.formatFileSize(imageToDisplay.content.byteLength)})` });
+          info.createSpan({ text: `${imageToDisplay.fileName} (${formatFileSize(imageToDisplay.content.byteLength)})` });
         } else if (this.matterData.featurePicture) {
           const imgContainer = content.createDiv("wp-preview-image-container");
           const img = imgContainer.createEl("img", { cls: "wp-preview-image" });
@@ -111563,7 +111627,7 @@ var init_wp_publish_modal_v2 = __esm({
           });
           img.src = `data:${this.featuredImage.mimeType};base64,${this.arrayBufferToBase64(this.featuredImage.content)}`;
           const info = previewContainer.createDiv("featured-image-info");
-          info.textContent = `${this.featuredImage.fileName} (${this.formatFileSize(this.featuredImage.content.byteLength)})`;
+          info.textContent = `${this.featuredImage.fileName} (${formatFileSize(this.featuredImage.content.byteLength)})`;
           const removeBtn = previewContainer.createEl("button", {
             text: this.t("publishModal_removeImage"),
             cls: "featured-image-remove-btn"
@@ -112084,54 +112148,7 @@ var init_wp_publish_modal_v2 = __esm({
         };
       }
       showApiInfoModal(apiType) {
-        var _a5, _b, _c, _d;
-        const capabilities = getApiCapabilities(apiType);
-        const limitations = getApiLimitations(apiType);
-        const recommendation = getApiRecommendation(apiType);
-        const message2 = `
-# API Capabilities: ${apiType}
-
-## Supported Features
-${capabilities.supportsCategoryCreation ? "\u2705 Category Creation" : "\u274C Category Creation"}
-${capabilities.supportsTagCreation ? "\u2705 Tag Creation" : "\u274C Tag Creation"}
-${capabilities.supportsRichCategoryProperties ? "\u2705 Rich Category Properties" : "\u274C Rich Category Properties"}
-${capabilities.supportsBatchOperations ? "\u2705 Batch Operations" : "\u274C Batch Operations"}
-${capabilities.supportsCustomPostTypes ? "\u2705 Custom Post Types" : "\u274C Custom Post Types"}
-
-## Limitations
-${limitations.map((l) => `\u2022 ${l}`).join("\n")}
-
-## Recommendation
-${recommendation}
-
-## Security Note
-XML-RPC uses basic authentication which may be less secure than REST API with Application Passwords.
-Consider migrating to REST API for better security and feature support.
-    `;
-        const modal = (_a5 = this.plugin.app.workspace.activeLeaf) == null ? void 0 : _a5.view.containerEl.createEl("div");
-        if (modal) {
-          modal.innerHTML = `
-        <div class="modal-bg" style="position:fixed;top:0;left:0;width:100%;height:100%;background:var(--wp-modal-overlay);z-index:9999;">
-          <div class="modal" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--background-primary);padding:20px;border-radius:8px;max-width:600px;max-height:80vh;overflow:auto;">
-            <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
-              <h3 style="margin:0;">API Information</h3>
-              <button class="modal-close" style="background:none;border:none;font-size:20px;cursor:pointer;">\xD7</button>
-            </div>
-            <div class="modal-content">${message2}</div>
-            <div class="modal-footer" style="margin-top:15px;text-align:right;">
-              <button class="mod-cta" style="padding:5px 15px;">Close</button>
-            </div>
-          </div>
-        </div>
-      `;
-          (_b = modal.querySelector(".modal-close")) == null ? void 0 : _b.addEventListener("click", () => modal.remove());
-          (_c = modal.querySelector(".mod-cta")) == null ? void 0 : _c.addEventListener("click", () => modal.remove());
-          (_d = modal.querySelector(".modal-bg")) == null ? void 0 : _d.addEventListener("click", (e) => {
-            if (e.target === modal.querySelector(".modal-bg")) {
-              modal.remove();
-            }
-          });
-        }
+        showApiInfoModal(this.plugin.app, apiType);
       }
       // ==================== Bottom Action Bar ====================
       renderBottomBar(container, params) {
@@ -112477,9 +112494,6 @@ Consider migrating to REST API for better security and feature support.
        * Normalize tags from frontmatter to string array
        * Handles YAML array, inline tags (#tag), and comma-separated string formats
        */
-      normalizeTags(tags) {
-        return TagFormatter.parseToArray(tags);
-      }
     };
   }
 });

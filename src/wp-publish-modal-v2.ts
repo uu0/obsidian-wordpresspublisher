@@ -20,97 +20,26 @@ import { createModuleLogger } from './utils/logger';
 import { TagFormatter } from './tag-formatter';
 import { sanitizeHtml } from './html-sanitizer';
 import { getApiCapabilities, getApiLimitations, getApiRecommendation } from './api-capability';
+import { ApiType } from './plugin-settings';
+import { showApiInfoModal } from './api-info-modal';
 import { TranslateKey } from './i18n';
 
 const log = createModuleLogger('WpPublishModalV2');
 
 // Default prompt templates will be loaded from i18n
 
-/**
- * 预定义的标签颜色池 - 使用 CSS 变量以支持主题切换
- */
-const TAG_COLORS = [
-  'var(--wp-tag-color-1)',
-  'var(--wp-tag-color-2)',
-  'var(--wp-tag-color-3)',
-  'var(--wp-tag-color-4)',
-  'var(--wp-tag-color-5)',
-  'var(--wp-tag-color-6)',
-  'var(--wp-tag-color-7)',
-  'var(--wp-tag-color-8)',
-  'var(--wp-tag-color-9)',
-];
-
-/**
- * 根据标签名称哈希分配颜色（确保同名标签颜色一致）
- */
-function getTagColor(tagName: string): string {
-  const hash = tagName.split('').reduce((acc, char) =>
-    acc + char.charCodeAt(0), 0);
-  return TAG_COLORS[hash % TAG_COLORS.length];
-}
-
-/**
- * 检测文本的主要语言
- */
-function detectLanguage(text: string): 'zh' | 'en' | 'other' {
-  if (!text || text.length < 10) return 'en';
-
-  // 统计中文字符数量
-  const chineseChars = text.match(/[\u4e00-\u9fa5]/g);
-  const chineseCount = chineseChars ? chineseChars.length : 0;
-
-  // 统计英文字符数量
-  const englishChars = text.match(/[a-zA-Z]/g);
-  const englishCount = englishChars ? englishChars.length : 0;
-
-  // 如果中文字符占比超过30%，认为是中文
-  if (chineseCount > text.length * 0.3) {
-    return 'zh';
-  }
-
-  // 如果英文字符占比超过40%，认为是英文
-  if (englishCount > text.length * 0.4) {
-    return 'en';
-  }
-
-  // 其他情况，默认英文
-  return 'other';
-}
-
-/**
- * Get localized prompt based on language
- */
-function getLocalizedPrompt(plugin: WordpressPlugin, language: 'zh' | 'en' | 'other', type: 'summary' | 'tags' | 'image'): string {
-  // Check if user has custom prompt in settings
-  if (type === 'summary' && plugin.settings.summaryPrompt) {
-    return plugin.settings.summaryPrompt;
-  } else if (type === 'tags' && plugin.settings.tagsPrompt) {
-    return plugin.settings.tagsPrompt;
-  } else if (type === 'image' && plugin.settings.imageGenerationPrompt) {
-    return plugin.settings.imageGenerationPrompt;
-  }
-
-  // Use English prompts for English or other languages
-  if (language === 'en' || language === 'other') {
-    if (type === 'summary') {
-      return plugin.t('defaultPrompt_summaryEn');
-    } else if (type === 'tags') {
-      return plugin.t('defaultPrompt_tagsEn');
-    } else {
-      return plugin.t('defaultPrompt_imageEn');
-    }
-  }
-
-  // Use Chinese prompts for Chinese
-  if (type === 'summary') {
-    return plugin.t('defaultPrompt_summary');
-  } else if (type === 'tags') {
-    return plugin.t('defaultPrompt_tags');
-  } else {
-    return plugin.t('defaultPrompt_image');
-  }
-}
+import {
+  TAG_COLORS,
+  getTagColor,
+  detectLanguage,
+  getLocalizedPrompt,
+  formatFileSize,
+  truncateMiddle,
+  getMimeType,
+  getMimeTypeFromResponse,
+  extractFileName,
+  normalizeTags,
+} from './modal-helpers';
 
 /**
  * WordPress publish modal V2 - New version with improved UI
@@ -369,10 +298,10 @@ export class WpPublishModalV2 extends AbstractModal {
 
       // 从 URL 或 Content-Type 获取 MIME 类型
       const contentType = response.headers['content-type'];
-      const mimeType = this.getMimeTypeFromResponse(contentType, url);
+      const mimeType = getMimeTypeFromResponse(contentType, url);
 
       // 从 URL 提取文件名
-      const fileName = this.extractFileName(url);
+      const fileName = extractFileName(url);
 
       this.autoFeaturedImage = {
         fileName,
@@ -480,22 +409,6 @@ export class WpPublishModalV2 extends AbstractModal {
     return this.cachedFeaturedImageId;
   }
 
-  private getMimeTypeFromResponse(contentType: string | null, url: string): string {
-    if (contentType?.startsWith('image/')) {
-      return contentType.split(';')[0];
-    }
-
-    // 从 URL 扩展名推断
-    const ext = url.split('.').pop()?.toLowerCase()?.split('?')[0];
-    return this.getMimeType(ext || 'jpg');
-  }
-
-  private extractFileName(url: string): string {
-    const urlParts = url.split('/');
-    const lastPart = urlParts[urlParts.length - 1]?.split('?')[0];
-    return (lastPart && lastPart.includes('.')) ? lastPart : 'featured-image.jpg';
-  }
-
   // 检测文章第一张图片
   private async detectFirstImage(): Promise<void> {
     try {
@@ -534,7 +447,7 @@ export class WpPublishModalV2 extends AbstractModal {
       const binaryContent = await this.app.vault.readBinary(file);
       this.autoFeaturedImage = {
         fileName: file.name,
-        mimeType: this.getMimeType(file.extension.toLowerCase()),
+        mimeType: getMimeType(file.extension.toLowerCase()),
         content: binaryContent,
         width: 1200
       };
@@ -559,7 +472,7 @@ export class WpPublishModalV2 extends AbstractModal {
 
       // Detect MIME type from URL extension or response headers
       const contentType = response.headers['content-type'];
-      const mimeType = this.getMimeTypeFromResponse(contentType, imagePath);
+      const mimeType = getMimeTypeFromResponse(contentType, imagePath);
 
       this.autoFeaturedImage = {
         fileName: `featured-${Date.now()}.jpg`,
@@ -594,17 +507,6 @@ export class WpPublishModalV2 extends AbstractModal {
     }
   }
 
-  private getMimeType(extension: string): string {
-    const mimeTypes: Record<string, string> = {
-      'jpg': 'image/jpeg',
-      'jpeg': 'image/jpeg',
-      'png': 'image/png',
-      'gif': 'image/gif',
-      'webp': 'image/webp'
-    };
-    return mimeTypes[extension.toLowerCase()] || 'image/jpeg';
-  }
-
   /**
    * 将 ArrayBuffer 转换为 Base64 字符串
    */
@@ -615,25 +517,6 @@ export class WpPublishModalV2 extends AbstractModal {
       binary += String.fromCharCode(bytes[i]);
     }
     return btoa(binary);
-  }
-
-  /**
-   * 格式化文件大小
-   */
-  private formatFileSize(bytes: number): string {
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-  }
-
-  /**
-   * 中间截断文件名：保留前 prefixLen 个字符 + "..." + 后 suffixLen 个字符
-   * 当字符串长度 <= prefixLen + suffixLen + 3 时原样返回
-   * 默认 prefix=10, suffix=8 → 最长 21 字符（适合 header 有限宽度）
-   */
-  private truncateMiddle(str: string, prefixLen = 10, suffixLen = 8): string {
-    if (str.length <= prefixLen + suffixLen + 3) return str;
-    return str.slice(0, prefixLen) + '...' + str.slice(str.length - suffixLen);
   }
 
   /**
@@ -650,7 +533,7 @@ export class WpPublishModalV2 extends AbstractModal {
       commentStatus: this.plugin.settings.defaultCommentStatus,
       postType: this.postTypes.selected,
       categories: this.categories.selected,
-      tags: this.normalizeTags(this.matterData.tags),
+      tags: normalizeTags(this.matterData.tags),
       title: this.noteTitle || '',
       content: '',
       slug: this.matterData.slug || '',
@@ -953,7 +836,7 @@ export class WpPublishModalV2 extends AbstractModal {
 
       if (opts.fileName) {
         const nameEl = actionsEl.createSpan({ cls: 'wp-v3-img-filename' });
-        nameEl.textContent = this.truncateMiddle(opts.fileName);
+        nameEl.textContent = truncateMiddle(opts.fileName);
         nameEl.title = opts.fileName;
       }
 
@@ -1020,7 +903,7 @@ export class WpPublishModalV2 extends AbstractModal {
           updateHeaderActions({
             sourceLabel: '📂 Local',
             sourceCls: 'wp-v3-source-local',
-            fileName: `${imageToDisplay.fileName} (${this.formatFileSize(imageToDisplay.content.byteLength)})`,
+            fileName: `${imageToDisplay.fileName} (${formatFileSize(imageToDisplay.content.byteLength)})`,
             showDelete: true
           });
         } else {
@@ -2317,7 +2200,7 @@ export class WpPublishModalV2 extends AbstractModal {
 
       // 图片信息
       const info = content.createDiv('wp-preview-image-info');
-      info.createSpan({ text: `${imageToDisplay.fileName} (${this.formatFileSize(imageToDisplay.content.byteLength)})` });
+      info.createSpan({ text: `${imageToDisplay.fileName} (${formatFileSize(imageToDisplay.content.byteLength)})` });
     } else if (this.matterData.featurePicture) {
       const imgContainer = content.createDiv('wp-preview-image-container');
       const img = imgContainer.createEl('img', { cls: 'wp-preview-image' });
@@ -3414,7 +3297,7 @@ export class WpPublishModalV2 extends AbstractModal {
       img.src = `data:${this.featuredImage.mimeType};base64,${this.arrayBufferToBase64(this.featuredImage.content)}`;
 
       const info = previewContainer.createDiv('featured-image-info');
-      info.textContent = `${this.featuredImage.fileName} (${this.formatFileSize(this.featuredImage.content.byteLength)})`;
+      info.textContent = `${this.featuredImage.fileName} (${formatFileSize(this.featuredImage.content.byteLength)})`;
 
       const removeBtn = previewContainer.createEl('button', {
         text: this.t('publishModal_removeImage'),
@@ -4020,13 +3903,13 @@ export class WpPublishModalV2 extends AbstractModal {
   // ==================== Advanced Settings Tab ====================
 
   // ==================== API Warning Display ====================
-  private renderApiWarning(container: HTMLElement, apiType: string): void {
+  private renderApiWarning(container: HTMLElement, apiType: ApiType): void {
     const warningContainer = container.createDiv('wp-api-warning');
     warningContainer.addClass('mod-warning');
-    
-    const capabilities = getApiCapabilities(apiType as any);
-    const limitations = getApiLimitations(apiType as any);
-    const recommendation = getApiRecommendation(apiType as any);
+
+    const capabilities = getApiCapabilities(apiType);
+    const limitations = getApiLimitations(apiType);
+    const recommendation = getApiRecommendation(apiType);
     
     // 警告标题
     const title = warningContainer.createDiv('wp-api-warning-title');
@@ -4056,59 +3939,8 @@ export class WpPublishModalV2 extends AbstractModal {
     };
   }
   
-  private showApiInfoModal(apiType: string): void {
-    const capabilities = getApiCapabilities(apiType as any);
-    const limitations = getApiLimitations(apiType as any);
-    const recommendation = getApiRecommendation(apiType as any);
-    
-    const message = `
-# API Capabilities: ${apiType}
-
-## Supported Features
-${capabilities.supportsCategoryCreation ? '✅ Category Creation' : '❌ Category Creation'}
-${capabilities.supportsTagCreation ? '✅ Tag Creation' : '❌ Tag Creation'}
-${capabilities.supportsRichCategoryProperties ? '✅ Rich Category Properties' : '❌ Rich Category Properties'}
-${capabilities.supportsBatchOperations ? '✅ Batch Operations' : '❌ Batch Operations'}
-${capabilities.supportsCustomPostTypes ? '✅ Custom Post Types' : '❌ Custom Post Types'}
-
-## Limitations
-${limitations.map(l => `• ${l}`).join('\n')}
-
-## Recommendation
-${recommendation}
-
-## Security Note
-XML-RPC uses basic authentication which may be less secure than REST API with Application Passwords.
-Consider migrating to REST API for better security and feature support.
-    `;
-    
-    // 使用内置的confirm modal显示信息
-    const modal = this.plugin.app.workspace.activeLeaf?.view.containerEl.createEl('div');
-    if (modal) {
-      modal.innerHTML = `
-        <div class="modal-bg" style="position:fixed;top:0;left:0;width:100%;height:100%;background:var(--wp-modal-overlay);z-index:9999;">
-          <div class="modal" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--background-primary);padding:20px;border-radius:8px;max-width:600px;max-height:80vh;overflow:auto;">
-            <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
-              <h3 style="margin:0;">API Information</h3>
-              <button class="modal-close" style="background:none;border:none;font-size:20px;cursor:pointer;">×</button>
-            </div>
-            <div class="modal-content">${message}</div>
-            <div class="modal-footer" style="margin-top:15px;text-align:right;">
-              <button class="mod-cta" style="padding:5px 15px;">Close</button>
-            </div>
-          </div>
-        </div>
-      `;
-      
-      // 添加关闭事件
-      modal.querySelector('.modal-close')?.addEventListener('click', () => modal.remove());
-      modal.querySelector('.mod-cta')?.addEventListener('click', () => modal.remove());
-      modal.querySelector('.modal-bg')?.addEventListener('click', (e) => {
-        if (e.target === modal.querySelector('.modal-bg')) {
-          modal.remove();
-        }
-      });
-    }
+  private showApiInfoModal(apiType: ApiType): void {
+    showApiInfoModal(this.plugin.app, apiType);
   }
 
   // ==================== Bottom Action Bar ====================
@@ -4551,8 +4383,4 @@ Consider migrating to REST API for better security and feature support.
    * Normalize tags from frontmatter to string array
    * Handles YAML array, inline tags (#tag), and comma-separated string formats
    */
-  private normalizeTags(tags: any): string[] {
-    // Use TagFormatter to parse tags (supports YAML array, inline tags, and comma-separated)
-    return TagFormatter.parseToArray(tags);
-  }
 }
