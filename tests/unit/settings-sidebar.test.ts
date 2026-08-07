@@ -99,7 +99,8 @@ describe('SettingsSidebar', () => {
     statusSelect.value = PostStatus.Future;
     statusSelect.dispatchEvent(new Event('change'));
 
-    expect(ctx.display).toHaveBeenCalledWith(params);
+    // 修复 P0：状态切换应局部刷新设置卡，而非整模态重建
+    expect(ctx.display).not.toHaveBeenCalled();
     expect(ctx.setupDateMask).toHaveBeenCalled();
 
     const datetimeInput = container.querySelectorAll('input.wp-v3-input')[2] as HTMLInputElement;

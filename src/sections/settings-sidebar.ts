@@ -13,9 +13,21 @@ import { addV3HintBtn, createV3Section, renderV3Field } from './v3-layout';
 export class SettingsSidebar {
   constructor(private readonly ctx: PublishModalContext) {}
 
+  private rootContainer: HTMLElement | null = null;
+  private currentParams: WordPressPostParams | null = null;
+
   render(container: HTMLElement, params: WordPressPostParams): void {
+    this.rootContainer = container;
+    this.currentParams = params;
     this.renderSettingsCard(container, params);
     this.renderHistoryCard(container, params);
+  }
+
+  /** Re-render only this sidebar (status change etc.) instead of the whole modal. */
+  private rebuild(): void {
+    if (!this.rootContainer || !this.currentParams) return;
+    this.rootContainer.empty();
+    this.render(this.rootContainer, this.currentParams);
   }
 
   private renderSettingsCard(container: HTMLElement, params: WordPressPostParams): void {
@@ -84,7 +96,7 @@ export class SettingsSidebar {
       });
       select.addEventListener('change', () => {
         params.status = select.value as PostStatus;
-        ctx.display(params);
+        this.rebuild();
       });
     });
 

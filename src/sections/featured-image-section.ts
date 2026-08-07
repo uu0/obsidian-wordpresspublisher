@@ -7,23 +7,78 @@ import { formatFileSize, truncateMiddle } from '../modal-helpers';
 import type { PublishModalContext } from './publish-modal-context';
 import { createV3Section } from './v3-layout';
 
+// Object URLs created for blob previews must be revoked, otherwise each
+// re-render leaks a Blob that the browser keeps alive. Track them centrally so
+// the host modal can free every pending URL on rebuild/close.
+const trackedObjectUrls = new Set<string>();
+
+function trackObjectUrl(url: string): void {
+  trackedObjectUrls.add(url);
+}
+
+function untrackObjectUrl(url: string): void {
+  trackedObjectUrls.delete(url);
+}
+
+/** Revoke every tracked featured-image object URL (call on modal rebuild/close). */
+export function revokeAllFeaturedImageUrls(): void {
+  for (const url of trackedObjectUrls) {
+    try {
+      URL.revokeObjectURL(url);
+    } catch {
+      /* ignore - already invalid */
+    }
+  }
+  trackedObjectUrls.clear();
+}
+
 export class FeaturedImageSection {
   constructor(private readonly ctx: PublishModalContext) {}
 
+  private rootCard: HTMLElement | null = null;
+  private currentParams: WordPressPostParams | null = null;
+  private currentObjectUrl: string | null = null;
+
   render(container: HTMLElement, params: WordPressPostParams): void {
+    this.currentParams = params;
+    const section = createV3Section(
+      container,
+      this.ctx.plugin.t('publishModal_previewFeaturedImage') || 'Featured Image',
+      []
+    );
+    this.rootCard = section;
+    this.wireDragAndDrop(section);
+    this.renderContent(section, params);
+  }
+
+  /** Re-render only this section's card (used for local state changes). */
+  private rebuild(): void {
+    if (this.rootCard && this.currentParams) {
+      this.renderContent(this.rootCard, this.currentParams);
+    }
+  }
+
+  private renderContent(section: HTMLElement, params: WordPressPostParams): void {
     const ctx = this.ctx;
+
+    // Free the object URL owned by this instance before we replace the DOM.
+    if (this.currentObjectUrl) {
+      try {
+        URL.revokeObjectURL(this.currentObjectUrl);
+      } catch {
+        /* ignore */
+      }
+      untrackObjectUrl(this.currentObjectUrl);
+      this.currentObjectUrl = null;
+    }
+
+    const existingBody = section.querySelector('.wp-v3-section-body');
+    if (existingBody) existingBody.remove();
+    const body = section.createDiv('wp-v3-section-body');
+
     const imageToDisplay = ctx.featuredImage || ctx.autoFeaturedImage;
     const hasImage = !!imageToDisplay || !!ctx.matterData.featurePicture;
 
-    // 创建 section（先不传 actions，后面动态更新 header）
-    const section = createV3Section(
-      container,
-      ctx.plugin.t('publishModal_previewFeaturedImage') || 'Featured Image',
-      []
-    );
-    const body = section.createDiv('wp-v3-section-body');
-
-    /** 更新 header 右侧区域 */
     const updateHeaderActions = (opts: {
       sourceLabel?: string;      // 来源标签文字，例如 '📂 Local' / '☁️ WordPress'
       sourceCls?: string;        // 来源标签附加 CSS class
@@ -55,7 +110,7 @@ export class FeaturedImageSection {
           ctx.featuredImage = null;
           ctx.autoFeaturedImage = null;
           ctx.matterData.featurePicture = '';
-          renderSetup();
+          this.rebuild();
         };
       }
     };
@@ -91,7 +146,7 @@ export class FeaturedImageSection {
           ctx.remoteImageLoadFailed = false;
           ctx.remoteImageError = null;
           ctx.remoteImagePostId = null;
-          ctx.display(params);
+          this.rebuild();
         };
         updateHeaderActions();
       } else if (imageToDisplay) {
@@ -101,6 +156,8 @@ export class FeaturedImageSection {
         const imgContainer = wrap.createDiv('wp-v3-featured-img-container');
         const blob = new Blob([imageToDisplay.content], { type: imageToDisplay.mimeType });
         const url = URL.createObjectURL(blob);
+        this.currentObjectUrl = url;
+        trackObjectUrl(url);
         imgContainer.createEl('img', { cls: 'wp-v3-featured-img', attr: { src: url, alt: 'Featured Image' } });
 
         if (isLocalNew) {
@@ -194,36 +251,39 @@ export class FeaturedImageSection {
     } else {
       renderSetup();
     }
+  }
 
-    // ── 拖入图片支持（body 区域） ──
+  private wireDragAndDrop(section: HTMLElement): void {
     const SUPPORTED_MIME = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml'];
     const SUPPORTED_EXT = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'];
+
+    const bodyEl = () => section.querySelector('.wp-v3-section-body') as HTMLElement | null;
 
     section.addEventListener('dragover', (e: DragEvent) => {
       e.preventDefault();
       e.stopPropagation();
       const items = e.dataTransfer?.items;
       if (items && items.length > 0 && items[0].kind === 'file') {
-        body.addClass('drag-over');
-        body.querySelector('.wp-v3-featured-empty')?.addClass('drag-over');
-        body.querySelector('.wp-v3-featured-img-container')?.addClass('drag-over');
+        bodyEl()?.addClass('drag-over');
+        section.querySelector('.wp-v3-featured-empty')?.addClass('drag-over');
+        section.querySelector('.wp-v3-featured-img-container')?.addClass('drag-over');
       }
     });
 
     section.addEventListener('dragleave', (e: DragEvent) => {
       if (!section.contains(e.relatedTarget as Node)) {
-        body.removeClass('drag-over');
-        body.querySelector('.wp-v3-featured-empty')?.removeClass('drag-over');
-        body.querySelector('.wp-v3-featured-img-container')?.removeClass('drag-over');
+        bodyEl()?.removeClass('drag-over');
+        section.querySelector('.wp-v3-featured-empty')?.removeClass('drag-over');
+        section.querySelector('.wp-v3-featured-img-container')?.removeClass('drag-over');
       }
     });
 
     section.addEventListener('drop', async (e: DragEvent) => {
       e.preventDefault();
       e.stopPropagation();
-      body.removeClass('drag-over');
-      body.querySelector('.wp-v3-featured-empty')?.removeClass('drag-over');
-      body.querySelector('.wp-v3-featured-img-container')?.removeClass('drag-over');
+      bodyEl()?.removeClass('drag-over');
+      section.querySelector('.wp-v3-featured-empty')?.removeClass('drag-over');
+      section.querySelector('.wp-v3-featured-img-container')?.removeClass('drag-over');
 
       const file = e.dataTransfer?.files?.[0];
       if (!file) return;
@@ -234,24 +294,26 @@ export class FeaturedImageSection {
 
       if (!mimeOk && !extOk) {
         // 格式不支持：显示错误提示，保持原状
-        const errEl = body.createDiv('wp-v3-drop-error');
-        errEl.textContent = `❌ 不支持的图片格式: .${ext}`;
-        setTimeout(() => errEl.remove(), 2500);
+        const errEl = bodyEl()?.createDiv('wp-v3-drop-error');
+        if (errEl) {
+          errEl.textContent = `❌ 不支持的图片格式: .${ext}`;
+          setTimeout(() => errEl.remove(), 2500);
+        }
         return;
       }
 
       try {
         const arrayBuffer = await file.arrayBuffer();
         const mimeType = mimeOk ? file.type : `image/${ext === 'jpg' ? 'jpeg' : ext}`;
-        ctx.featuredImage = {
+        this.ctx.featuredImage = {
           fileName: file.name,
           content: new Uint8Array(arrayBuffer),
           mimeType
         };
-        // 重新渲染
-        ctx.display(params);
+        // 局部刷新本卡片，而不是整模态重建
+        this.rebuild();
       } catch (err) {
-        new Notice(ctx.plugin.t('error_imageLoadFailed'));
+        new Notice(this.ctx.plugin.t('error_imageLoadFailed'));
       }
     });
   }

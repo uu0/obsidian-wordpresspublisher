@@ -102035,27 +102035,68 @@ var init_v3_layout = __esm({
 });
 
 // src/sections/featured-image-section.ts
-var import_obsidian9, FeaturedImageSection;
+function trackObjectUrl(url) {
+  trackedObjectUrls.add(url);
+}
+function untrackObjectUrl(url) {
+  trackedObjectUrls.delete(url);
+}
+function revokeAllFeaturedImageUrls() {
+  for (const url of trackedObjectUrls) {
+    try {
+      URL.revokeObjectURL(url);
+    } catch (e) {
+    }
+  }
+  trackedObjectUrls.clear();
+}
+var import_obsidian9, trackedObjectUrls, FeaturedImageSection;
 var init_featured_image_section = __esm({
   "src/sections/featured-image-section.ts"() {
     "use strict";
     import_obsidian9 = require("obsidian");
     init_modal_helpers();
     init_v3_layout();
+    trackedObjectUrls = /* @__PURE__ */ new Set();
     FeaturedImageSection = class {
       constructor(ctx) {
         this.ctx = ctx;
+        this.rootCard = null;
+        this.currentParams = null;
+        this.currentObjectUrl = null;
       }
       render(container, params) {
-        const ctx = this.ctx;
-        const imageToDisplay = ctx.featuredImage || ctx.autoFeaturedImage;
-        const hasImage = !!imageToDisplay || !!ctx.matterData.featurePicture;
+        this.currentParams = params;
         const section = createV3Section(
           container,
-          ctx.plugin.t("publishModal_previewFeaturedImage") || "Featured Image",
+          this.ctx.plugin.t("publishModal_previewFeaturedImage") || "Featured Image",
           []
         );
+        this.rootCard = section;
+        this.wireDragAndDrop(section);
+        this.renderContent(section, params);
+      }
+      /** Re-render only this section's card (used for local state changes). */
+      rebuild() {
+        if (this.rootCard && this.currentParams) {
+          this.renderContent(this.rootCard, this.currentParams);
+        }
+      }
+      renderContent(section, params) {
+        const ctx = this.ctx;
+        if (this.currentObjectUrl) {
+          try {
+            URL.revokeObjectURL(this.currentObjectUrl);
+          } catch (e) {
+          }
+          untrackObjectUrl(this.currentObjectUrl);
+          this.currentObjectUrl = null;
+        }
+        const existingBody = section.querySelector(".wp-v3-section-body");
+        if (existingBody) existingBody.remove();
         const body = section.createDiv("wp-v3-section-body");
+        const imageToDisplay = ctx.featuredImage || ctx.autoFeaturedImage;
+        const hasImage = !!imageToDisplay || !!ctx.matterData.featurePicture;
         const updateHeaderActions = (opts = {}) => {
           var _a5;
           const actionsEl = section.querySelector(".wp-v3-section-actions");
@@ -102080,7 +102121,7 @@ var init_featured_image_section = __esm({
               ctx.featuredImage = null;
               ctx.autoFeaturedImage = null;
               ctx.matterData.featurePicture = "";
-              renderSetup();
+              this.rebuild();
             };
           }
         };
@@ -102114,7 +102155,7 @@ var init_featured_image_section = __esm({
               ctx.remoteImageLoadFailed = false;
               ctx.remoteImageError = null;
               ctx.remoteImagePostId = null;
-              ctx.display(params);
+              this.rebuild();
             };
             updateHeaderActions();
           } else if (imageToDisplay) {
@@ -102122,6 +102163,8 @@ var init_featured_image_section = __esm({
             const imgContainer = wrap2.createDiv("wp-v3-featured-img-container");
             const blob = new Blob([imageToDisplay.content], { type: imageToDisplay.mimeType });
             const url = URL.createObjectURL(blob);
+            this.currentObjectUrl = url;
+            trackObjectUrl(url);
             imgContainer.createEl("img", { cls: "wp-v3-featured-img", attr: { src: url, alt: "Featured Image" } });
             if (isLocalNew) {
               updateHeaderActions({
@@ -102200,56 +102243,61 @@ var init_featured_image_section = __esm({
         } else {
           renderSetup();
         }
+      }
+      wireDragAndDrop(section) {
         const SUPPORTED_MIME = ["image/jpeg", "image/png", "image/gif", "image/webp", "image/svg+xml"];
         const SUPPORTED_EXT = ["jpg", "jpeg", "png", "gif", "webp", "svg"];
+        const bodyEl = () => section.querySelector(".wp-v3-section-body");
         section.addEventListener("dragover", (e) => {
-          var _a5, _b, _c;
+          var _a5, _b, _c, _d;
           e.preventDefault();
           e.stopPropagation();
           const items = (_a5 = e.dataTransfer) == null ? void 0 : _a5.items;
           if (items && items.length > 0 && items[0].kind === "file") {
-            body.addClass("drag-over");
-            (_b = body.querySelector(".wp-v3-featured-empty")) == null ? void 0 : _b.addClass("drag-over");
-            (_c = body.querySelector(".wp-v3-featured-img-container")) == null ? void 0 : _c.addClass("drag-over");
+            (_b = bodyEl()) == null ? void 0 : _b.addClass("drag-over");
+            (_c = section.querySelector(".wp-v3-featured-empty")) == null ? void 0 : _c.addClass("drag-over");
+            (_d = section.querySelector(".wp-v3-featured-img-container")) == null ? void 0 : _d.addClass("drag-over");
           }
         });
         section.addEventListener("dragleave", (e) => {
-          var _a5, _b;
+          var _a5, _b, _c;
           if (!section.contains(e.relatedTarget)) {
-            body.removeClass("drag-over");
-            (_a5 = body.querySelector(".wp-v3-featured-empty")) == null ? void 0 : _a5.removeClass("drag-over");
-            (_b = body.querySelector(".wp-v3-featured-img-container")) == null ? void 0 : _b.removeClass("drag-over");
+            (_a5 = bodyEl()) == null ? void 0 : _a5.removeClass("drag-over");
+            (_b = section.querySelector(".wp-v3-featured-empty")) == null ? void 0 : _b.removeClass("drag-over");
+            (_c = section.querySelector(".wp-v3-featured-img-container")) == null ? void 0 : _c.removeClass("drag-over");
           }
         });
         section.addEventListener("drop", async (e) => {
-          var _a5, _b, _c, _d, _e;
+          var _a5, _b, _c, _d, _e, _f, _g;
           e.preventDefault();
           e.stopPropagation();
-          body.removeClass("drag-over");
-          (_a5 = body.querySelector(".wp-v3-featured-empty")) == null ? void 0 : _a5.removeClass("drag-over");
-          (_b = body.querySelector(".wp-v3-featured-img-container")) == null ? void 0 : _b.removeClass("drag-over");
-          const file = (_d = (_c = e.dataTransfer) == null ? void 0 : _c.files) == null ? void 0 : _d[0];
+          (_a5 = bodyEl()) == null ? void 0 : _a5.removeClass("drag-over");
+          (_b = section.querySelector(".wp-v3-featured-empty")) == null ? void 0 : _b.removeClass("drag-over");
+          (_c = section.querySelector(".wp-v3-featured-img-container")) == null ? void 0 : _c.removeClass("drag-over");
+          const file = (_e = (_d = e.dataTransfer) == null ? void 0 : _d.files) == null ? void 0 : _e[0];
           if (!file) return;
-          const ext = ((_e = file.name.split(".").pop()) == null ? void 0 : _e.toLowerCase()) || "";
+          const ext = ((_f = file.name.split(".").pop()) == null ? void 0 : _f.toLowerCase()) || "";
           const mimeOk = SUPPORTED_MIME.includes(file.type);
           const extOk = SUPPORTED_EXT.includes(ext);
           if (!mimeOk && !extOk) {
-            const errEl = body.createDiv("wp-v3-drop-error");
-            errEl.textContent = `\u274C \u4E0D\u652F\u6301\u7684\u56FE\u7247\u683C\u5F0F: .${ext}`;
-            setTimeout(() => errEl.remove(), 2500);
+            const errEl = (_g = bodyEl()) == null ? void 0 : _g.createDiv("wp-v3-drop-error");
+            if (errEl) {
+              errEl.textContent = `\u274C \u4E0D\u652F\u6301\u7684\u56FE\u7247\u683C\u5F0F: .${ext}`;
+              setTimeout(() => errEl.remove(), 2500);
+            }
             return;
           }
           try {
             const arrayBuffer = await file.arrayBuffer();
             const mimeType = mimeOk ? file.type : `image/${ext === "jpg" ? "jpeg" : ext}`;
-            ctx.featuredImage = {
+            this.ctx.featuredImage = {
               fileName: file.name,
               content: new Uint8Array(arrayBuffer),
               mimeType
             };
-            ctx.display(params);
+            this.rebuild();
           } catch (err) {
-            new import_obsidian9.Notice(ctx.plugin.t("error_imageLoadFailed"));
+            new import_obsidian9.Notice(this.ctx.plugin.t("error_imageLoadFailed"));
           }
         });
       }
@@ -109622,10 +109670,20 @@ var init_settings_sidebar = __esm({
     SettingsSidebar = class {
       constructor(ctx) {
         this.ctx = ctx;
+        this.rootContainer = null;
+        this.currentParams = null;
       }
       render(container, params) {
+        this.rootContainer = container;
+        this.currentParams = params;
         this.renderSettingsCard(container, params);
         this.renderHistoryCard(container, params);
+      }
+      /** Re-render only this sidebar (status change etc.) instead of the whole modal. */
+      rebuild() {
+        if (!this.rootContainer || !this.currentParams) return;
+        this.rootContainer.empty();
+        this.render(this.rootContainer, this.currentParams);
       }
       renderSettingsCard(container, params) {
         const ctx = this.ctx;
@@ -109685,7 +109743,7 @@ var init_settings_sidebar = __esm({
           });
           select2.addEventListener("change", () => {
             params.status = select2.value;
-            ctx.display(params);
+            this.rebuild();
           });
         });
         if (params.status === "future" /* Future */) {
@@ -110340,6 +110398,7 @@ var init_wp_publish_modal_v2 = __esm({
       }
       display(params) {
         const { contentEl } = this;
+        revokeAllFeaturedImageUrls();
         this.currentParams = params;
         contentEl.empty();
         contentEl.addClass("wp-publish-modal-v2");

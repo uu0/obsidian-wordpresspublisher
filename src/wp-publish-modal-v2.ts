@@ -24,7 +24,7 @@ import { ApiType } from './plugin-settings';
 import { showApiInfoModal } from './api-info-modal';
 import { TranslateKey } from './i18n';
 import type { PublishModalContext } from './sections/publish-modal-context';
-import { FeaturedImageSection } from './sections/featured-image-section';
+import { FeaturedImageSection, revokeAllFeaturedImageUrls } from './sections/featured-image-section';
 import { ContentPreviewSection } from './sections/content-preview-section';
 import { SettingsSidebar } from './sections/settings-sidebar';
 
@@ -664,6 +664,9 @@ export class WpPublishModalV2 extends AbstractModal implements PublishModalConte
 
   display(params: WordPressPostParams): void {
     const { contentEl } = this;
+
+    // 释放上一次渲染遗留的 Blob URL，避免内存泄漏
+    revokeAllFeaturedImageUrls();
 
     // 保存当前参数，用于在关闭时保存生成的内容
     this.currentParams = params;

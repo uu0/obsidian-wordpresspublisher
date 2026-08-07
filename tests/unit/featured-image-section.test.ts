@@ -134,6 +134,32 @@ describe('FeaturedImageSection', () => {
 
     findButton(container, (b) => b.textContent === '跳过').dispatchEvent(new Event('click'));
     expect(ctx.remoteImagePostId).toBeNull();
-    expect(ctx.display).toHaveBeenCalledWith(params);
+    // 修复 P0：跳过应局部刷新本卡片，而非整模态重建
+    expect(ctx.display).not.toHaveBeenCalled();
+    // 错误态已被清除，回到无图 setup
+    expect(container.querySelector('.wp-v3-featured-status-error')).toBeNull();
+  });
+
+  it('revokes the previous object URL on rebuild to avoid leaks (P0)', () => {
+    const revokes: string[] = [];
+    const originalCreate = (URL as any).createObjectURL;
+    const originalRevoke = (URL as any).revokeObjectURL;
+    (URL as any).createObjectURL = () => 'blob:leak-test';
+    (URL as any).revokeObjectURL = (u: string) => revokes.push(u);
+
+    const img: FeaturedImageResult = { fileName: 'x.png', content: new Uint8Array([1]), mimeType: 'image/png' };
+    const ctx = createMockContext({ featuredImage: img, imageSource: 'local' });
+    const container = document.createElement('div');
+    const section = new FeaturedImageSection(ctx);
+    section.render(container, baseParams());
+
+    expect(revokes).not.toContain('blob:leak-test'); // 初次渲染只创建、未释放
+
+    (section as any).rebuild(); // 触发局部刷新
+    expect(revokes).toContain('blob:leak-test'); // 刷新前释放旧 URL
+
+    // 恢复 polyfill，避免影响其它测试
+    (URL as any).createObjectURL = originalCreate;
+    (URL as any).revokeObjectURL = originalRevoke;
   });
 });
