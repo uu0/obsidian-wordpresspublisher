@@ -3940,7 +3940,7 @@ export class WpPublishModalV2 extends AbstractModal {
   }
   
   private showApiInfoModal(apiType: ApiType): void {
-    showApiInfoModal(this.plugin.app, apiType);
+    showApiInfoModal(this.plugin, apiType);
   }
 
   // ==================== Bottom Action Bar ====================

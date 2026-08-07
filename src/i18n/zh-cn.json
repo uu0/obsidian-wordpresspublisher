@@ -430,5 +430,7 @@
   "publishModal_aiGenerateSummary": "🤖 生成摘要",
   "publishModal_manualInput": "📝 手动输入",
   "publishModal_addTag": "🏷️ 添加标签",
-  "publishModal_aiGenerateTags": "🤖 生成标签"
+  "publishModal_aiGenerateTags": "🤖 生成标签",
+  "apiInfo_title": "API 信息",
+  "apiInfo_close": "关闭"
 }

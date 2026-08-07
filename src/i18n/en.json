@@ -430,5 +430,7 @@
   "publishModal_aiGenerateSummary": "🤖 AI Generate",
   "publishModal_manualInput": "📝 Manual Input",
   "publishModal_addTag": "🏷️ Add Tag",
-  "publishModal_aiGenerateTags": "🤖 AI Generate"
+  "publishModal_aiGenerateTags": "🤖 AI Generate",
+  "apiInfo_title": "API Information",
+  "apiInfo_close": "Close"
 }

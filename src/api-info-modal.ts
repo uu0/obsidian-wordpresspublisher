@@ -1,66 +1,114 @@
-import { App } from 'obsidian';
+import { App, Modal } from 'obsidian';
 import { ApiType } from './plugin-settings';
 import { getApiCapabilities, getApiLimitations, getApiRecommendation } from './api-capability';
+import { I18n } from './i18n';
+import WordpressPlugin from './main';
 
 /**
- * Show a lightweight, read-only modal describing the capabilities,
- * limitations and recommendation for the selected WordPress API type.
+ * Read-only modal describing the capabilities, limitations and
+ * recommendation for the selected WordPress API type.
  *
- * Rendered as an overlay anchored to the active leaf (matches the previous
- * inline implementation); kept here so the publish modal stays focused on
- * its core flow.
+ * Built with Obsidian's Modal base class (proper backdrop + ESC-to-close,
+ * no leaked DOM) and styled via CSS classes in styles.css rather than inline
+ * styles. All chrome strings come from i18n.
  */
-export function showApiInfoModal(app: App, apiType: ApiType): void {
-  const capabilities = getApiCapabilities(apiType);
-  const limitations = getApiLimitations(apiType);
-  const recommendation = getApiRecommendation(apiType);
+class ApiInfoModal extends Modal {
+  constructor(
+    app: App,
+    private readonly apiType: ApiType,
+    private readonly i18n: I18n
+  ) {
+    super(app);
+  }
 
-  const message = `
-# API Capabilities: ${apiType}
+  onOpen(): void {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.addClass('wp-api-info-modal');
 
-## Supported Features
-${capabilities.supportsCategoryCreation ? '✅ Category Creation' : '❌ Category Creation'}
-${capabilities.supportsTagCreation ? '✅ Tag Creation' : '❌ Tag Creation'}
-${capabilities.supportsRichCategoryProperties ? '✅ Rich Category Properties' : '❌ Rich Category Properties'}
-${capabilities.supportsBatchOperations ? '✅ Batch Operations' : '❌ Batch Operations'}
-${capabilities.supportsCustomPostTypes ? '✅ Custom Post Types' : '❌ Custom Post Types'}
+    // Header with title + close button.
+    const header = contentEl.createDiv('wp-api-info-modal-header');
+    header.createEl('h3', { text: this.i18n.t('apiInfo_title') });
+    const closeButton = header.createEl('button', {
+      cls: 'wp-api-info-modal-close',
+      text: '×'
+    });
+    closeButton.addEventListener('click', () => this.close());
 
-## Limitations
-${limitations.map(l => `• ${l}`).join('\n')}
+    // Body.
+    const body = contentEl.createDiv('wp-api-info-modal-body');
+    this.renderCapabilities(body);
+    this.renderSection(body, 'Limitations', this.renderLimitations);
+    this.renderRecommendation(body);
+    this.renderSecurityNote(body);
 
-## Recommendation
-${recommendation}
+    // Footer.
+    const footer = contentEl.createDiv('wp-api-info-footer');
+    const close = footer.createEl('button', {
+      cls: 'mod-cta',
+      text: this.i18n.t('apiInfo_close')
+    });
+    close.addEventListener('click', () => this.close());
+  }
 
-## Security Note
-XML-RPC uses basic authentication which may be less secure than REST API with Application Passwords.
-Consider migrating to REST API for better security and feature support.
-  `;
+  onClose(): void {
+    this.contentEl.empty();
+  }
 
-  // 使用内置的confirm modal显示信息
-  const modal = app.workspace.activeLeaf?.view.containerEl.createEl('div');
-  if (modal) {
-    modal.innerHTML = `
-      <div class="modal-bg" style="position:fixed;top:0;left:0;width:100%;height:100%;background:var(--wp-modal-overlay);z-index:9999;">
-        <div class="modal" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--background-primary);padding:20px;border-radius:8px;max-width:600px;max-height:80vh;overflow:auto;">
-          <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
-            <h3 style="margin:0;">API Information</h3>
-            <button class="modal-close" style="background:none;border:none;font-size:20px;cursor:pointer;">×</button>
-          </div>
-          <div class="modal-content">${message}</div>
-          <div class="modal-footer" style="margin-top:15px;text-align:right;">
-            <button class="mod-cta" style="padding:5px 15px;">Close</button>
-          </div>
-        </div>
-      </div>
-    `;
+  private renderCapabilities(container: HTMLElement): void {
+    const capabilities = getApiCapabilities(this.apiType);
+    container.createEl('h4', { text: 'Supported Features' });
+    const list = container.createEl('ul', { cls: 'wp-api-info-features' });
+    const rows: Array<[boolean, string]> = [
+      [capabilities.supportsCategoryCreation, 'Category Creation'],
+      [capabilities.supportsTagCreation, 'Tag Creation'],
+      [capabilities.supportsRichCategoryProperties, 'Rich Category Properties'],
+      [capabilities.supportsBatchOperations, 'Batch Operations'],
+      [capabilities.supportsCustomPostTypes, 'Custom Post Types']
+    ];
+    for (const [supported, label] of rows) {
+      list.createEl('li', { text: `${supported ? '✅' : '❌'} ${label}` });
+    }
+  }
 
-    // 添加关闭事件
-    modal.querySelector('.modal-close')?.addEventListener('click', () => modal.remove());
-    modal.querySelector('.mod-cta')?.addEventListener('click', () => modal.remove());
-    modal.querySelector('.modal-bg')?.addEventListener('click', (e) => {
-      if (e.target === modal.querySelector('.modal-bg')) {
-        modal.remove();
-      }
+  private renderSection(
+    container: HTMLElement,
+    title: string,
+    render: (container: HTMLElement) => void
+  ): void {
+    container.createEl('h4', { text: title });
+    render(container);
+  }
+
+  private renderLimitations(container: HTMLElement): void {
+    const limitations = getApiLimitations(this.apiType);
+    if (limitations.length === 0) {
+      container.createEl('p', { text: '—' });
+      return;
+    }
+    const list = container.createEl('ul', { cls: 'wp-api-info-limitations' });
+    for (const limitation of limitations) {
+      list.createEl('li', { text: limitation });
+    }
+  }
+
+  private renderRecommendation(container: HTMLElement): void {
+    const recommendation = getApiRecommendation(this.apiType);
+    container.createEl('h4', { text: 'Recommendation' });
+    container.createEl('p', { text: recommendation });
+  }
+
+  private renderSecurityNote(container: HTMLElement): void {
+    container.createEl('h4', { text: 'Security Note' });
+    container.createEl('p', {
+      text:
+        'XML-RPC uses basic authentication which may be less secure than REST ' +
+        'API with Application Passwords. Consider migrating to REST API for ' +
+        'better security and feature support.'
     });
   }
+}
+
+export function showApiInfoModal(plugin: WordpressPlugin, apiType: ApiType): void {
+  new ApiInfoModal(plugin.app, apiType, plugin.i18n).open();
 }
