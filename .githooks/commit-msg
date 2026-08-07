@@ -1,0 +1,5 @@
+#!/bin/sh
+# Enforce Conventional Commits on the commit message.
+# Runs via git's core.hooksPath (.githooks). Fails the commit if the
+# message does not satisfy .commitlintrc.json.
+npx --no-install commitlint --edit "$1"
