@@ -25,6 +25,14 @@ export interface Media {
   fileName: string;
   /** Binary content as ArrayBuffer */
   content: ArrayBuffer;
+  /** WordPress media alt text */
+  altText?: string;
+  /** WordPress media title */
+  title?: string;
+  /** WordPress media caption */
+  caption?: string;
+  /** WordPress media description */
+  description?: string;
 }
 
 /**
