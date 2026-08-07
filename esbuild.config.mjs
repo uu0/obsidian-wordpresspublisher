@@ -1,7 +1,7 @@
 import esbuild from "esbuild";
 import process from "process";
 import builtins from "builtin-modules";
-import { copyFileSync, mkdirSync, existsSync, readFileSync } from "fs";
+import { copyFileSync, mkdirSync, existsSync, readFileSync, statSync } from "fs";
 
 const banner =
 `/*
@@ -64,7 +64,11 @@ if (prod) {
 		copyFileSync("styles.css", `${outputDir}/styles.css`);
 	}
 
-	console.log(`Build complete. Output files in ${outputDir}/`);
+	// Report the bundle size so regressions are easy to spot in CI logs.
+	const bundlePath = `${outputDir}/main.js`;
+	const bytes = statSync(bundlePath).size;
+	const kb = (bytes / 1024).toFixed(1);
+	console.log(`Build complete. ${bundlePath}: ${kb} KB (${bytes} bytes)`);
 	process.exit(0);
 } else {
 	await context.watch();
