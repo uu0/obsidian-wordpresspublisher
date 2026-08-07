@@ -39,6 +39,20 @@ export interface AIServiceOptions {
 }
 
 /**
+ * Minimal provider response shapes. The HTTP layer returns loosely-typed JSON,
+ * so we narrow it at the call site instead of threading `any` through the code.
+ */
+interface OpenAIChatResponse {
+  choices?: Array<{ message?: { content?: string } }>;
+}
+interface ClaudeMessageResponse {
+  content?: Array<{ type: string; text?: string }>;
+}
+interface OpenAIImageResponse {
+  data?: Array<{ url?: string }>;
+}
+
+/**
  * Default AI service options
  */
 const DEFAULT_OPTIONS: Required<AIServiceOptions> = {
@@ -77,7 +91,7 @@ async function apiRequestWithRetry(
   headers: Record<string, string>,
   body: unknown,
   options: Required<AIServiceOptions>
-): Promise<any> {
+): Promise<unknown> {
   let lastError: Error | null = null;
 
   for (let attempt = 1; attempt <= options.maxRetries; attempt++) {
@@ -105,7 +119,7 @@ async function apiRequestWithRetry(
           throw: false
         };
 
-        log.debug('API request', { url, model: (body as any)?.model, attempt });
+        log.debug('API request', { url, model: (body as { model?: string } | undefined)?.model, attempt });
         const response = await requestUrl(params);
 
         if (response.status < 200 || response.status >= 300) {
@@ -294,7 +308,7 @@ export class AIService {
 
     try {
       if (config.provider === 'openai') {
-        const data = await apiRequestWithRetry(
+        const data = (await apiRequestWithRetry(
           `${baseURL}/chat/completions`,
           { 'Authorization': `Bearer ${apiKey}` },
           {
@@ -303,9 +317,9 @@ export class AIService {
             max_tokens: 500
           },
           opts
-        );
+        )) as OpenAIChatResponse;
 
-        const result = data?.choices?.[0]?.message?.content || '';
+        const result = data.choices?.[0]?.message?.content ?? '';
         
         if (!result || result.trim().length === 0) {
           throw new AIServiceError(
@@ -320,7 +334,7 @@ export class AIService {
         return result;
 
       } else if (config.provider === 'claude') {
-        const data = await apiRequestWithRetry(
+        const data = (await apiRequestWithRetry(
           `${baseURL}/messages`,
           {
             'x-api-key': apiKey,
@@ -332,10 +346,10 @@ export class AIService {
             messages: [{ role: 'user', content: prompt }]
           },
           opts
-        );
+        )) as ClaudeMessageResponse;
 
-        const textContent = data?.content?.find((c: any) => c.type === 'text');
-        const result = textContent?.text || '';
+        const textContent = data.content?.find((c) => c.type === 'text');
+        const result = textContent?.text ?? '';
 
         if (!result || result.trim().length === 0) {
           throw new AIServiceError(
@@ -376,7 +390,7 @@ export class AIService {
 
     try {
       if (config.provider === 'openai') {
-        const data = await apiRequestWithRetry(
+        const data = (await apiRequestWithRetry(
           `${baseURL}/images/generations`,
           { 'Authorization': `Bearer ${apiKey}` },
           {
@@ -386,9 +400,9 @@ export class AIService {
             size: '1024x1024'
           },
           opts
-        );
+        )) as OpenAIImageResponse;
 
-        if (!data?.data || data.data.length === 0) {
+        if (!data.data || data.data.length === 0) {
           throw new AIServiceError(
             'No image generated',
             'NO_IMAGE',
