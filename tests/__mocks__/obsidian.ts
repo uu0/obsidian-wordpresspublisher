@@ -66,6 +66,42 @@ export class Notice {
   constructor(_message: string, _timeout?: number) {}
 }
 
+/**
+ * Minimal Events implementation (Obsidian's event emitter base class).
+ * Mirrors the public surface used across the app: on/off/trigger/tryTrigger.
+ */
+export class Events {
+  private handlers: Map<string, Array<(...args: any[]) => any>> = new Map();
+
+  on(name: string, callback: (...args: any[]) => any): () => void {
+    const list = this.handlers.get(name) ?? [];
+    list.push(callback);
+    this.handlers.set(name, list);
+    return () => this.off(name, callback);
+  }
+
+  off(name: string, callback: (...args: any[]) => any): void {
+    const list = this.handlers.get(name);
+    if (!list) return;
+    this.handlers.set(
+      name,
+      list.filter((cb) => cb !== callback)
+    );
+  }
+
+  trigger(name: string, ...args: any[]): void {
+    (this.handlers.get(name) ?? []).forEach((cb) => cb(...args));
+  }
+
+  tryTrigger(name: string, ...args: any[]): void {
+    try {
+      this.trigger(name, ...args);
+    } catch {
+      // Swallow handler errors, matching Obsidian's best-effort semantics.
+    }
+  }
+}
+
 export class TFile {
   path: string;
   basename: string;

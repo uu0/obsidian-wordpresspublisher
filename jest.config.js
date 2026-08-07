@@ -15,7 +15,8 @@ module.exports = {
   coverageReporters: ['text', 'lcov', 'html'],
   verbose: true,
   moduleNameMapper: {
-    '^obsidian$': '<rootDir>/tests/__mocks__/obsidian.ts'
+    '^obsidian$': '<rootDir>/tests/__mocks__/obsidian.ts',
+    '^lodash-es$': 'lodash'
   },
   setupFilesAfterEnv: ['<rootDir>/tests/setup.ts'],
   testTimeout: 10000
