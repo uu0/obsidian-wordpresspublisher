@@ -83,6 +83,11 @@ export interface WordPressPostParams {
   excerpt?: string;
 
   /**
+   * Content format: rendered as HTML or kept as Markdown on WordPress.
+   */
+  contentFormat?: 'html' | 'markdown';
+
+  /**
    * Featured media ID (WordPress media library ID).
    */
   featuredMedia?: number;

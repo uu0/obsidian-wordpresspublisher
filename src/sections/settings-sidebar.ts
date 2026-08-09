@@ -4,17 +4,25 @@
 
 import type { WordPressPostParams } from '../wp-types';
 import { PostStatus, CommentStatus } from '../wp-api';
-import { SafeAny } from '../utils';
+import type { Term } from '../wp-api';
 import { SlugGenerator } from '../slug-generator';
 import { format } from 'date-fns';
 import type { PublishModalContext } from './publish-modal-context';
-import { addV3HintBtn, createV3Section, renderV3Field } from './v3-layout';
+import { addV3HintBtn, renderV3Field } from './v3-layout';
 
 export class SettingsSidebar {
   constructor(private readonly ctx: PublishModalContext) {}
 
   private rootContainer: HTMLElement | null = null;
   private currentParams: WordPressPostParams | null = null;
+  // 本次会话内新建的分类（临时），与共享的 ctx.categories.items 隔离，避免污染
+  // 远端/缓存的分类列表。仅在当前 modal 实例生命周期内有效。
+  private tempCategories: Term[] = [];
+
+  /** 合并共享分类列表与会话内新建的临时分类，供下拉与已选项解析使用。 */
+  private getViewCategories(): Term[] {
+    return [...this.ctx.categories.items, ...this.tempCategories].filter(it => it.name && it.name.trim());
+  }
 
   render(container: HTMLElement, params: WordPressPostParams): void {
     this.rootContainer = container;
@@ -23,11 +31,22 @@ export class SettingsSidebar {
     this.renderHistoryCard(container, params);
   }
 
-  /** Re-render only this sidebar (status change etc.) instead of the whole modal. */
-  private rebuild(): void {
+  /**
+   * Re-render only the settings card (status change etc.) without touching the
+   * collapsible history card. The history card is pure display and never needs
+   * to be rebuilt for status/slug/title/format edits.
+   */
+  private rebuildSettingsCard(): void {
     if (!this.rootContainer || !this.currentParams) return;
-    this.rootContainer.empty();
-    this.render(this.rootContainer, this.currentParams);
+    const old = this.rootContainer.querySelector('.wp-v3-settings-card:not(.wp-v3-collapsible-card)');
+    if (old) old.remove();
+    this.renderSettingsCard(this.rootContainer, this.currentParams);
+    // Re-created card lands at the end; move it back before history if present
+    const newCard = this.rootContainer.querySelector('.wp-v3-settings-card:not(.wp-v3-collapsible-card)');
+    const history = this.rootContainer.querySelector('.wp-v3-collapsible-card');
+    if (newCard && history) {
+      this.rootContainer.insertBefore(newCard, history);
+    }
   }
 
   private renderSettingsCard(container: HTMLElement, params: WordPressPostParams): void {
@@ -96,16 +115,16 @@ export class SettingsSidebar {
       });
       select.addEventListener('change', () => {
         params.status = select.value as PostStatus;
-        this.rebuild();
+        this.rebuildSettingsCard();
       });
     });
 
     // 定时发布（仅 Future）
     if (params.status === PostStatus.Future) {
-      renderV3Field(ctx, body, ctx.plugin.t('publishModal_postDateTimeName'), 'publishModal_postDateTimeDescFormat' as SafeAny, (fieldEl) => {
+      renderV3Field(ctx, body, ctx.plugin.t('publishModal_postDateTimeName'), 'publishModal_postDateTimeDescFormat', (fieldEl) => {
         const input = fieldEl.createEl('input', { cls: 'wp-v3-input', type: 'text' });
         input.value = format(new Date(), 'yyyy-MM-dd HH:mm:ss');
-        this.ctx.setupDateMask(input, params);
+        ctx.setupDateMask(input, params);
       });
     } else {
       delete params.datetime;
@@ -133,11 +152,10 @@ export class SettingsSidebar {
       ].forEach(([val, label]) => {
         select.createEl('option', { value: val, text: label });
       });
-      select.addEventListener('change', () => { (params as SafeAny).contentFormat = select.value; });
+      select.addEventListener('change', () => { params.contentFormat = select.value as 'html' | 'markdown'; });
     });
 
     // 分类（始终显示）
-    const getValidCategoriesV3 = () => ctx.categories.items.filter(it => it.name && it.name.trim());
     body.createDiv('wp-v3-divider');
     renderV3Field(ctx, body, ctx.plugin.t('publishModal_categoryName'), 'publishModal_categoryInfo', (fieldEl) => {
       const tagsWrap = fieldEl.createDiv();
@@ -147,7 +165,7 @@ export class SettingsSidebar {
 
       // 默认选中"未分类"
       if (params.categories.length === 0) {
-        const uncategorized = getValidCategoriesV3().find(it =>
+        const uncategorized = this.getViewCategories().find(it =>
           ['Uncategorized', '未分类', ctx.plugin.t('publishModal_uncategorized')].includes(it.name)
         );
         if (uncategorized) params.categories = [Number(uncategorized.id)];
@@ -155,7 +173,7 @@ export class SettingsSidebar {
 
       const renderCats = () => {
         tagsWrap.empty();
-        const validCategories = getValidCategoriesV3();
+        const validCategories = this.getViewCategories();
 
         // 已选分类标签
         params.categories.forEach(catId => {
@@ -184,7 +202,7 @@ export class SettingsSidebar {
         select.createEl('option', { value: '', text: ctx.plugin.t('publishModal_selectCategory') || '选择分类...' });
         available.forEach(cat => select.createEl('option', { value: String(cat.id), text: cat.name }));
         select.addEventListener('change', () => {
-          if (select.value) { params.categories.push(Number(select.value)); renderCats(); }
+          if (select.value) { params.categories = [...params.categories, Number(select.value)]; renderCats(); }
         });
 
         // 「增加」按钮 — 创建新分类（发布时在远端创建）
@@ -198,9 +216,10 @@ export class SettingsSidebar {
           const commit = () => {
             const name = input.value.trim();
             if (name) {
-              const tempId = -(ctx.categories.items.length + 100 + params.categories.length);
-              ctx.categories.items.push({ id: String(tempId), name, slug: name.toLowerCase().replace(/\s+/g, '-'), taxonomy: 'category', description: '', count: 0 });
-              params.categories.push(tempId);
+              // 仅在会话内维护临时分类，绝不污染共享的 ctx.categories.items
+              const tempId = -(1000 + this.tempCategories.length + 1);
+              this.tempCategories.push({ id: String(tempId), name, slug: name.toLowerCase().replace(/\s+/g, '-'), taxonomy: 'category', description: '', count: 0 });
+              params.categories = [...params.categories, tempId];
             }
             input.remove();
             addBtn.style.display = '';
@@ -235,7 +254,7 @@ export class SettingsSidebar {
     }
   }
 
-  private renderHistoryCard(container: HTMLElement, params: WordPressPostParams): void {
+  private renderHistoryCard(container: HTMLElement, _params: WordPressPostParams): void {
     const ctx = this.ctx;
     const card = container.createDiv('wp-v3-settings-card wp-v3-collapsible-card');
     card.addClass('is-collapsed'); // 默认折叠

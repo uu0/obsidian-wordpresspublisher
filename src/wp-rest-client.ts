@@ -497,7 +497,7 @@ export class WpRestClientWpComOAuth2Context implements WpRestClientContext {
     return name;
   }
 
-  getHeaders(wp: WordPressAuthParams): Record<string, string> {
+  getHeaders(_wp: WordPressAuthParams): Record<string, string> {
     return {
       'authorization': `BEARER ${this.accessToken}`
     };

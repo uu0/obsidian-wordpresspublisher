@@ -11,7 +11,6 @@ import {
 } from './wp-types';
 import { WpPublishModalV2 } from './wp-publish-modal-v2';
 import { compressImage } from './featured-image-modal';
-import { sanitizeHtml } from './html-sanitizer';
 import { PostType, PostTypeConst, Term } from './wp-api';
 import { ERROR_NOTICE_TIMEOUT, WP_DEFAULT_PROFILE_NAME, FEATURED_IMAGE_UPLOAD_MAX_RETRIES, FEATURED_IMAGE_UPLOAD_RETRY_DELAY_MS, AUTH_CACHE_DURATION_MS } from './consts';
 import { isPromiseFulfilledResult, isValidUrl, openWithBrowser, processFile, SafeAny, showError, sleep } from './utils';
@@ -26,7 +25,11 @@ import { isFunction } from 'lodash-es';
 import { FrontmatterManager, RemotePostData } from './frontmatter-manager';
 import { openConflictModal } from './frontmatter-conflict-modal';
 import { TagFormatter } from './tag-formatter';
-import { AuthCacheDuration } from './plugin-settings';
+import { createModuleLogger } from './utils/logger';
+
+// 将散落的 console.* 统一收口到插件 logger（支持多参数）
+const wpLog = createModuleLogger('AbstractWpClient');
+
 
 interface AuthCacheEntry {
   auth: WordPressAuthParams;
@@ -137,7 +140,7 @@ export abstract class AbstractWordPressClient implements WordPressClient {
             this.tagsList = await this.getTagsList(auth);
           }
         } catch (e) {
-          console.warn('[fetchRemotePostData] Failed to fetch categories/tags list:', e);
+          wpLog.warn('[fetchRemotePostData] Failed to fetch categories/tags list:', e);
         }
       }
 
@@ -153,7 +156,7 @@ export abstract class AbstractWordPressClient implements WordPressClient {
         featurePicture: post._embedded?.['wp:featuredmedia']?.[0]?.source_url || undefined
       };
     } catch (error) {
-      console.error('[fetchRemotePostData] Error fetching remote post:', error);
+      wpLog.error('[fetchRemotePostData] Error fetching remote post:', error);
       return null;
     }
   }
@@ -204,10 +207,10 @@ export abstract class AbstractWordPressClient implements WordPressClient {
 
     if (cacheEntry && cacheEntry.profileName === this.profile.name) {
       if (this.isAuthCacheValid(cacheEntry)) {
-        console.log(`[getCachedAuth] Using cached auth for profile: ${this.profile.name}`);
+        wpLog.info(`[getCachedAuth] Using cached auth for profile: ${this.profile.name}`);
         return cacheEntry.auth;
       } else {
-        console.log(`[getCachedAuth] Cache expired for profile: ${this.profile.name}`);
+        wpLog.info(`[getCachedAuth] Cache expired for profile: ${this.profile.name}`);
         globalAuthCache.delete(cacheKey);
       }
     }
@@ -220,7 +223,7 @@ export abstract class AbstractWordPressClient implements WordPressClient {
   private cacheAuth(auth: WordPressAuthParams): void {
     const cacheKey = this.getAuthCacheKey();
     const cacheDuration = this.plugin.settings.authCacheDuration ?? '1m';
-    console.log(`[cacheAuth] Caching auth for profile: ${this.profile.name}, duration: ${cacheDuration}`);
+    wpLog.info(`[cacheAuth] Caching auth for profile: ${this.profile.name}, duration: ${cacheDuration}`);
     globalAuthCache.set(cacheKey, {
       auth,
       timestamp: Date.now(),
@@ -233,7 +236,7 @@ export abstract class AbstractWordPressClient implements WordPressClient {
    */
   private clearCachedAuth(): void {
     const cacheKey = this.getAuthCacheKey();
-    console.log(`[clearCachedAuth] Clearing cache for profile: ${this.profile.name}`);
+    wpLog.info(`[clearCachedAuth] Clearing cache for profile: ${this.profile.name}`);
     globalAuthCache.delete(cacheKey);
   }
 
@@ -329,9 +332,9 @@ export abstract class AbstractWordPressClient implements WordPressClient {
             const idx = this.categoriesList.indexOf(term);
             if (idx >= 0) this.categoriesList[idx] = newTerm;
             resolvedCategories.push(Number(newTerm.id));
-            console.log(`[tryToPublish] Created remote category: ${term.name} -> ID ${newTerm.id}`);
+            wpLog.info(`[tryToPublish] Created remote category: ${term.name} -> ID ${newTerm.id}`);
           } catch (e) {
-            console.error(`[tryToPublish] Failed to create category: ${term.name}`, e);
+            wpLog.error(`[tryToPublish] Failed to create category: ${term.name}`, e);
             failedCategories.push(term.name);
             // Continue to try other categories, but collect failed ones
           }
@@ -360,7 +363,6 @@ export abstract class AbstractWordPressClient implements WordPressClient {
       postParams
     });
     const html = AppState.markdownParser.render(postParams.content);
-    const safeHtml = sanitizeHtml(html);
     const result = await this.publish(
       postParams.title ?? 'A post from Obsidian!',
       html,
@@ -376,17 +378,15 @@ export abstract class AbstractWordPressClient implements WordPressClient {
       const postId = result.data.postId;
       if (postId) {
         // Sync featured image URL if featuredImageId exists but featurePicture is missing
-        let syncedFeaturePictureUrl: string | null = null;
         if (postParams.featuredMedia && !updateMatterData) {
           // Only sync if no custom updateMatterData callback (which handles new uploads)
           try {
             const mediaUrl = await this.getMediaUrl(postParams.featuredMedia, auth);
             if (mediaUrl) {
-              syncedFeaturePictureUrl = mediaUrl;
-              console.log('[tryToPublish] Synced featurePicture from featuredImageId:', postParams.featuredMedia, '->', mediaUrl);
+              wpLog.info(`[tryToPublish] Synced featurePicture from featuredImageId: ${postParams.featuredMedia} -> ${mediaUrl}`);
             }
           } catch (e) {
-            console.warn('[tryToPublish] Failed to sync featurePicture:', e);
+            wpLog.warn('[tryToPublish] Failed to sync featurePicture:', e);
           }
         }
 
@@ -523,7 +523,7 @@ export abstract class AbstractWordPressClient implements WordPressClient {
               const errorMsg = result.error?.message || this.plugin.i18n.t('error_mediaUploadFailed', {
                 name: imgFile.name,
               });
-              console.error('[updatePostImages] Image upload failed:', imgFile.name, errorMsg);
+              wpLog.error(`[updatePostImages] Image upload failed: ${imgFile.name} - ${errorMsg}`);
               new Notice(errorMsg, ERROR_NOTICE_TIMEOUT);
             }
           }
@@ -569,7 +569,7 @@ export abstract class AbstractWordPressClient implements WordPressClient {
               remoteData.featurePicture,
               remoteData.featuredImageId
             );
-            console.log('[publishPost] Updated feature picture cache from remote');
+            wpLog.info('[publishPost] Updated feature picture cache from remote');
           }
 
           const conflicts = this.frontmatterManager.detectConflicts(matterData, remoteData);
@@ -631,7 +631,7 @@ export abstract class AbstractWordPressClient implements WordPressClient {
           fmCatArray = rawFmCats;
         }
 
-        console.log('[publishPost] Raw frontmatter categories:', rawFmCats, 'Normalized:', fmCatArray);
+        wpLog.info(`[publishPost] Raw frontmatter categories: ${JSON.stringify(rawFmCats)} Normalized: ${JSON.stringify(fmCatArray)}`);
 
         if (fmCatArray.length > 0 && typeof fmCatArray[0] === 'string') {
           // New format: category names
@@ -645,12 +645,12 @@ export abstract class AbstractWordPressClient implements WordPressClient {
             }
             if (existing) {
               selectedCategories.push(Number(existing.id));
-              console.log(`[publishPost] Matched category "${name}" to ID ${existing.id}`);
+              wpLog.info(`[publishPost] Matched category "${name}" to ID ${existing.id}`);
             } else {
               // Category not found in remote - add it as a local-only category for the UI
               // It will be created on the remote only when user clicks publish
               newCategoryNames.push(name);
-              console.log(`[publishPost] Category "${name}" not found in remote, will add as local-only`);
+              wpLog.info(`[publishPost] Category "${name}" not found in remote, will add as local-only`);
             }
           }
 
@@ -669,7 +669,7 @@ export abstract class AbstractWordPressClient implements WordPressClient {
             categories.push(tempTerm);
             this.categoriesList = categories;
             selectedCategories.push(tempId);
-            console.log(`[publishPost] Added local-only category: ${name} (temp ID ${tempId})`);
+            wpLog.info(`[publishPost] Added local-only category: ${name} (temp ID ${tempId})`);
           }
 
           // Only fall back to lastSelectedCategories if frontmatter was empty (not when match failed)
@@ -677,7 +677,7 @@ export abstract class AbstractWordPressClient implements WordPressClient {
         } else if (fmCatArray.length > 0 && typeof fmCatArray[0] === 'number') {
           // Old format: numeric IDs - convert to names for consistency
           selectedCategories = fmCatArray as number[];
-          console.log('[publishPost] Using numeric IDs from frontmatter:', selectedCategories);
+          wpLog.info('[publishPost] Using numeric IDs from frontmatter:', selectedCategories);
         } else {
           // No categories in frontmatter, use last selected or find "Uncategorized"
           if (this.profile.lastSelectedCategories && this.profile.lastSelectedCategories.length > 0) {
@@ -691,7 +691,7 @@ export abstract class AbstractWordPressClient implements WordPressClient {
             );
             selectedCategories = uncategorized ? [Number(uncategorized.id)] : [1];
           }
-          console.log('[publishPost] No categories in frontmatter, using default:', selectedCategories);
+          wpLog.info(`[publishPost] No categories in frontmatter, using default: ${JSON.stringify(selectedCategories)}`);
         }
         const postTypes = await this.getPostTypes(auth);
         if (postTypes.length === 0) {
@@ -699,7 +699,7 @@ export abstract class AbstractWordPressClient implements WordPressClient {
         }
         const selectedPostType = matterData.postType ?? PostTypeConst.Post;
         result = await new Promise(resolve => {
-          console.log('[WpPublishModalV2] Creating modal instance...');
+          wpLog.info('[WpPublishModalV2] Creating modal instance...');
           const publishModal = new WpPublishModalV2(
             this.plugin,
             { items: categories, selected: selectedCategories },
@@ -715,7 +715,7 @@ export abstract class AbstractWordPressClient implements WordPressClient {
               
               // Handle "publish as new" option - remove postId to create new post instead of updating
               if (publishAsNew) {
-                console.log('[WpPublishModalV2] Publish as new post requested, removing postId');
+                wpLog.info('[WpPublishModalV2] Publish as new post requested, removing postId');
                 delete postParams.postId;
               }
               
@@ -736,7 +736,7 @@ export abstract class AbstractWordPressClient implements WordPressClient {
               try {
                 // Handle featured image
                 if (featuredImage) {
-                  console.log('[WpPublishModalV2] Processing featured image:', featuredImage.fileName);
+                  wpLog.info('[WpPublishModalV2] Processing featured image:', featuredImage.fileName);
 
                   // Apply image compression if enabled
                   let imageContent = featuredImage.content;
@@ -746,7 +746,7 @@ export abstract class AbstractWordPressClient implements WordPressClient {
                     const maxSizeKB = this.plugin.settings.imageMaxSizeKB || 500;
                     const minQuality = this.plugin.settings.imageMinQuality || 0.6;
 
-                    console.log('[WpPublishModalV2] Attempting image compression...');
+                    wpLog.info('[WpPublishModalV2] Attempting image compression...');
                     const compressedContent = await compressImage(
                       featuredImage.content,
                       featuredImage.mimeType,
@@ -764,9 +764,9 @@ export abstract class AbstractWordPressClient implements WordPressClient {
                       imageContent = compressedContent;
                       // PNG is converted to JPEG during compression
                       imageMimeType = featuredImage.mimeType === 'image/png' ? 'image/jpeg' : featuredImage.mimeType;
-                      console.log(`[WpPublishModalV2] Image compressed: ${originalSizeKB}KB -> ${compressedSizeKB}KB`);
+                      wpLog.info(`[WpPublishModalV2] Image compressed: ${originalSizeKB}KB -> ${compressedSizeKB}KB`);
                     } else {
-                      console.log('[WpPublishModalV2] Image does not need compression or compression failed');
+                      wpLog.info('[WpPublishModalV2] Image does not need compression or compression failed');
                     }
                   }
 
@@ -782,13 +782,13 @@ export abstract class AbstractWordPressClient implements WordPressClient {
                     postParams.featuredMedia = uploadResult.data.id;
                     featuredImageUrl = uploadResult.data.url;
                     featuredImageId = uploadResult.data.id;
-                    console.log('[WpPublishModalV2] Featured image uploaded, media ID:', uploadResult.data.id);
+                    wpLog.info(`[WpPublishModalV2] Featured image uploaded, media ID: ${uploadResult.data.id}`);
                   } else {
                     // Show detailed error message from upload result
                     const errorMsg = uploadResult.error?.message || this.plugin.i18n.t('error_mediaUploadFailed', {
                       name: featuredImage.fileName,
                     });
-                    console.error('[WpPublishModalV2] Featured image upload failed:', errorMsg);
+                    wpLog.error('[WpPublishModalV2] Featured image upload failed:', errorMsg);
                     new Notice(errorMsg, ERROR_NOTICE_TIMEOUT);
                   }
                 } else {
@@ -797,7 +797,7 @@ export abstract class AbstractWordPressClient implements WordPressClient {
                   if (cachedImageId) {
                     postParams.featuredMedia = cachedImageId;
                     featuredImageId = cachedImageId;
-                    console.log('[WpPublishModalV2] Using cached featured image ID:', cachedImageId);
+                    wpLog.info('[WpPublishModalV2] Using cached featured image ID:', cachedImageId);
                   }
                 }
 
@@ -824,7 +824,7 @@ export abstract class AbstractWordPressClient implements WordPressClient {
                       featuredImageUrl,
                       featuredImageId
                     );
-                    console.log('[WpPublishModalV2] Updated feature picture cache');
+                    wpLog.info('[WpPublishModalV2] Updated feature picture cache');
                   }
                   // 清理图片缓存
                   await publishModal.clearImageCache();
@@ -843,9 +843,9 @@ export abstract class AbstractWordPressClient implements WordPressClient {
             content,
             title,
             file.path);  // 传递笔记路径用于缓存关联
-          console.log('[WpPublishModalV2] Calling publishModal.open()...');
+          wpLog.info('[WpPublishModalV2] Calling publishModal.open()...');
           publishModal.open();
-          console.log('[WpPublishModalV2] publishModal.open() called');
+          wpLog.info('[WpPublishModalV2] publishModal.open() called');
         });
       }
       if (result) {
@@ -931,13 +931,13 @@ export abstract class AbstractWordPressClient implements WordPressClient {
 
     while (attempt <= FEATURED_IMAGE_UPLOAD_MAX_RETRIES) {
       try {
-        console.log(`[uploadMediaWithRetry] Attempt ${attempt + 1}/${FEATURED_IMAGE_UPLOAD_MAX_RETRIES + 1} for ${fileName}`);
+        wpLog.info(`[uploadMediaWithRetry] Attempt ${attempt + 1}/${FEATURED_IMAGE_UPLOAD_MAX_RETRIES + 1} for ${fileName}`);
 
         const result = await this.uploadMedia(media, certificate);
 
         if (result.code === WordPressClientReturnCode.OK) {
           if (attempt > 0) {
-            console.log(`[uploadMediaWithRetry] Upload succeeded after ${attempt + 1} attempts`);
+            wpLog.info(`[uploadMediaWithRetry] Upload succeeded after ${attempt + 1} attempts`);
             new Notice(this.plugin.i18n.t('notice_featuredImageUploadRetrySuccess', {
               fileName,
               attempts: String(attempt + 1)
@@ -952,7 +952,7 @@ export abstract class AbstractWordPressClient implements WordPressClient {
           attempt++;
 
           if (attempt <= FEATURED_IMAGE_UPLOAD_MAX_RETRIES) {
-            console.log(`[uploadMediaWithRetry] Transient error detected, retrying in ${FEATURED_IMAGE_UPLOAD_RETRY_DELAY_MS}ms...`, result.error);
+            wpLog.info(`[uploadMediaWithRetry] Transient error detected, retrying in ${FEATURED_IMAGE_UPLOAD_RETRY_DELAY_MS}ms...`, result.error);
             new Notice(this.plugin.i18n.t('notice_featuredImageUploadRetrying', {
               fileName,
               attempt: String(attempt),
@@ -973,7 +973,7 @@ export abstract class AbstractWordPressClient implements WordPressClient {
           attempt++;
 
           if (attempt <= FEATURED_IMAGE_UPLOAD_MAX_RETRIES) {
-            console.log(`[uploadMediaWithRetry] Transient exception detected, retrying in ${FEATURED_IMAGE_UPLOAD_RETRY_DELAY_MS}ms...`, error);
+            wpLog.info(`[uploadMediaWithRetry] Transient exception detected, retrying in ${FEATURED_IMAGE_UPLOAD_RETRY_DELAY_MS}ms...`, error);
             new Notice(this.plugin.i18n.t('notice_featuredImageUploadRetrying', {
               fileName,
               attempt: String(attempt),
@@ -990,7 +990,7 @@ export abstract class AbstractWordPressClient implements WordPressClient {
     }
 
     // All retries exhausted
-    console.error(`[uploadMediaWithRetry] Upload failed after ${attempt} attempts`, lastError);
+    wpLog.error(`[uploadMediaWithRetry] Upload failed after ${attempt} attempts`, lastError);
 
     // Return error result with retry exhausted information
     return {
@@ -1099,7 +1099,7 @@ export abstract class AbstractWordPressClient implements WordPressClient {
 
       // Validate and sync featurePicture if inconsistent
       if (matterData.featuredImageId && !matterData.featurePicture) {
-        console.warn('[readPostParamsFromFrontmatter] featuredImageId exists but featurePicture is empty. Will attempt to sync during publish.');
+        wpLog.warn('[readPostParamsFromFrontmatter] featuredImageId exists but featurePicture is empty. Will attempt to sync during publish.');
       }
     }
     return postParams;

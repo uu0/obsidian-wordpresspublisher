@@ -12,6 +12,15 @@ import { createV3Section } from './v3-layout';
 export class ContentPreviewSection {
   constructor(private readonly ctx: PublishModalContext) {}
 
+  // Stored during render() so the footer's "Edit" button can re-enter edit mode
+  // through a typed instance method instead of a hidden DOM attachment.
+  private enterEditModeFn: (() => void) | null = null;
+
+  /** Enter inline Markdown content edit mode. Called by the footer "Edit" button. */
+  enterEditMode(): void {
+    this.enterEditModeFn?.();
+  }
+
   render(container: HTMLElement, params: WordPressPostParams): void {
     const ctx = this.ctx;
     let isContentEditing = false;
@@ -36,7 +45,7 @@ export class ContentPreviewSection {
       renderTagsRow(body, params);
 
       const previewDiv = body.createDiv('wp-v3-content-preview');
-      const html = AppState.markdownParser.render(ctx.editableContent);
+      const html = AppState.markdownParser.render(params.content);
       previewDiv.innerHTML = sanitizeHtml(html);
     };
 
@@ -44,12 +53,12 @@ export class ContentPreviewSection {
     const enterContentEdit = () => {
       if (isContentEditing) return;
       isContentEditing = true;
-      originalContent = ctx.editableContent;
+      originalContent = params.content;
       section.addClass('is-editing');
       body.empty();
 
       const textarea = body.createEl('textarea', { cls: 'wp-v3-content-edit-area' });
-      textarea.value = ctx.editableContent;
+      textarea.value = params.content;
       textarea.placeholder = ctx.plugin.t('publishModal_previewEditPlaceholder') || 'Edit Markdown content...';
 
       const actions = body.createDiv('wp-v3-edit-actions');
@@ -57,24 +66,24 @@ export class ContentPreviewSection {
       const saveBtn = actions.createEl('button', { text: ctx.plugin.t('publishModal_save') || 'Save', cls: 'wp-v3-save-btn' });
 
       saveBtn.onclick = () => {
-        ctx.editableContent = textarea.value;
+        params.content = textarea.value;
         isContentEditing = false;
         renderHtmlPreview();
       };
       cancelBtn.onclick = () => {
-        ctx.editableContent = originalContent;
+        params.content = originalContent;
         isContentEditing = false;
         renderHtmlPreview();
       };
       textarea.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') { e.preventDefault(); ctx.editableContent = originalContent; isContentEditing = false; renderHtmlPreview(); }
+        if (e.key === 'Escape') { e.preventDefault(); params.content = originalContent; isContentEditing = false; renderHtmlPreview(); }
         else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveBtn.click(); }
       });
       textarea.focus();
     };
 
-    // 将 enterContentEdit 挂载到 section 元素，供 footer 按钮直接调用
-    (section as unknown as { __enterContentEdit?: () => void }).__enterContentEdit = enterContentEdit;
+    // 让 footer 的“编辑”按钮可以通过实例方法进入编辑模式
+    this.enterEditModeFn = enterContentEdit;
 
     // ── 摘要嵌入行 ──
     const renderExcerptRow = (parent: HTMLElement, p: WordPressPostParams) => {
@@ -137,25 +146,22 @@ export class ContentPreviewSection {
     };
 
     // ── 标签嵌入行 ──
+    // params.tags 是标签的唯一数据源（single source of truth）。组件直接读写
+    // params.tags，不再借助 modal 上的 editableTags 缓冲，避免双源不同步。
     const renderTagsRow = (parent: HTMLElement, p: WordPressPostParams) => {
-      // 同步 editableTags
-      if ((p.tags || []).length > 0 && JSON.stringify(p.tags) !== JSON.stringify(ctx.editableTags)) {
-        ctx.editableTags = p.tags ? [...p.tags] : [];
-      }
-
       const tagsWrap = parent.createDiv('wp-v3-tags-row');
       let isTagEditing = false;
 
       const renderTagsContent = () => {
         tagsWrap.empty();
 
-        if (ctx.editableTags.length > 0) {
+        if ((p.tags || []).length > 0) {
           // 标签容器（flex-wrap，铅笔跟随最后一个标签）
           const tagsContainer = tagsWrap.createDiv('wp-v3-tags-container');
 
           if (isTagEditing) {
             // 编辑模式：标签可拖拽排序，显示×删除和抖动动画
-            ctx.editableTags.forEach((tag, index) => {
+            (p.tags || []).forEach((tag, index) => {
               const tagEl = tagsContainer.createEl('span', { cls: 'wp-v3-tag-item is-shaking is-draggable' });
               tagEl.style.backgroundColor = getTagColor(tag);
               tagEl.dataset.tagIndex = String(index);
@@ -164,8 +170,7 @@ export class ContentPreviewSection {
               const xBtn = tagEl.createEl('button', { cls: 'wp-v3-tag-delete-btn', text: '×' });
               xBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                ctx.editableTags = ctx.editableTags.filter(t => t !== tag);
-                p.tags = [...ctx.editableTags];
+                p.tags = (p.tags || []).filter(t => t !== tag);
                 renderTagsContent();
               });
             });
@@ -186,7 +191,7 @@ export class ContentPreviewSection {
             doneBtn.onclick = () => { isTagEditing = false; renderTagsContent(); };
           } else {
             // 普通模式：标签 + 铅笔按钮（跟随最后一个标签）
-            ctx.editableTags.forEach(tag => {
+            (p.tags || []).forEach(tag => {
               const tagEl = tagsContainer.createEl('span', { cls: 'wp-v3-tag-item' });
               tagEl.style.backgroundColor = getTagColor(tag);
               tagEl.createSpan({ text: tag });
@@ -247,9 +252,8 @@ export class ContentPreviewSection {
         if (committed) return;
         committed = true;
         const val = input.value.trim();
-        if (val && !ctx.editableTags.includes(val)) {
-          ctx.editableTags.push(val);
-          p.tags = [...ctx.editableTags];
+        if (val && !(p.tags || []).includes(val)) {
+          p.tags = [...(p.tags || []), val];
         }
         input.remove();
         triggerBtn.style.display = '';
@@ -273,11 +277,9 @@ export class ContentPreviewSection {
     p: WordPressPostParams,
     onReorder: () => void
   ): void {
-    const ctx = this.ctx;
     let draggingEl: HTMLElement | null = null;
     let ghost: HTMLElement | null = null;
     let placeholder: HTMLElement | null = null;
-    let originIndex = -1;
 
     const getTagEls = () => Array.from(container.querySelectorAll<HTMLElement>('.wp-v3-tag-item.is-draggable'));
 
@@ -313,11 +315,10 @@ export class ContentPreviewSection {
       const fromIdx = getIndexOf(draggingEl!);
       const toIdx = getIndexOf(targetEl);
       if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return;
-      const arr = [...ctx.editableTags];
+      const arr = [...(p.tags || [])];
       const [item] = arr.splice(fromIdx, 1);
       arr.splice(toIdx, 0, item);
-      ctx.editableTags = arr;
-      p.tags = [...arr];
+      p.tags = arr;
     };
 
     const endDrag = (clientX: number, clientY: number) => {
@@ -337,7 +338,6 @@ export class ContentPreviewSection {
         if ((e.target as HTMLElement).classList.contains('wp-v3-tag-delete-btn')) return;
         e.preventDefault();
         draggingEl = tagEl;
-        originIndex = getIndexOf(tagEl);
         tagEl.classList.add('is-dragging');
         tagEl.setPointerCapture(e.pointerId);
         createGhost(tagEl, e.clientX, e.clientY);

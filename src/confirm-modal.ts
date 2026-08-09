@@ -18,7 +18,7 @@ export function openConfirmModal(
   messages: ConfirmModalMessages,
   plugin: WordpressPlugin
 ): Promise<{ code: ConfirmCode }> {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve, _reject) => {
     const modal = new ConfirmModal(
       messages,
       plugin,

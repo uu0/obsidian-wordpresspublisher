@@ -19,6 +19,7 @@ installObsidianDomPolyfill();
 
 function baseParams(overrides: Partial<WordPressPostParams> = {}): WordPressPostParams {
   return {
+    content: '# Hello\n\nsome **content**',
     status: 'draft' as any,
     commentStatus: 'open' as any,
     categories: [],
@@ -29,10 +30,10 @@ function baseParams(overrides: Partial<WordPressPostParams> = {}): WordPressPost
 }
 
 describe('ContentPreviewSection', () => {
-  it('renders the Markdown content preview (sanitized) for editableContent', () => {
-    const ctx = createMockContext({ editableContent: '# Hello\n\nsome **bold**' });
+  it('renders the Markdown content preview (sanitized) for params.content', () => {
+    const ctx = createMockContext();
     const container = document.createElement('div');
-    new ContentPreviewSection(ctx).render(container, baseParams());
+    new ContentPreviewSection(ctx).render(container, baseParams({ content: '# Hello\n\nsome **bold**' }));
 
     const preview = container.querySelector('.wp-v3-content-preview');
     expect(preview).toBeTruthy();
@@ -64,7 +65,7 @@ describe('ContentPreviewSection', () => {
   });
 
   it('renders tag items from params.tags and colors them via getTagColor', () => {
-    const ctx = createMockContext({ editableTags: ['alpha', 'beta'] });
+    const ctx = createMockContext();
     const container = document.createElement('div');
     new ContentPreviewSection(ctx).render(container, baseParams({ tags: ['alpha', 'beta'] }));
 
@@ -90,12 +91,11 @@ describe('ContentPreviewSection', () => {
     input.value = 'newtag';
     input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
 
-    expect(ctx.editableTags).toContain('newtag');
     expect(params.tags).toContain('newtag');
   });
 
   it('removes a tag via the delete button in edit mode', () => {
-    const ctx = createMockContext({ editableTags: ['alpha', 'beta'] });
+    const ctx = createMockContext();
     const params = baseParams({ tags: ['alpha', 'beta'] });
     const container = document.createElement('div');
     new ContentPreviewSection(ctx).render(container, params);
@@ -110,7 +110,6 @@ describe('ContentPreviewSection', () => {
     expect(deleteBtn).toBeTruthy();
     deleteBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 
-    expect(ctx.editableTags).not.toContain('alpha');
     expect(params.tags).not.toContain('alpha');
   });
 
@@ -127,22 +126,23 @@ describe('ContentPreviewSection', () => {
     expect(ctx.generateTags).toHaveBeenCalledWith(params);
   });
 
-  it('toggles content edit mode and saves the edited content back to ctx.editableContent', () => {
-    const ctx = createMockContext({ editableContent: '# Original' });
+  it('toggles content edit mode and saves the edited content back to params.content', () => {
+    const ctx = createMockContext();
     const container = document.createElement('div');
-    new ContentPreviewSection(ctx).render(container, baseParams());
+    const params = baseParams({ content: '# Original' });
+    const section = new ContentPreviewSection(ctx);
+    section.render(container, params);
 
-    const sectionEl = container.querySelector('[data-content-section="true"]') as any;
-    expect(typeof sectionEl.__enterContentEdit).toBe('function');
-    sectionEl.__enterContentEdit();
+    expect(typeof section.enterEditMode).toBe('function');
+    section.enterEditMode();
 
     const textarea = container.querySelector('.wp-v3-content-edit-area') as HTMLTextAreaElement;
     expect(textarea).toBeTruthy();
     textarea.value = 'edited markdown';
 
     const saveBtn = container.querySelector('.wp-v3-save-btn') as HTMLButtonElement;
-    saveBtn.dispatchEvent(new Event('click'));
+    saveBtn.click();
 
-    expect(ctx.editableContent).toBe('edited markdown');
+    expect(params.content).toBe('edited markdown');
   });
 });

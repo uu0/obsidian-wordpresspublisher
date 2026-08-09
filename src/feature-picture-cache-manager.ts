@@ -1,4 +1,3 @@
-import { App } from 'obsidian';
 import type WordpressPlugin from './main';
 import { createModuleLogger } from './utils/logger';
 
@@ -36,7 +35,6 @@ export class FeaturePictureCacheManager {
   private readonly _ready: Promise<void>;
 
   constructor(
-    private app: App,
     private plugin: WordpressPlugin
   ) {
     this._ready = this.loadCache();

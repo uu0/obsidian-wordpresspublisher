@@ -10,7 +10,7 @@ export function openLoginModal(
   profile: WpProfile,
   validateUser: (auth: WordPressAuthParams) => Promise<boolean>,
 ): Promise<{ auth: WordPressAuthParams, loginModal: Modal }> {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve, _reject) => {
     const modal = new WpLoginModal(plugin, profile, async (auth, loginModal) => {
       const validate = await validateUser(auth);
       if (validate) {

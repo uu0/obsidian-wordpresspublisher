@@ -7,7 +7,7 @@ import { AbstractModal } from './abstract-modal';
 export function openProfileChooserModal(
   plugin: WordpressPlugin
 ): Promise<WpProfile> {
-  return new Promise<WpProfile>((resolve, reject) => {
+  return new Promise<WpProfile>((resolve, _reject) => {
     const modal = new WpProfileChooserModal(plugin, (profile) => {
       resolve(profile);
     });

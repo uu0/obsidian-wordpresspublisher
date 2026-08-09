@@ -464,17 +464,6 @@ export class FeaturedImageModal extends Modal {
       return null;
     }
   }
-
-  private getMimeType(extension: string): string {
-    const mimeTypes: Record<string, string> = {
-      'jpg': 'image/jpeg',
-      'jpeg': 'image/jpeg',
-      'png': 'image/png',
-      'gif': 'image/gif',
-      'webp': 'image/webp'
-    };
-    return mimeTypes[extension.toLowerCase()] || 'image/jpeg';
-  }
 }
 
 /**
@@ -482,8 +471,6 @@ export class FeaturedImageModal extends Modal {
  */
 export class UnsplashPickerModal extends Modal {
   private images: UnsplashImage[] = [];
-  private hasMore = true;
-  private page = 1;
   private currentQuery = '';
   private onSelect: (image: UnsplashImage, arrayBuffer: ArrayBuffer) => void;
   private unsplashService: UnsplashService;
@@ -549,7 +536,6 @@ export class UnsplashPickerModal extends Modal {
       showLoading();
       try {
         this.images = await this.unsplashService.getRandomPhotos(30);
-        this.hasMore = false;
         this.currentQuery = '';
         this.renderMasonry(resultsContainer, hideLoading);
       } catch (error) {
@@ -569,12 +555,10 @@ export class UnsplashPickerModal extends Modal {
       }
 
       this.currentQuery = query;
-      this.page = 1;
       showLoading();
 
       try {
         this.images = await this.unsplashService.searchPhotos(query);
-        this.hasMore = false;
         this.renderMasonry(resultsContainer, hideLoading);
       } catch (error) {
         hideLoading();

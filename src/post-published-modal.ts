@@ -6,7 +6,7 @@ import { TranslateKey } from './i18n';
 export function openPostPublishedModal(
   plugin: WordpressPlugin,
 ): Promise<void> {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve, _reject) => {
     new PostPublishedModal(plugin, (modal) => {
       resolve();
       modal.close();

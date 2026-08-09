@@ -24,7 +24,7 @@ export function openProfileModal(
   },
   atIndex = -1
 ): Promise<{ profile: WpProfile, atIndex?: number }> {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve, _reject) => {
     const modal = new WpProfileModal(plugin, (profile, atIndex) => {
       resolve({
         profile,
@@ -47,7 +47,7 @@ class WpProfileModal extends AbstractModal {
   constructor(
     readonly plugin: WordpressPlugin,
     private readonly onSubmit: (profile: WpProfile, atIndex?: number) => void,
-    private readonly profile: WpProfile = {
+    profile: WpProfile = {
       name: '',
       apiType: ApiType.RestApi_ApplicationPasswords,
       endpoint: '',

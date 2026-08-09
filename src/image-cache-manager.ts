@@ -60,7 +60,7 @@ export class ImageCacheManager {
 
   constructor(
     private app: App,
-    private pluginId: string = 'wordpress-publisher'
+    pluginId: string = 'wordpress-publisher'
   ) {
     this.pluginDir = `.obsidian/plugins/${pluginId}`;
     this.cacheDir = `${this.pluginDir}/cache`;

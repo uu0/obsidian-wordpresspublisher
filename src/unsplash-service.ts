@@ -23,7 +23,7 @@ export interface UnsplashImage {
 export class UnsplashService {
   private api: ReturnType<typeof createApi> | null = null;
 
-  constructor(private accessKey: string) {
+  constructor(accessKey: string) {
     if (accessKey) {
       this.api = createApi({
         accessKey: accessKey,

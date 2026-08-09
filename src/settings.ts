@@ -7,7 +7,7 @@ import { AuthCacheDuration, CommentConvertMode, MathJaxOutputType, TagFormat } f
 import { WpProfile } from './wp-profile';
 import { setupMarkdownParser } from './utils';
 import { AppState } from './app-state';
-import { AIService, AIConfig } from './ai-service';
+import { AIService } from './ai-service';
 import { UnsplashService } from './unsplash-service';
 
 

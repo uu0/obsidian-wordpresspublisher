@@ -75060,7 +75060,7 @@ var init_esm10 = __esm({
 
 // src/confirm-modal.ts
 function openConfirmModal(messages, plugin4) {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve, _reject) => {
     const modal = new ConfirmModal(
       messages,
       plugin4,
@@ -100466,7 +100466,6 @@ var init_unsplash_service = __esm({
     import_obsidian4 = require("obsidian");
     UnsplashService = class {
       constructor(accessKey) {
-        this.accessKey = accessKey;
         this.api = null;
         if (accessKey) {
           this.api = createApi({
@@ -101047,8 +101046,6 @@ var init_featured_image_modal = __esm({
         super(app);
         this.plugin = plugin4;
         this.images = [];
-        this.hasMore = true;
-        this.page = 1;
         this.currentQuery = "";
         this.unsplashService = unsplashService;
         this.onSelect = onSelect;
@@ -101090,7 +101087,6 @@ var init_featured_image_modal = __esm({
           showLoading();
           try {
             this.images = await this.unsplashService.getRandomPhotos(30);
-            this.hasMore = false;
             this.currentQuery = "";
             this.renderMasonry(resultsContainer, hideLoading);
           } catch (error2) {
@@ -101107,11 +101103,9 @@ var init_featured_image_modal = __esm({
             return;
           }
           this.currentQuery = query;
-          this.page = 1;
           showLoading();
           try {
             this.images = await this.unsplashService.searchPhotos(query);
-            this.hasMore = false;
             this.renderMasonry(resultsContainer, hideLoading);
           } catch (error2) {
             hideLoading();
@@ -101309,7 +101303,6 @@ var init_image_cache_manager = __esm({
     ImageCacheManager = class {
       constructor(app, pluginId = "wordpress-publisher") {
         this.app = app;
-        this.pluginId = pluginId;
         this.index = {};
         this.initialized = false;
         this.pluginDir = `.obsidian/plugins/${pluginId}`;
@@ -109339,6 +109332,14 @@ var init_content_preview_section = __esm({
     ContentPreviewSection = class {
       constructor(ctx) {
         this.ctx = ctx;
+        // Stored during render() so the footer's "Edit" button can re-enter edit mode
+        // through a typed instance method instead of a hidden DOM attachment.
+        this.enterEditModeFn = null;
+      }
+      /** Enter inline Markdown content edit mode. Called by the footer "Edit" button. */
+      enterEditMode() {
+        var _a5;
+        (_a5 = this.enterEditModeFn) == null ? void 0 : _a5.call(this);
       }
       render(container, params) {
         const ctx = this.ctx;
@@ -109357,35 +109358,35 @@ var init_content_preview_section = __esm({
           renderExcerptRow(body, params);
           renderTagsRow(body, params);
           const previewDiv = body.createDiv("wp-v3-content-preview");
-          const html4 = AppState.markdownParser.render(ctx.editableContent);
+          const html4 = AppState.markdownParser.render(params.content);
           previewDiv.innerHTML = sanitizeHtml(html4);
         };
         const enterContentEdit = () => {
           if (isContentEditing) return;
           isContentEditing = true;
-          originalContent = ctx.editableContent;
+          originalContent = params.content;
           section.addClass("is-editing");
           body.empty();
           const textarea = body.createEl("textarea", { cls: "wp-v3-content-edit-area" });
-          textarea.value = ctx.editableContent;
+          textarea.value = params.content;
           textarea.placeholder = ctx.plugin.t("publishModal_previewEditPlaceholder") || "Edit Markdown content...";
           const actions = body.createDiv("wp-v3-edit-actions");
           const cancelBtn = actions.createEl("button", { text: ctx.plugin.t("publishModal_cancel") || "Cancel", cls: "wp-v3-cancel-btn" });
           const saveBtn = actions.createEl("button", { text: ctx.plugin.t("publishModal_save") || "Save", cls: "wp-v3-save-btn" });
           saveBtn.onclick = () => {
-            ctx.editableContent = textarea.value;
+            params.content = textarea.value;
             isContentEditing = false;
             renderHtmlPreview();
           };
           cancelBtn.onclick = () => {
-            ctx.editableContent = originalContent;
+            params.content = originalContent;
             isContentEditing = false;
             renderHtmlPreview();
           };
           textarea.addEventListener("keydown", (e) => {
             if (e.key === "Escape") {
               e.preventDefault();
-              ctx.editableContent = originalContent;
+              params.content = originalContent;
               isContentEditing = false;
               renderHtmlPreview();
             } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
@@ -109395,7 +109396,7 @@ var init_content_preview_section = __esm({
           });
           textarea.focus();
         };
-        section.__enterContentEdit = enterContentEdit;
+        this.enterEditModeFn = enterContentEdit;
         const renderExcerptRow = (parent2, p) => {
           const excerptWrap = parent2.createDiv("wp-v3-excerpt-row");
           if (p.excerpt) {
@@ -109457,17 +109458,14 @@ var init_content_preview_section = __esm({
           textarea.focus();
         };
         const renderTagsRow = (parent2, p) => {
-          if ((p.tags || []).length > 0 && JSON.stringify(p.tags) !== JSON.stringify(ctx.editableTags)) {
-            ctx.editableTags = p.tags ? [...p.tags] : [];
-          }
           const tagsWrap = parent2.createDiv("wp-v3-tags-row");
           let isTagEditing = false;
           const renderTagsContent = () => {
             tagsWrap.empty();
-            if (ctx.editableTags.length > 0) {
+            if ((p.tags || []).length > 0) {
               const tagsContainer = tagsWrap.createDiv("wp-v3-tags-container");
               if (isTagEditing) {
-                ctx.editableTags.forEach((tag, index2) => {
+                (p.tags || []).forEach((tag, index2) => {
                   const tagEl = tagsContainer.createEl("span", { cls: "wp-v3-tag-item is-shaking is-draggable" });
                   tagEl.style.backgroundColor = getTagColor(tag);
                   tagEl.dataset.tagIndex = String(index2);
@@ -109475,8 +109473,7 @@ var init_content_preview_section = __esm({
                   const xBtn = tagEl.createEl("button", { cls: "wp-v3-tag-delete-btn", text: "\xD7" });
                   xBtn.addEventListener("click", (e) => {
                     e.stopPropagation();
-                    ctx.editableTags = ctx.editableTags.filter((t) => t !== tag);
-                    p.tags = [...ctx.editableTags];
+                    p.tags = (p.tags || []).filter((t) => t !== tag);
                     renderTagsContent();
                   });
                 });
@@ -109493,7 +109490,7 @@ var init_content_preview_section = __esm({
                   renderTagsContent();
                 };
               } else {
-                ctx.editableTags.forEach((tag) => {
+                (p.tags || []).forEach((tag) => {
                   const tagEl = tagsContainer.createEl("span", { cls: "wp-v3-tag-item" });
                   tagEl.style.backgroundColor = getTagColor(tag);
                   tagEl.createSpan({ text: tag });
@@ -109542,9 +109539,8 @@ var init_content_preview_section = __esm({
             if (committed) return;
             committed = true;
             const val2 = input.value.trim();
-            if (val2 && !ctx.editableTags.includes(val2)) {
-              ctx.editableTags.push(val2);
-              p.tags = [...ctx.editableTags];
+            if (val2 && !(p.tags || []).includes(val2)) {
+              p.tags = [...p.tags || [], val2];
             }
             input.remove();
             triggerBtn.style.display = "";
@@ -109566,11 +109562,9 @@ var init_content_preview_section = __esm({
       }
       // ==================== 标签拖拽排序（桌面 + 移动端） ====================
       enableTagDragSort(container, p, onReorder) {
-        const ctx = this.ctx;
         let draggingEl = null;
         let ghost = null;
         let placeholder = null;
-        let originIndex = -1;
         const getTagEls = () => Array.from(container.querySelectorAll(".wp-v3-tag-item.is-draggable"));
         const getIndexOf = (el) => getTagEls().indexOf(el);
         const createGhost = (source, clientX, clientY) => {
@@ -109600,11 +109594,10 @@ var init_content_preview_section = __esm({
           const fromIdx = getIndexOf(draggingEl);
           const toIdx = getIndexOf(targetEl);
           if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return;
-          const arr = [...ctx.editableTags];
+          const arr = [...p.tags || []];
           const [item] = arr.splice(fromIdx, 1);
           arr.splice(toIdx, 0, item);
-          ctx.editableTags = arr;
-          p.tags = [...arr];
+          p.tags = arr;
         };
         const endDrag = (clientX, clientY) => {
           if (!draggingEl) return;
@@ -109627,7 +109620,6 @@ var init_content_preview_section = __esm({
             if (e.target.classList.contains("wp-v3-tag-delete-btn")) return;
             e.preventDefault();
             draggingEl = tagEl;
-            originIndex = getIndexOf(tagEl);
             tagEl.classList.add("is-dragging");
             tagEl.setPointerCapture(e.pointerId);
             createGhost(tagEl, e.clientX, e.clientY);
@@ -109672,6 +109664,13 @@ var init_settings_sidebar = __esm({
         this.ctx = ctx;
         this.rootContainer = null;
         this.currentParams = null;
+        // 本次会话内新建的分类（临时），与共享的 ctx.categories.items 隔离，避免污染
+        // 远端/缓存的分类列表。仅在当前 modal 实例生命周期内有效。
+        this.tempCategories = [];
+      }
+      /** 合并共享分类列表与会话内新建的临时分类，供下拉与已选项解析使用。 */
+      getViewCategories() {
+        return [...this.ctx.categories.items, ...this.tempCategories].filter((it) => it.name && it.name.trim());
       }
       render(container, params) {
         this.rootContainer = container;
@@ -109679,11 +109678,21 @@ var init_settings_sidebar = __esm({
         this.renderSettingsCard(container, params);
         this.renderHistoryCard(container, params);
       }
-      /** Re-render only this sidebar (status change etc.) instead of the whole modal. */
-      rebuild() {
+      /**
+       * Re-render only the settings card (status change etc.) without touching the
+       * collapsible history card. The history card is pure display and never needs
+       * to be rebuilt for status/slug/title/format edits.
+       */
+      rebuildSettingsCard() {
         if (!this.rootContainer || !this.currentParams) return;
-        this.rootContainer.empty();
-        this.render(this.rootContainer, this.currentParams);
+        const old = this.rootContainer.querySelector(".wp-v3-settings-card:not(.wp-v3-collapsible-card)");
+        if (old) old.remove();
+        this.renderSettingsCard(this.rootContainer, this.currentParams);
+        const newCard = this.rootContainer.querySelector(".wp-v3-settings-card:not(.wp-v3-collapsible-card)");
+        const history = this.rootContainer.querySelector(".wp-v3-collapsible-card");
+        if (newCard && history) {
+          this.rootContainer.insertBefore(newCard, history);
+        }
       }
       renderSettingsCard(container, params) {
         const ctx = this.ctx;
@@ -109743,14 +109752,14 @@ var init_settings_sidebar = __esm({
           });
           select2.addEventListener("change", () => {
             params.status = select2.value;
-            this.rebuild();
+            this.rebuildSettingsCard();
           });
         });
         if (params.status === "future" /* Future */) {
           renderV3Field(ctx, body, ctx.plugin.t("publishModal_postDateTimeName"), "publishModal_postDateTimeDescFormat", (fieldEl) => {
             const input = fieldEl.createEl("input", { cls: "wp-v3-input", type: "text" });
             input.value = format(/* @__PURE__ */ new Date(), "yyyy-MM-dd HH:mm:ss");
-            this.ctx.setupDateMask(input, params);
+            ctx.setupDateMask(input, params);
           });
         } else {
           delete params.datetime;
@@ -109780,7 +109789,6 @@ var init_settings_sidebar = __esm({
             params.contentFormat = select2.value;
           });
         });
-        const getValidCategoriesV3 = () => ctx.categories.items.filter((it) => it.name && it.name.trim());
         body.createDiv("wp-v3-divider");
         renderV3Field(ctx, body, ctx.plugin.t("publishModal_categoryName"), "publishModal_categoryInfo", (fieldEl) => {
           const tagsWrap = fieldEl.createDiv();
@@ -109788,14 +109796,14 @@ var init_settings_sidebar = __esm({
           tagsWrap.style.flexWrap = "wrap";
           tagsWrap.style.gap = "4px";
           if (params.categories.length === 0) {
-            const uncategorized = getValidCategoriesV3().find(
+            const uncategorized = this.getViewCategories().find(
               (it) => ["Uncategorized", "\u672A\u5206\u7C7B", ctx.plugin.t("publishModal_uncategorized")].includes(it.name)
             );
             if (uncategorized) params.categories = [Number(uncategorized.id)];
           }
           const renderCats = () => {
             tagsWrap.empty();
-            const validCategories = getValidCategoriesV3();
+            const validCategories = this.getViewCategories();
             params.categories.forEach((catId) => {
               const cat = validCategories.find((c) => Number(c.id) === catId);
               if (!cat) return;
@@ -109819,7 +109827,7 @@ var init_settings_sidebar = __esm({
             available.forEach((cat) => select2.createEl("option", { value: String(cat.id), text: cat.name }));
             select2.addEventListener("change", () => {
               if (select2.value) {
-                params.categories.push(Number(select2.value));
+                params.categories = [...params.categories, Number(select2.value)];
                 renderCats();
               }
             });
@@ -109833,9 +109841,9 @@ var init_settings_sidebar = __esm({
               const commit = () => {
                 const name = input.value.trim();
                 if (name) {
-                  const tempId = -(ctx.categories.items.length + 100 + params.categories.length);
-                  ctx.categories.items.push({ id: String(tempId), name, slug: name.toLowerCase().replace(/\s+/g, "-"), taxonomy: "category", description: "", count: 0 });
-                  params.categories.push(tempId);
+                  const tempId = -(1e3 + this.tempCategories.length + 1);
+                  this.tempCategories.push({ id: String(tempId), name, slug: name.toLowerCase().replace(/\s+/g, "-"), taxonomy: "category", description: "", count: 0 });
+                  params.categories = [...params.categories, tempId];
                 }
                 input.remove();
                 addBtn.style.display = "";
@@ -109876,7 +109884,7 @@ var init_settings_sidebar = __esm({
           label.createDiv("wp-v3-toggle-slider");
         }
       }
-      renderHistoryCard(container, params) {
+      renderHistoryCard(container, _params) {
         const ctx = this.ctx;
         const card = container.createDiv("wp-v3-settings-card wp-v3-collapsible-card");
         card.addClass("is-collapsed");
@@ -109930,6 +109938,7 @@ var init_wp_publish_modal_v2 = __esm({
     init_modal_helpers();
     log5 = createModuleLogger("WpPublishModalV2");
     WpPublishModalV2 = class extends AbstractModal {
+      // 远程图片加载失败的错误信息
       constructor(plugin4, categories, postTypes, onSubmit, matterData, articleContent = "", noteTitle = "", notePath = "") {
         super(plugin4);
         this.plugin = plugin4;
@@ -109946,7 +109955,6 @@ var init_wp_publish_modal_v2 = __esm({
         this.unsplashService = null;
         this.slugInput = null;
         this.titleInput = null;
-        this.editableContent = "";
         this.autoFeaturedImage = null;
         this.slugGenerated = false;
         this.lastAutoGeneratedSlug = "";
@@ -109957,9 +109965,9 @@ var init_wp_publish_modal_v2 = __esm({
         this.imageSource = "auto";
         // 图片来源类型
         this.currentParams = null;
-        // 当前的发布参数，用于在关闭时保存生成的内容
-        this.editableTags = [];
         // 从缓存或远程获取的特色图片 ID
+        this.contentPreviewSection = null;
+        // 预览区内容段实例，供 footer 调用 enterEditMode()
         this.isLoadingRemoteImage = false;
         // 是否正在加载远程图片
         this.remoteImageLoadFailed = false;
@@ -109981,17 +109989,6 @@ var init_wp_publish_modal_v2 = __esm({
         } else {
           this.loadCachedImage();
         }
-      }
-      // 远程图片加载失败的错误信息
-      // Prompt templates from settings, with proper defaults
-      get imageGenerationPrompt() {
-        return this.plugin.settings.imageGenerationPrompt || this.plugin.t("defaultPrompt_image");
-      }
-      get summaryPrompt() {
-        return this.plugin.settings.summaryPrompt || this.plugin.t("defaultPrompt_summary");
-      }
-      get tagsPrompt() {
-        return this.plugin.settings.tagsPrompt || this.plugin.t("defaultPrompt_tags");
       }
       // 从缓存加载特色图片
       async loadFeaturePictureFromCache(postId) {
@@ -110282,20 +110279,9 @@ var init_wp_publish_modal_v2 = __esm({
         }
       }
       /**
-       * 将 ArrayBuffer 转换为 Base64 字符串
-       */
-      arrayBufferToBase64(buffer) {
-        const bytes = new Uint8Array(buffer);
-        let binary = "";
-        for (let i = 0; i < bytes.byteLength; i++) {
-          binary += String.fromCharCode(bytes[i]);
-        }
-        return btoa(binary);
-      }
-      /**
        * 加载远程特色图片（别名方法）
        */
-      async loadRemoteFeaturedImage(postId, params) {
+      async loadRemoteFeaturedImage(postId, _params) {
         await this.loadFeaturePictureFromRemote(postId);
       }
       onOpen() {
@@ -110307,14 +110293,13 @@ var init_wp_publish_modal_v2 = __esm({
           categories: this.categories.selected,
           tags: normalizeTags(this.matterData.tags),
           title: this.noteTitle || "",
-          content: "",
+          content: this.articleContent,
           slug: this.matterData.slug || "",
           excerpt: this.matterData.excerpt || ""
         };
         if (this.matterData.featuredImageId) {
           params.featuredMedia = Number(this.matterData.featuredImageId);
         }
-        this.editableContent = this.articleContent;
         if (!this.featuredImage && this.autoFeaturedImage) {
           this.featuredImage = this.autoFeaturedImage;
         }
@@ -110470,7 +110455,9 @@ var init_wp_publish_modal_v2 = __esm({
        */
       renderV3PreviewArea(container, params) {
         new FeaturedImageSection(this).render(container, params);
-        new ContentPreviewSection(this).render(container, params);
+        const contentSection = new ContentPreviewSection(this);
+        this.contentPreviewSection = contentSection;
+        contentSection.render(container, params);
       }
       /**
        * V3.1 右侧设置区：基本设置 + 历史记录
@@ -110486,8 +110473,8 @@ var init_wp_publish_modal_v2 = __esm({
           cls: "wp-v3-edit-footer-btn"
         });
         editBtn.onclick = () => {
-          const contentSection = container.querySelector('[data-content-section="true"]');
-          if (contentSection == null ? void 0 : contentSection.__enterContentEdit) contentSection.__enterContentEdit();
+          var _a5;
+          (_a5 = this.contentPreviewSection) == null ? void 0 : _a5.enterEditMode();
         };
         const saveBtn = footer.createEl("button", {
           text: this.t("publishModal_save") || "\u{1F4BE} Save",
@@ -110504,7 +110491,7 @@ var init_wp_publish_modal_v2 = __esm({
           cls: "wp-v3-publish-footer-btn"
         });
         this.publishBtn = publishBtn;
-        publishBtn.onclick = () => this.doPublish(params, publishBtn);
+        publishBtn.onclick = () => this.doPublish(params);
       }
       /**
        * 设置滚动监听，为 sticky 元素添加阴影效果
@@ -110585,10 +110572,9 @@ var init_wp_publish_modal_v2 = __esm({
         try {
           const imagePromptContent = await this.getImagePromptContent(params);
           if (!imagePromptContent) return;
-          const contentToDetect = this.editableContent || this.articleContent;
+          const contentToDetect = params.content || this.articleContent;
           const language = detectLanguage(contentToDetect);
           log5.info("Detected language for image generation:", language);
-          const basePrompt = this.imageGenerationPrompt || this.plugin.t("defaultPrompt_image");
           const localizedPrompt = getLocalizedPrompt(this.plugin, language, "image");
           const imageDescriptionPrompt = localizedPrompt.replace("{title}", params.title || "").replace("{content}", imagePromptContent);
           new import_obsidian11.Notice(this.t("publishModal_aiGeneratingImage"));
@@ -110633,7 +110619,7 @@ var init_wp_publish_modal_v2 = __esm({
           new import_obsidian11.Notice(this.t("notice_textAIApiKeyRequired"));
           return null;
         }
-        const contentToUse = this.editableContent || this.articleContent;
+        const contentToUse = params.content || this.articleContent;
         if (!contentToUse) {
           new import_obsidian11.Notice(this.t("publishModal_emptyContent"));
           return null;
@@ -110643,7 +110629,6 @@ var init_wp_publish_modal_v2 = __esm({
           const cleanContent = this.sanitizeContentForAI(contentToUse, 2e3);
           const language = detectLanguage(cleanContent);
           log5.info("Detected language for image summary:", language);
-          const basePrompt = this.summaryPrompt || this.plugin.t("defaultPrompt_summary");
           const localizedPrompt = getLocalizedPrompt(this.plugin, language, "summary");
           const prompt = localizedPrompt.replace("{content}", cleanContent);
           const summary = await this.aiService.generateText(prompt);
@@ -110813,7 +110798,6 @@ var init_wp_publish_modal_v2 = __esm({
       renderApiWarning(container, apiType) {
         const warningContainer = container.createDiv("wp-api-warning");
         warningContainer.addClass("mod-warning");
-        const capabilities = getApiCapabilities(apiType);
         const limitations = getApiLimitations(apiType);
         const recommendation = getApiRecommendation(apiType);
         const title = warningContainer.createDiv("wp-api-warning-title");
@@ -110853,7 +110837,7 @@ var init_wp_publish_modal_v2 = __esm({
           new import_obsidian11.Notice(this.t("notice_textAIApiKeyRequired"));
           return;
         }
-        const contentToUse = this.editableContent || this.articleContent;
+        const contentToUse = params.content || this.articleContent;
         if (!contentToUse) {
           new import_obsidian11.Notice(this.t("publishModal_emptyContentForTags"));
           return;
@@ -110864,7 +110848,6 @@ var init_wp_publish_modal_v2 = __esm({
           log5.info("Generating summary from content length:", cleanContent.length);
           const language = detectLanguage(cleanContent);
           log5.info("Detected language:", language);
-          const basePrompt = this.summaryPrompt || this.plugin.t("defaultPrompt_summary");
           const localizedPrompt = getLocalizedPrompt(this.plugin, language, "summary");
           const prompt = localizedPrompt.replace("{content}", cleanContent);
           const summary = await this.aiService.generateText(prompt);
@@ -110885,7 +110868,7 @@ var init_wp_publish_modal_v2 = __esm({
           new import_obsidian11.Notice(this.t("notice_textAIApiKeyRequired"));
           return;
         }
-        const contentToUse = this.editableContent || this.articleContent;
+        const contentToUse = params.content || this.articleContent;
         if (!contentToUse) {
           new import_obsidian11.Notice(this.t("publishModal_emptyContentForTags"));
           return;
@@ -110896,7 +110879,6 @@ var init_wp_publish_modal_v2 = __esm({
           log5.info("Generating tags from content length:", cleanContent.length);
           const language = detectLanguage(cleanContent);
           log5.info("Detected language:", language);
-          const basePrompt = this.tagsPrompt || this.plugin.t("defaultPrompt_tags");
           const localizedPrompt = getLocalizedPrompt(this.plugin, language, "tags");
           const prompt = localizedPrompt.replace("{content}", cleanContent);
           const tags = await this.aiService.generateText(prompt);
@@ -110908,17 +110890,13 @@ var init_wp_publish_modal_v2 = __esm({
           new import_obsidian11.Notice(this.t("publishModal_tagsGenerateFailed", { error: error2 instanceof Error ? error2.message : "Unknown error" }));
         }
       }
-      doPublish(params, btn) {
+      doPublish(params, _btn) {
         if (this.isPublishing) {
           log5.info("Already publishing, ignoring click");
           return;
         }
         this.isPublishing = true;
         this.lastPublishParams = params;
-        params.content = this.editableContent;
-        if (this.editableTags.length > 0) {
-          params.tags = [...this.editableTags];
-        }
         this.modalEl.style.display = "none";
         const progressOverlay = this.showPublishProgress();
         const doSubmit = () => {
@@ -113060,7 +113038,7 @@ var require_dist = __commonJS({
 
 // src/post-published-modal.ts
 function openPostPublishedModal(plugin4) {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve, _reject) => {
     new PostPublishedModal(plugin4, (modal) => {
       resolve();
       modal.close();
@@ -113105,7 +113083,7 @@ var init_post_published_modal = __esm({
 
 // src/wp-login-modal.ts
 function openLoginModal(plugin4, profile, validateUser) {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve, _reject) => {
     const modal = new WpLoginModal(plugin4, profile, async (auth, loginModal) => {
       const validate = await validateUser(auth);
       if (validate) {
@@ -113554,7 +113532,7 @@ function getImages(content) {
   }
   return paths;
 }
-var import_obsidian15, import_file_type_checker, globalAuthCache, AbstractWordPressClient;
+var import_obsidian15, import_file_type_checker, wpLog, globalAuthCache, AbstractWordPressClient;
 var init_abstract_wp_client = __esm({
   "src/abstract-wp-client.ts"() {
     "use strict";
@@ -113562,7 +113540,6 @@ var init_abstract_wp_client = __esm({
     init_wp_types();
     init_wp_publish_modal_v2();
     init_featured_image_modal();
-    init_html_sanitizer();
     init_wp_api();
     init_consts();
     init_utils5();
@@ -113575,6 +113552,8 @@ var init_abstract_wp_client = __esm({
     init_frontmatter_manager();
     init_frontmatter_conflict_modal();
     init_tag_formatter();
+    init_logger();
+    wpLog = createModuleLogger("AbstractWpClient");
     globalAuthCache = /* @__PURE__ */ new Map();
     AbstractWordPressClient = class {
       constructor(plugin4, profile) {
@@ -113611,7 +113590,7 @@ var init_abstract_wp_client = __esm({
                 this.tagsList = await this.getTagsList(auth);
               }
             } catch (e) {
-              console.warn("[fetchRemotePostData] Failed to fetch categories/tags list:", e);
+              wpLog.warn("[fetchRemotePostData] Failed to fetch categories/tags list:", e);
             }
           }
           return {
@@ -113625,7 +113604,7 @@ var init_abstract_wp_client = __esm({
             featurePicture: ((_d = (_c = (_b = post._embedded) == null ? void 0 : _b["wp:featuredmedia"]) == null ? void 0 : _c[0]) == null ? void 0 : _d.source_url) || void 0
           };
         } catch (error2) {
-          console.error("[fetchRemotePostData] Error fetching remote post:", error2);
+          wpLog.error("[fetchRemotePostData] Error fetching remote post:", error2);
           return null;
         }
       }
@@ -113671,10 +113650,10 @@ var init_abstract_wp_client = __esm({
         const cacheEntry = globalAuthCache.get(cacheKey);
         if (cacheEntry && cacheEntry.profileName === this.profile.name) {
           if (this.isAuthCacheValid(cacheEntry)) {
-            console.log(`[getCachedAuth] Using cached auth for profile: ${this.profile.name}`);
+            wpLog.info(`[getCachedAuth] Using cached auth for profile: ${this.profile.name}`);
             return cacheEntry.auth;
           } else {
-            console.log(`[getCachedAuth] Cache expired for profile: ${this.profile.name}`);
+            wpLog.info(`[getCachedAuth] Cache expired for profile: ${this.profile.name}`);
             globalAuthCache.delete(cacheKey);
           }
         }
@@ -113687,7 +113666,7 @@ var init_abstract_wp_client = __esm({
         var _a5;
         const cacheKey = this.getAuthCacheKey();
         const cacheDuration = (_a5 = this.plugin.settings.authCacheDuration) != null ? _a5 : "1m";
-        console.log(`[cacheAuth] Caching auth for profile: ${this.profile.name}, duration: ${cacheDuration}`);
+        wpLog.info(`[cacheAuth] Caching auth for profile: ${this.profile.name}, duration: ${cacheDuration}`);
         globalAuthCache.set(cacheKey, {
           auth,
           timestamp: Date.now(),
@@ -113699,7 +113678,7 @@ var init_abstract_wp_client = __esm({
        */
       clearCachedAuth() {
         const cacheKey = this.getAuthCacheKey();
-        console.log(`[clearCachedAuth] Clearing cache for profile: ${this.profile.name}`);
+        wpLog.info(`[clearCachedAuth] Clearing cache for profile: ${this.profile.name}`);
         globalAuthCache.delete(cacheKey);
       }
       async getAuth() {
@@ -113776,9 +113755,9 @@ var init_abstract_wp_client = __esm({
                 const idx = this.categoriesList.indexOf(term);
                 if (idx >= 0) this.categoriesList[idx] = newTerm;
                 resolvedCategories.push(Number(newTerm.id));
-                console.log(`[tryToPublish] Created remote category: ${term.name} -> ID ${newTerm.id}`);
+                wpLog.info(`[tryToPublish] Created remote category: ${term.name} -> ID ${newTerm.id}`);
               } catch (e) {
-                console.error(`[tryToPublish] Failed to create category: ${term.name}`, e);
+                wpLog.error(`[tryToPublish] Failed to create category: ${term.name}`, e);
                 failedCategories.push(term.name);
               }
             }
@@ -113800,7 +113779,6 @@ var init_abstract_wp_client = __esm({
           postParams
         });
         const html4 = AppState.markdownParser.render(postParams.content);
-        const safeHtml = sanitizeHtml(html4);
         const result = await this.publish(
           (_a5 = postParams.title) != null ? _a5 : "A post from Obsidian!",
           html4,
@@ -113815,16 +113793,14 @@ var init_abstract_wp_client = __esm({
         } else {
           const postId = result.data.postId;
           if (postId) {
-            let syncedFeaturePictureUrl = null;
             if (postParams.featuredMedia && !updateMatterData) {
               try {
                 const mediaUrl = await this.getMediaUrl(postParams.featuredMedia, auth);
                 if (mediaUrl) {
-                  syncedFeaturePictureUrl = mediaUrl;
-                  console.log("[tryToPublish] Synced featurePicture from featuredImageId:", postParams.featuredMedia, "->", mediaUrl);
+                  wpLog.info(`[tryToPublish] Synced featurePicture from featuredImageId: ${postParams.featuredMedia} -> ${mediaUrl}`);
                 }
               } catch (e) {
-                console.warn("[tryToPublish] Failed to sync featurePicture:", e);
+                wpLog.warn("[tryToPublish] Failed to sync featurePicture:", e);
               }
             }
             const file = this.plugin.app.workspace.getActiveFile();
@@ -113925,7 +113901,7 @@ var init_abstract_wp_client = __esm({
                   const errorMsg = ((_b = result.error) == null ? void 0 : _b.message) || this.plugin.i18n.t("error_mediaUploadFailed", {
                     name: imgFile.name
                   });
-                  console.error("[updatePostImages] Image upload failed:", imgFile.name, errorMsg);
+                  wpLog.error(`[updatePostImages] Image upload failed: ${imgFile.name} - ${errorMsg}`);
                   new import_obsidian15.Notice(errorMsg, ERROR_NOTICE_TIMEOUT);
                 }
               }
@@ -113960,7 +113936,7 @@ var init_abstract_wp_client = __esm({
                   remoteData.featurePicture,
                   remoteData.featuredImageId
                 );
-                console.log("[publishPost] Updated feature picture cache from remote");
+                wpLog.info("[publishPost] Updated feature picture cache from remote");
               }
               const conflicts = this.frontmatterManager.detectConflicts(matterData, remoteData);
               if (conflicts.length > 0) {
@@ -114007,7 +113983,7 @@ var init_abstract_wp_client = __esm({
             } else if (Array.isArray(rawFmCats)) {
               fmCatArray = rawFmCats;
             }
-            console.log("[publishPost] Raw frontmatter categories:", rawFmCats, "Normalized:", fmCatArray);
+            wpLog.info(`[publishPost] Raw frontmatter categories: ${JSON.stringify(rawFmCats)} Normalized: ${JSON.stringify(fmCatArray)}`);
             if (fmCatArray.length > 0 && typeof fmCatArray[0] === "string") {
               const newCategoryNames = [];
               selectedCategories = [];
@@ -114018,10 +113994,10 @@ var init_abstract_wp_client = __esm({
                 }
                 if (existing) {
                   selectedCategories.push(Number(existing.id));
-                  console.log(`[publishPost] Matched category "${name}" to ID ${existing.id}`);
+                  wpLog.info(`[publishPost] Matched category "${name}" to ID ${existing.id}`);
                 } else {
                   newCategoryNames.push(name);
-                  console.log(`[publishPost] Category "${name}" not found in remote, will add as local-only`);
+                  wpLog.info(`[publishPost] Category "${name}" not found in remote, will add as local-only`);
                 }
               }
               for (const name of newCategoryNames) {
@@ -114037,11 +114013,11 @@ var init_abstract_wp_client = __esm({
                 categories.push(tempTerm);
                 this.categoriesList = categories;
                 selectedCategories.push(tempId);
-                console.log(`[publishPost] Added local-only category: ${name} (temp ID ${tempId})`);
+                wpLog.info(`[publishPost] Added local-only category: ${name} (temp ID ${tempId})`);
               }
             } else if (fmCatArray.length > 0 && typeof fmCatArray[0] === "number") {
               selectedCategories = fmCatArray;
-              console.log("[publishPost] Using numeric IDs from frontmatter:", selectedCategories);
+              wpLog.info("[publishPost] Using numeric IDs from frontmatter:", selectedCategories);
             } else {
               if (this.profile.lastSelectedCategories && this.profile.lastSelectedCategories.length > 0) {
                 selectedCategories = this.profile.lastSelectedCategories;
@@ -114051,7 +114027,7 @@ var init_abstract_wp_client = __esm({
                 );
                 selectedCategories = uncategorized ? [Number(uncategorized.id)] : [1];
               }
-              console.log("[publishPost] No categories in frontmatter, using default:", selectedCategories);
+              wpLog.info(`[publishPost] No categories in frontmatter, using default: ${JSON.stringify(selectedCategories)}`);
             }
             const postTypes = await this.getPostTypes(auth);
             if (postTypes.length === 0) {
@@ -114059,7 +114035,7 @@ var init_abstract_wp_client = __esm({
             }
             const selectedPostType = (_a5 = matterData.postType) != null ? _a5 : "post" /* Post */;
             result = await new Promise((resolve) => {
-              console.log("[WpPublishModalV2] Creating modal instance...");
+              wpLog.info("[WpPublishModalV2] Creating modal instance...");
               const publishModal = new WpPublishModalV2(
                 this.plugin,
                 { items: categories, selected: selectedCategories },
@@ -114072,7 +114048,7 @@ var init_abstract_wp_client = __esm({
                   const publishAsNew = postParams2.publishAsNew;
                   postParams2 = this.readFromFrontMatter(title, matterData, postParams2);
                   if (publishAsNew) {
-                    console.log("[WpPublishModalV2] Publish as new post requested, removing postId");
+                    wpLog.info("[WpPublishModalV2] Publish as new post requested, removing postId");
                     delete postParams2.postId;
                   }
                   if (userSelectedCategories && userSelectedCategories.length > 0) {
@@ -114086,13 +114062,13 @@ var init_abstract_wp_client = __esm({
                   let featuredImageId;
                   try {
                     if (featuredImage) {
-                      console.log("[WpPublishModalV2] Processing featured image:", featuredImage.fileName);
+                      wpLog.info("[WpPublishModalV2] Processing featured image:", featuredImage.fileName);
                       let imageContent = featuredImage.content;
                       let imageMimeType = featuredImage.mimeType;
                       if (this.plugin.settings.enableImageCompression) {
                         const maxSizeKB = this.plugin.settings.imageMaxSizeKB || 500;
                         const minQuality = this.plugin.settings.imageMinQuality || 0.6;
-                        console.log("[WpPublishModalV2] Attempting image compression...");
+                        wpLog.info("[WpPublishModalV2] Attempting image compression...");
                         const compressedContent = await compressImage(
                           featuredImage.content,
                           featuredImage.mimeType,
@@ -114108,9 +114084,9 @@ var init_abstract_wp_client = __esm({
                           }));
                           imageContent = compressedContent;
                           imageMimeType = featuredImage.mimeType === "image/png" ? "image/jpeg" : featuredImage.mimeType;
-                          console.log(`[WpPublishModalV2] Image compressed: ${originalSizeKB}KB -> ${compressedSizeKB}KB`);
+                          wpLog.info(`[WpPublishModalV2] Image compressed: ${originalSizeKB}KB -> ${compressedSizeKB}KB`);
                         } else {
-                          console.log("[WpPublishModalV2] Image does not need compression or compression failed");
+                          wpLog.info("[WpPublishModalV2] Image does not need compression or compression failed");
                         }
                       }
                       const uploadResult = await this.uploadMediaWithRetry({
@@ -114122,12 +114098,12 @@ var init_abstract_wp_client = __esm({
                         postParams2.featuredMedia = uploadResult.data.id;
                         featuredImageUrl = uploadResult.data.url;
                         featuredImageId = uploadResult.data.id;
-                        console.log("[WpPublishModalV2] Featured image uploaded, media ID:", uploadResult.data.id);
+                        wpLog.info(`[WpPublishModalV2] Featured image uploaded, media ID: ${uploadResult.data.id}`);
                       } else {
                         const errorMsg = ((_a6 = uploadResult.error) == null ? void 0 : _a6.message) || this.plugin.i18n.t("error_mediaUploadFailed", {
                           name: featuredImage.fileName
                         });
-                        console.error("[WpPublishModalV2] Featured image upload failed:", errorMsg);
+                        wpLog.error("[WpPublishModalV2] Featured image upload failed:", errorMsg);
                         new import_obsidian15.Notice(errorMsg, ERROR_NOTICE_TIMEOUT);
                       }
                     } else {
@@ -114135,7 +114111,7 @@ var init_abstract_wp_client = __esm({
                       if (cachedImageId) {
                         postParams2.featuredMedia = cachedImageId;
                         featuredImageId = cachedImageId;
-                        console.log("[WpPublishModalV2] Using cached featured image ID:", cachedImageId);
+                        wpLog.info("[WpPublishModalV2] Using cached featured image ID:", cachedImageId);
                       }
                     }
                     const wrappedUpdateMatterData = (fm) => {
@@ -114158,7 +114134,7 @@ var init_abstract_wp_client = __esm({
                           featuredImageUrl,
                           featuredImageId
                         );
-                        console.log("[WpPublishModalV2] Updated feature picture cache");
+                        wpLog.info("[WpPublishModalV2] Updated feature picture cache");
                       }
                       await publishModal.clearImageCache();
                       publishModal.close();
@@ -114177,9 +114153,9 @@ var init_abstract_wp_client = __esm({
                 title,
                 file.path
               );
-              console.log("[WpPublishModalV2] Calling publishModal.open()...");
+              wpLog.info("[WpPublishModalV2] Calling publishModal.open()...");
               publishModal.open();
-              console.log("[WpPublishModalV2] publishModal.open() called");
+              wpLog.info("[WpPublishModalV2] publishModal.open() called");
             });
           }
           if (result) {
@@ -114250,11 +114226,11 @@ var init_abstract_wp_client = __esm({
         let attempt2 = 0;
         while (attempt2 <= FEATURED_IMAGE_UPLOAD_MAX_RETRIES) {
           try {
-            console.log(`[uploadMediaWithRetry] Attempt ${attempt2 + 1}/${FEATURED_IMAGE_UPLOAD_MAX_RETRIES + 1} for ${fileName}`);
+            wpLog.info(`[uploadMediaWithRetry] Attempt ${attempt2 + 1}/${FEATURED_IMAGE_UPLOAD_MAX_RETRIES + 1} for ${fileName}`);
             const result = await this.uploadMedia(media, certificate);
             if (result.code === 0 /* OK */) {
               if (attempt2 > 0) {
-                console.log(`[uploadMediaWithRetry] Upload succeeded after ${attempt2 + 1} attempts`);
+                wpLog.info(`[uploadMediaWithRetry] Upload succeeded after ${attempt2 + 1} attempts`);
                 new import_obsidian15.Notice(this.plugin.i18n.t("notice_featuredImageUploadRetrySuccess", {
                   fileName,
                   attempts: String(attempt2 + 1)
@@ -114266,7 +114242,7 @@ var init_abstract_wp_client = __esm({
               lastError = result.error;
               attempt2++;
               if (attempt2 <= FEATURED_IMAGE_UPLOAD_MAX_RETRIES) {
-                console.log(`[uploadMediaWithRetry] Transient error detected, retrying in ${FEATURED_IMAGE_UPLOAD_RETRY_DELAY_MS}ms...`, result.error);
+                wpLog.info(`[uploadMediaWithRetry] Transient error detected, retrying in ${FEATURED_IMAGE_UPLOAD_RETRY_DELAY_MS}ms...`, result.error);
                 new import_obsidian15.Notice(this.plugin.i18n.t("notice_featuredImageUploadRetrying", {
                   fileName,
                   attempt: String(attempt2),
@@ -114283,7 +114259,7 @@ var init_abstract_wp_client = __esm({
             if (this.isTransientError(error2)) {
               attempt2++;
               if (attempt2 <= FEATURED_IMAGE_UPLOAD_MAX_RETRIES) {
-                console.log(`[uploadMediaWithRetry] Transient exception detected, retrying in ${FEATURED_IMAGE_UPLOAD_RETRY_DELAY_MS}ms...`, error2);
+                wpLog.info(`[uploadMediaWithRetry] Transient exception detected, retrying in ${FEATURED_IMAGE_UPLOAD_RETRY_DELAY_MS}ms...`, error2);
                 new import_obsidian15.Notice(this.plugin.i18n.t("notice_featuredImageUploadRetrying", {
                   fileName,
                   attempt: String(attempt2),
@@ -114297,7 +114273,7 @@ var init_abstract_wp_client = __esm({
             }
           }
         }
-        console.error(`[uploadMediaWithRetry] Upload failed after ${attempt2} attempts`, lastError);
+        wpLog.error(`[uploadMediaWithRetry] Upload failed after ${attempt2} attempts`, lastError);
         return {
           code: 1 /* Error */,
           error: {
@@ -114381,7 +114357,7 @@ var init_abstract_wp_client = __esm({
         if (!postParams.featuredMedia && matterData.featuredImageId) {
           postParams.featuredMedia = matterData.featuredImageId;
           if (matterData.featuredImageId && !matterData.featurePicture) {
-            console.warn("[readPostParamsFromFrontmatter] featuredImageId exists but featurePicture is empty. Will attempt to sync during publish.");
+            wpLog.warn("[readPostParamsFromFrontmatter] featuredImageId exists but featurePicture is empty. Will attempt to sync during publish.");
           }
         }
         return postParams;
@@ -115429,7 +115405,7 @@ var init_wp_rest_client = __esm({
         }
         return name;
       }
-      getHeaders(wp) {
+      getHeaders(_wp) {
         return {
           "authorization": `BEARER ${this.accessToken}`
         };
@@ -115754,7 +115730,7 @@ function openProfileModal(plugin4, profile = {
   isDefault: false,
   lastSelectedCategories: [1]
 }, atIndex = -1) {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve, _reject) => {
     const modal = new WpProfileModal(plugin4, (profile2, atIndex2) => {
       resolve({
         profile: profile2,
@@ -115778,7 +115754,6 @@ var WpProfileModal = class extends AbstractModal {
     super(plugin4);
     this.plugin = plugin4;
     this.onSubmit = onSubmit;
-    this.profile = profile;
     this.atIndex = atIndex;
     this.profileData = Object.assign({}, profile);
     this.tokenGotRef = AppState.events.on("OAUTH2_TOKEN_GOT" /* OAUTH2_TOKEN_GOT */, async (...args) => {
@@ -119113,7 +119088,7 @@ init_wp_api();
 init_utils5();
 init_abstract_modal();
 function openProfileChooserModal(plugin4) {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve, _reject) => {
     const modal = new WpProfileChooserModal(plugin4, (profile) => {
       resolve(profile);
     });
@@ -119164,8 +119139,7 @@ init_image_cache_manager();
 init_logger();
 var log6 = createModuleLogger("FeaturePictureCacheManager");
 var FeaturePictureCacheManager = class {
-  constructor(app, plugin4) {
-    this.app = app;
+  constructor(plugin4) {
     this.plugin = plugin4;
     this.cache = {};
     this.CACHE_DURATION = 7 * 24 * 60 * 60 * 1e3;
@@ -119372,7 +119346,7 @@ var WordpressPlugin = class extends import_obsidian24.Plugin {
       }
     });
     this.addSettingTab(new WordpressSettingTab(this));
-    this._featurePictureCacheManager = new FeaturePictureCacheManager(this.app, this);
+    this._featurePictureCacheManager = new FeaturePictureCacheManager(this);
     this.cleanupOrphanCaches();
     this.cleanupExpiredFeaturePictureCaches();
   }

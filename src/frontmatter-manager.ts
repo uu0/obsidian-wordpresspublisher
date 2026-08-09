@@ -1,4 +1,4 @@
-import { App, Notice, TFile } from 'obsidian';
+import { App, TFile } from 'obsidian';
 import { MatterData } from './types';
 import { SafeAny } from './utils';
 import type WordpressPlugin from './main';

@@ -123,7 +123,7 @@ export default class WordpressPlugin extends Plugin {
     this.addSettingTab(new WordpressSettingTab(this));
 
     // Initialize feature picture cache manager
-    this._featurePictureCacheManager = new FeaturePictureCacheManager(this.app, this);
+    this._featurePictureCacheManager = new FeaturePictureCacheManager(this);
 
     // Clean up orphan image caches (notes that no longer exist)
     this.cleanupOrphanCaches();
