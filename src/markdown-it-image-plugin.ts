@@ -1,5 +1,5 @@
 import MarkdownIt from 'markdown-it';
-import Token from 'markdown-it/lib/token';
+import type Token from 'markdown-it/lib/token';
 import { trim } from 'lodash-es';
 
 
@@ -27,6 +27,19 @@ export const MarkdownItImagePluginInstance = {
 }
 
 function plugin(md: MarkdownIt): void {
+  const renderImage = md.renderer.rules.image!;
+  md.renderer.rules.image = (tokens, index, options, env, renderer) => {
+    const token = tokens[index];
+    const size = token.content.match(/\|(\d+)(?:x(\d+))?$/);
+    if (size) {
+      token.attrSet('width', size[1]);
+      if (size[2]) token.attrSet('height', size[2]);
+      const alt = token.content.slice(0, size.index);
+      token.content = alt;
+      token.children = md.parseInline(alt, env)[0].children;
+    }
+    return renderImage(tokens, index, options, env, renderer);
+  };
   md.inline.ruler.after('image', tokenType, (state, silent) => {
     const regex = /^!\[\[([^|\]\n]+)(\|([^\]\n]+))?\]\]/;
     const match = state.src.slice(state.pos).match(regex);
@@ -76,17 +89,6 @@ function plugin(md: MarkdownIt): void {
     }
   });
   md.renderer.rules.ob_img = (tokens: Token[], idx: number) => {
-    const token = tokens[idx];
-    const src = token.attrs?.[0]?.[1];
-    const width = token.attrs?.[1]?.[1];
-    const height = token.attrs?.[2]?.[1];
-    if (width) {
-      if (height) {
-        return `<img src="${src}" width="${width}" height="${height}" alt="">`;
-      }
-      return `<img src="${src}" width="${width}" alt="">`;
-    } else {
-      return `<img src="${src}" alt="">`;
-    }
+    return md.renderer.renderToken(tokens, idx, md.options);
   };
 }

@@ -61,9 +61,7 @@ export class FeaturePictureCacheManager {
    */
   private async saveCache(): Promise<void> {
     try {
-      const data = await this.plugin.loadData() || {};
-      data[this.CACHE_KEY] = this.cache;
-      await this.plugin.saveData(data);
+      await this.plugin.updateStoredData(data => { data[this.CACHE_KEY] = this.cache; });
       log.debug('Saved feature picture cache', { count: Object.keys(this.cache).length });
     } catch (error) {
       log.error('Failed to save feature picture cache', error);
@@ -75,8 +73,8 @@ export class FeaturePictureCacheManager {
    * @param postId - Post ID
    * @returns Cached data or null if not found or expired
    */
-  get(postId: string | number): CachedFeaturePicture | null {
-    const key = String(postId);
+  get(postId: string | number, site: string): CachedFeaturePicture | null {
+    const key = JSON.stringify([site.replace(/\/$/, ""), String(postId)]);
     const cached = this.cache[key];
 
     if (!cached) {
@@ -103,9 +101,9 @@ export class FeaturePictureCacheManager {
    * @param url - Feature picture URL
    * @param featuredImageId - Featured image ID
    */
-  async set(postId: string | number, url: string, featuredImageId: number): Promise<void> {
+  async set(postId: string | number, url: string, featuredImageId: number, site: string): Promise<void> {
     await this._ready;
-    const key = String(postId);
+    const key = JSON.stringify([site.replace(/\/$/, ""), String(postId)]);
     const now = Date.now();
 
     this.cache[key] = {
@@ -123,9 +121,9 @@ export class FeaturePictureCacheManager {
    * Clear cache for specific post
    * @param postId - Post ID
    */
-  async clear(postId: string | number): Promise<void> {
+  async clear(postId: string | number, site: string): Promise<void> {
     await this._ready;
-    const key = String(postId);
+    const key = JSON.stringify([site.replace(/\/$/, ""), String(postId)]);
     if (this.cache[key]) {
       delete this.cache[key];
       log.debug('Cache cleared', { postId });

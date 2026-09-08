@@ -95,10 +95,11 @@ async function apiRequestWithRetry(
   let lastError: Error | null = null;
 
   for (let attempt = 1; attempt <= options.maxRetries; attempt++) {
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
     try {
       // Create abort controller for timeout
       const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new AIServiceError(
+        timeoutHandle = setTimeout(() => reject(new AIServiceError(
           'Request timeout',
           'TIMEOUT',
           undefined,
@@ -158,7 +159,9 @@ async function apiRequestWithRetry(
         return response.json;
       };
 
-      const result = await Promise.race([requestPromise(), timeoutPromise]);
+      const result = await Promise.race([requestPromise(), timeoutPromise]).finally(() => {
+        if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
+      });
 
       // Validate response
       if (!result) {

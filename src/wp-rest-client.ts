@@ -46,6 +46,13 @@ export class WpRestClient extends AbstractWordPressClient {
     });
   }
 
+  private postRoute(type: PostType = 'post'): string {
+    if (type !== 'post' && type !== 'page') {
+      throw new Error(`Unsupported content type: ${type}. This version supports posts and pages.`);
+    }
+    return `wp-json/wp/v2/${type === 'page' ? 'pages' : 'posts'}`;
+  }
+
   protected needLogin(): boolean {
     if (this.context.needLoginModal !== undefined) {
       return this.context.needLoginModal;
@@ -59,14 +66,10 @@ export class WpRestClient extends AbstractWordPressClient {
     postParams: WordPressPostParams,
     certificate: WordPressAuthParams
   ): Promise<WordPressClientResult<WordPressPublishResult>> {
-    let url: string;
-    if (postParams.postId) {
-      url = getUrl(this.context.endpoints?.editPost, 'wp-json/wp/v2/posts/<%= postId %>', {
-        postId: postParams.postId
-      });
-    } else {
-      url = getUrl(this.context.endpoints?.newPost, 'wp-json/wp/v2/posts');
-    }
+    const route = this.postRoute(postParams.postType);
+    const url = postParams.postId
+      ? getUrl(this.context.endpoints?.editPost, `${route}/<%= postId %>`, { postId: postParams.postId })
+      : getUrl(this.context.endpoints?.newPost, route);
     const extra: Record<string, string> = {};
     if (postParams.status === PostStatus.Future) {
       extra.date = formatISO(postParams.datetime ?? new Date());
@@ -81,11 +84,11 @@ export class WpRestClient extends AbstractWordPressClient {
         content,
         status: postParams.status,
         comment_status: postParams.commentStatus,
-        categories: postParams.categories,
-        tags: postParams.tags ?? [],
-        featured_media: (postParams as SafeAny).featuredMedia,
-        ...(slug ? { slug } : {}),
-        ...(excerpt ? { excerpt } : {}),
+        ...(postParams.postType === 'post' ? { categories: postParams.categories, tags: postParams.tags ?? [] } : {}),
+        ...(this.context.name === 'WpRestClientWpComOAuth2Context' ? { type: postParams.postType } : {}),
+        featured_media: postParams.featuredMedia,
+        ...(postParams.slug !== undefined ? { slug } : {}),
+        ...(postParams.excerpt !== undefined ? { excerpt } : {}),
         ...extra
       },
       {
@@ -111,23 +114,22 @@ export class WpRestClient extends AbstractWordPressClient {
     }
   }
 
-  async getCategories(certificate: WordPressAuthParams): Promise<Term[]> {
-    const data = await this.client.httpGet(
-      getUrl(this.context.endpoints?.getCategories, 'wp-json/wp/v2/categories?per_page=100'),
-      {
-        headers: this.context.getHeaders(certificate)
-      });
-    return this.context.responseParser.toTerms(data);
+  private async listTerms(taxonomy: 'categories' | 'tags', certificate: WordPressAuthParams): Promise<Term[]> {
+    const terms: Term[] = [];
+    for (let page = 1; ; page++) {
+      const base = this.context.endpoints?.base ?
+        getUrl(taxonomy === 'categories' ? this.context.endpoints.getCategories : this.context.endpoints.getTag, '').split('?')[0] :
+        `wp-json/wp/v2/${taxonomy}`;
+      const query = this.context.endpoints?.base ? `number=100&page=${page}` : `per_page=100&page=${page}`;
+      const data = await this.client.httpGet(`${base}?${query}`, { headers: this.context.getHeaders(certificate) });
+      const batch = this.context.responseParser.toTerms(data);
+      terms.push(...batch);
+      if (batch.length < 100) return terms;
+    }
   }
 
-  async getTagsList(certificate: WordPressAuthParams): Promise<Term[]> {
-    const data = await this.client.httpGet(
-      getUrl(this.context.endpoints?.getTag, 'wp-json/wp/v2/tags?per_page=100'),
-      {
-        headers: this.context.getHeaders(certificate)
-      });
-    return this.context.responseParser.toTerms(data);
-  }
+  async getCategories(certificate: WordPressAuthParams): Promise<Term[]> { return this.listTerms('categories', certificate); }
+  async getTagsList(certificate: WordPressAuthParams): Promise<Term[]> { return this.listTerms('tags', certificate); }
 
   async getPostTypes(certificate: WordPressAuthParams): Promise<PostType[]> {
     const data: SafeAny = await this.client.httpGet(
@@ -135,7 +137,7 @@ export class WpRestClient extends AbstractWordPressClient {
       {
         headers: this.context.getHeaders(certificate)
       });
-    return this.context.responseParser.toPostTypes(data);
+    return this.context.responseParser.toPostTypes(data).filter(type => type === 'post' || type === 'page');
   }
 
   async validateUser(certificate: WordPressAuthParams): Promise<WordPressClientResult<boolean>> {
@@ -164,11 +166,12 @@ export class WpRestClient extends AbstractWordPressClient {
 
   async getTag(name: string, certificate: WordPressAuthParams): Promise<Term> {
     const termResp: SafeAny = await this.client.httpGet(
-      getUrl(this.context.endpoints?.getTag, 'wp-json/wp/v2/tags?number=1&search=<%= name %>', {
-        name
+      getUrl(this.context.endpoints?.getTag, 'wp-json/wp/v2/tags?per_page=100&search=<%= name %>', {
+        name: encodeURIComponent(name)
       }),
+      { headers: this.context.getHeaders(certificate) }
     );
-    const exists = this.context.responseParser.toTerms(termResp);
+    const exists = this.context.responseParser.toTerms(termResp).filter(term => term.name === name);
     if (exists.length === 0) {
       const resp = await this.client.httpPost(
         getUrl(this.context.endpoints?.newTag, 'wp-json/wp/v2/tags'),
@@ -256,7 +259,7 @@ export class WpRestClient extends AbstractWordPressClient {
         
         // Provide helpful hints for common issues
         const fileName = media.fileName.toLowerCase();
-        const unsupportedFormats = ['.pic', '.bmp', '.tiff', '.tif', '.webp'];
+        const unsupportedFormats = ['.pic', '.bmp', '.tiff', '.tif'];
         const isUnsupported = unsupportedFormats.some(ext => fileName.endsWith(ext));
         
         if (isUnsupported) {
@@ -269,7 +272,7 @@ export class WpRestClient extends AbstractWordPressClient {
             code: WordPressClientReturnCode.ServerInternalError,
             message: detailedError
           },
-          response: undefined
+          response: e
         };
       }
       
@@ -279,7 +282,7 @@ export class WpRestClient extends AbstractWordPressClient {
           code: WordPressClientReturnCode.ServerInternalError,
           message: errorMessage
         },
-        response: undefined
+        response: e
       };
     }
   }
@@ -293,14 +296,14 @@ export class WpRestClient extends AbstractWordPressClient {
 
       const url = `wp-json/wp/v2/media?${queryParams.toString()}`;
       const data = await this.client.httpGet(
-        getUrl(this.context.endpoints?.uploadFile, url),
+        this.context.endpoints?.uploadFile ? `${getUrl(this.context.endpoints.uploadFile, '').replace(/\/new$/, '')}?${queryParams.toString()}` : url,
         {
           headers: this.context.getHeaders(certificate)
         });
 
       return {
         code: WordPressClientReturnCode.OK,
-        data: data as SafeAny[],
+        data: (Array.isArray(data) ? data : (data as { media?: SafeAny[] }).media ?? []),
         response: data
       };
     } catch (e: SafeAny) {
@@ -311,14 +314,14 @@ export class WpRestClient extends AbstractWordPressClient {
           code: WordPressClientReturnCode.ServerInternalError,
           message: e.toString()
         },
-        response: undefined
+        response: e
       };
     }
   }
 
-  async getPost(postId: string | number, certificate: WordPressAuthParams): Promise<SafeAny | null> {
+  async getPost(postId: string | number, certificate: WordPressAuthParams, postType: PostType = 'post'): Promise<SafeAny | null> {
     try {
-      const url = getUrl(this.context.endpoints?.editPost, 'wp-json/wp/v2/posts/<%= postId %>', {
+      const url = getUrl(this.context.endpoints?.editPost, `${this.postRoute(postType)}/<%= postId %>`, {
         postId: String(postId)
       });
       // Add _embed parameter to get featured media info
@@ -328,8 +331,8 @@ export class WpRestClient extends AbstractWordPressClient {
       });
       return data;
     } catch (e: SafeAny) {
-      console.error('getPost', e);
-      return null;
+      if (e?.status === 404) return null;
+      throw e;
     }
   }
 
@@ -424,6 +427,9 @@ class WpRestClientCommonContext implements WpRestClientContext {
       throw new Error(`Unexpected publish response: missing post id. Response: ${JSON.stringify(response)}`);
     },
     toWordPressMediaUploadResult: (response: SafeAny): WordPressMediaUploadResult => {
+      if (!Number.isInteger(response.id) || typeof response.source_url !== 'string') {
+        throw new Error('Invalid WordPress media response; check the media library before retrying.');
+      }
       return {
         url: response.source_url,
         id: response.id
@@ -527,8 +533,7 @@ export class WpRestClientWpComOAuth2Context implements WpRestClientContext {
     },
     toTerms: (response: SafeAny): Term[] => {
       if (isNumber(response.found)) {
-        return response
-          .categories
+        return (response.categories ?? response.tags ?? [])
           .map((it: Term & { ID: number; }) => ({
             ...it,
             id: String(it.ID)

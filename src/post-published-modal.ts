@@ -5,12 +5,15 @@ import { TranslateKey } from './i18n';
 
 export function openPostPublishedModal(
   plugin: WordpressPlugin,
-): Promise<void> {
+): Promise<boolean> {
   return new Promise((resolve, _reject) => {
-    new PostPublishedModal(plugin, (modal) => {
-      resolve();
+    const modal = new PostPublishedModal(plugin, (modal) => {
+      resolve(true);
       modal.close();
     });
+    const close = modal.onClose.bind(modal);
+    modal.onClose = () => { close(); resolve(false); };
+    modal.open();
   });
 }
 

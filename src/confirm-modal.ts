@@ -28,6 +28,8 @@ export function openConfirmModal(
         });
         modal.close();
       });
+    const close = modal.onClose.bind(modal);
+    modal.onClose = () => { close(); resolve({ code: ConfirmCode.Cancel }); };
     modal.open();
   });
 }

@@ -2,6 +2,7 @@ import { arrayBufferToBase64, request } from 'obsidian';
 import { isArray, isArrayBuffer, isBoolean, isDate, isNumber, isObject, isSafeInteger } from 'lodash-es';
 import { format, parse } from 'date-fns';
 import { SafeAny } from './utils';
+import { assertSecureEndpoint } from './rest-client';
 import { logger } from './utils/logger';
 
 const MODULE = 'XmlRpcClient';
@@ -30,6 +31,7 @@ export class XmlRpcClient {
   constructor(
     private readonly options: XmlRpcOptions
   ) {
+    assertSecureEndpoint(options.url);
     logger.debug(MODULE, 'Initializing', { url: options.url.href });
 
     this.href = this.options.url.href;

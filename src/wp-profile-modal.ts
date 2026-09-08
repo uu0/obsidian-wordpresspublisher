@@ -65,9 +65,11 @@ class WpProfileModal extends AbstractModal {
     this.tokenGotRef = AppState.events.on(EventType.OAUTH2_TOKEN_GOT, async (...args: unknown[]) => {
       const token = args[0] as WordPressOAuth2Token | undefined;
       this.profileData.wpComOAuth2Token = token;
+      if (!token) delete this.profileData.encryptedWpComOAuth2Token;
       if (atIndex >= 0) {
         // if token is undefined, just remove it
         this.plugin.settings.profiles[atIndex].wpComOAuth2Token = token;
+        if (!token) delete this.plugin.settings.profiles[atIndex].encryptedWpComOAuth2Token;
         await this.plugin.saveSettings();
       }
     });
@@ -217,6 +219,7 @@ class WpProfileModal extends AbstractModal {
         if (this.profileData.savePassword) {
           passwordSetting
             .addText(text => text
+              .then(text => { text.inputEl.type = 'password'; })
               .setValue(this.profileData.password ?? '')
               .onChange((value) => {
                 this.profileData.password = value;
@@ -227,6 +230,7 @@ class WpProfileModal extends AbstractModal {
           .setValue(this.profileData.savePassword)
           .onChange(save => {
             this.profileData.savePassword = save;
+            if (!save) { delete this.profileData.password; delete this.profileData.encryptedPassword; }
             renderProfile();
           })
         );

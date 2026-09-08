@@ -110,6 +110,7 @@ export class FeaturedImageSection {
           ctx.featuredImage = null;
           ctx.autoFeaturedImage = null;
           ctx.matterData.featurePicture = '';
+          params.featuredMedia = 0;
           this.rebuild();
         };
       }

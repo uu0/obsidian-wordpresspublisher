@@ -1,10 +1,8 @@
-import { App, Notice, Setting, TFile } from 'obsidian';
+import { App, Notice, Setting, TFile, parseYaml } from 'obsidian';
 import { WpProfile } from './wp-profile';
 import { WordpressPluginSettings } from './plugin-settings';
 import { MarkdownItMathJax3PluginInstance } from './markdown-it-mathjax3-plugin';
-import { WordPressClientResult, WordPressClientReturnCode, WordPressPostParams } from './wp-types';
-import { getWordPressClient } from './wp-clients';
-import WordpressPlugin from './main';
+import { WordPressClientResult, WordPressClientReturnCode } from './wp-types';
 import { isString } from 'lodash-es';
 import { ERROR_NOTICE_TIMEOUT } from './consts';
 import { format } from 'date-fns';
@@ -107,54 +105,6 @@ export function isValidUrl(url: string): boolean {
 }
 
 /**
- * Publish content using WordPress client
- * Overload: Accept profile object
- */
-export function doClientPublish(plugin: WordpressPlugin, profile: WpProfile, defaultPostParams?: WordPressPostParams): void;
-/**
- * Publish content using WordPress client
- * Overload: Accept profile name string
- */
-export function doClientPublish(plugin: WordpressPlugin, profileName: string, defaultPostParams?: WordPressPostParams): void;
-/**
- * Publish content using WordPress client
- * @param plugin - Plugin instance
- * @param profileOrName - WordPress profile object or profile name
- * @param defaultPostParams - Optional default post parameters
- * @throws Error if profile not found
- */
-export function doClientPublish(
-  plugin: WordpressPlugin,
-  profileOrName: WpProfile | string,
-  defaultPostParams?: WordPressPostParams
-): void {
-  // Resolve profile from name or use directly
-  let profile: WpProfile | undefined;
-  if (isString(profileOrName)) {
-    profile = plugin.settings.profiles.find(p => p.name === profileOrName);
-  } else {
-    profile = profileOrName;
-  }
-
-  // Validate profile exists
-  if (!profile) {
-    const noSuchProfileMessage = plugin.i18n.t('error_noSuchProfile', {
-      profileName: String(profileOrName)
-    });
-    showError(noSuchProfileMessage);
-    throw new Error(noSuchProfileMessage);
-  }
-
-  // Get client and publish
-  const client = getWordPressClient(plugin, profile);
-  if (client) {
-    client.publishPost(defaultPostParams).catch(error => {
-      showError(error);
-    });
-  }
-}
-
-/**
  * Generate a unique multipart form boundary string
  * @returns Boundary string with timestamp
  */
@@ -197,24 +147,18 @@ export function showError<T>(error: unknown): WordPressClientResult<T> {
  * @param app - Obsidian app instance
  * @returns Object containing file content (without frontmatter) and frontmatter data
  */
-export async function processFile(file: TFile, app: App): Promise<{ content: string; matter: MatterData }> {
-  // Try to get cached frontmatter first
-  let frontmatter = app.metadataCache.getFileCache(file)?.frontmatter;
-
-  // If not cached, process frontmatter
-  if (!frontmatter) {
-    await app.fileManager.processFrontMatter(file, matter => {
-      frontmatter = matter;
-    });
-  }
-
-  // Read raw file content
+export async function processFile(file: TFile, app: App): Promise<{ content: string; matter: MatterData; raw: string }> {
   const rawContent = await app.vault.read(file);
-
-  // Remove frontmatter section and return
+  const match = rawContent.match(/^\uFEFF?---[ \t]*\r?\n([\s\S]*?)^---[ \t]*(?:\r?\n|$)/m);
+  const header = match?.index === 0 ? match : null;
+  const parsed: unknown = header ? parseYaml(header[1]) : {};
+  if (parsed !== null && (typeof parsed !== 'object' || Array.isArray(parsed))) {
+    throw new Error('Frontmatter must be a YAML mapping.');
+  }
   return {
-    content: rawContent.replace(/^---[\s\S]+?---/, '').trim(),
-    matter: frontmatter ?? {}
+    raw: rawContent,
+    content: header ? rawContent.slice(header[0].length) : rawContent,
+    matter: (parsed ?? {}) as MatterData
   };
 }
 

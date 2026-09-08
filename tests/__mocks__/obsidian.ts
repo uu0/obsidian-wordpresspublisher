@@ -126,3 +126,6 @@ export function requestUrl(_params: any): Promise<any> {
 export function setIcon(_parent: HTMLElement, _iconId: string): void {
   // Mock implementation
 }
+
+export function parseYaml(text: string): unknown { return jest.requireActual('js-yaml').load(text); }
+export function stringifyYaml(value: unknown): string { return jest.requireActual('js-yaml').dump(value); }

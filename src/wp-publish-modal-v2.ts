@@ -81,11 +81,12 @@ export class WpPublishModalV2 extends AbstractModal implements PublishModalConte
       params: WordPressPostParams,
       updateMatterData: (matter: MatterData) => void,
       featuredImage?: FeaturedImageResult
-    ) => void,
+    ) => Promise<unknown>,
     readonly matterData: MatterData,
     private readonly articleContent: string = '',
     private readonly noteTitle: string = '',
-    notePath: string = ''
+    notePath: string = '',
+    private readonly onDismiss: () => void = () => {}
   ) {
     super(plugin);
     log.info('Constructor called');
@@ -109,6 +110,11 @@ export class WpPublishModalV2 extends AbstractModal implements PublishModalConte
       // 如果没有 postId，尝试从图片缓存恢复
       this.loadCachedImage();
     }
+  }
+
+  private cacheSite(): string {
+    const name = this.matterData.blogName ?? this.matterData.profileName;
+    return this.plugin.settings.profiles.find(profile => profile.name === name)?.endpoint ?? '';
   }
 
   // 从缓存加载特色图片
@@ -136,7 +142,7 @@ export class WpPublishModalV2 extends AbstractModal implements PublishModalConte
       }
 
       // 本地无缓存，检查 featurePicture 缓存
-      const cached = this.plugin.featurePictureCacheManager.get(postId);
+      const cached = this.plugin.featurePictureCacheManager.get(postId, this.cacheSite());
       if (cached) {
         log.info('Loading featured image from cache:', cached.url);
         // 保存缓存的 featuredImageId
@@ -181,7 +187,7 @@ export class WpPublishModalV2 extends AbstractModal implements PublishModalConte
       }
 
       // 获取当前配置文件
-      const profile = this.plugin.settings.profiles.find(p => p.isDefault);
+      const profile = this.plugin.settings.profiles.find(p => p.endpoint === this.cacheSite());
       if (!profile) {
         log.warn('No default profile found');
         this.remoteImageError = '未配置 WordPress 账号，请先在设置中配置';
@@ -211,7 +217,7 @@ export class WpPublishModalV2 extends AbstractModal implements PublishModalConte
       };
 
       // 获取文章信息（网络已在发布前检测，不需要超时）
-      const post = await (client as any).getPost(postId, auth);
+      const post = await (client as any).getPost(postId, auth, this.matterData.postType || 'post');
 
       if (!post) {
         log.info('Post not found on remote');
@@ -233,7 +239,7 @@ export class WpPublishModalV2 extends AbstractModal implements PublishModalConte
       await this.plugin.featurePictureCacheManager.set(
         postId,
         featurePictureUrl,
-        featuredImageId
+        featuredImageId, this.cacheSite()
       );
 
       // 保存 featuredImageId
@@ -248,7 +254,7 @@ export class WpPublishModalV2 extends AbstractModal implements PublishModalConte
       this.remoteImageLoadFailed = true;
 
       // 获取配置名称用于错误提示
-      const profile = this.plugin.settings.profiles.find(p => p.isDefault);
+      const profile = this.plugin.settings.profiles.find(p => p.endpoint === this.cacheSite());
       const profileName = profile?.name || this.plugin.t('profiles_default');
       const errorMessage = e instanceof Error ? e.message : String(e);
       this.remoteImageError = this.plugin.t('error_connectionFailed', { profileName, error: errorMessage });
@@ -536,8 +542,8 @@ export class WpPublishModalV2 extends AbstractModal implements PublishModalConte
   async onClose() {
     const { contentEl } = this;
 
-    // 在关闭前保存生成的内容到 frontmatter
-    await this.saveGeneratedContentToFrontmatter();
+    if (!this.isPublishing) this.onDismiss();
+    revokeAllFeaturedImageUrls();
 
     contentEl.empty();
     if (this.dateInputMask) {
@@ -555,20 +561,20 @@ export class WpPublishModalV2 extends AbstractModal implements PublishModalConte
 
     try {
       await this.plugin.app.fileManager.processFrontMatter(file, (fm) => {
-        if (params.slug) fm.slug = params.slug;
+        if (params.slug !== undefined) fm.slug = params.slug;
 
         // 将分类 ID 转换为名称保存
         const categoryNames = params.categories
           .map(catId => this.categories.items.find(t => Number(t.id) === catId))
           .filter((term): term is Term => !!term && Number(term.id) > 0)
           .map(term => term.name);
-        if (categoryNames.length > 0) fm.categories = categoryNames;
+        fm.categories = categoryNames;
 
-        if (params.tags && params.tags.length > 0) {
+        if (params.tags !== undefined) {
           fm.tags = TagFormatter.formatTags(params.tags, this.plugin.settings.tagFormat);
         }
 
-        if (params.excerpt) fm.excerpt = params.excerpt;
+        if (params.excerpt !== undefined) fm.excerpt = params.excerpt;
       });
 
       new Notice(this.t('publishModal_settingsSaved') || 'Settings saved');
@@ -576,53 +582,6 @@ export class WpPublishModalV2 extends AbstractModal implements PublishModalConte
     } catch (error) {
       log.error('Failed to save params to frontmatter:', error);
       new Notice(this.plugin.t('error_saveFailed', { error: error instanceof Error ? error.message : String(error) }));
-    }
-  }
-
-  /**
-   * 保存生成的内容（标签、摘要等）到 frontmatter
-   * 当用户生成内容后关闭窗口时，确保内容不会丢失
-   */
-  private async saveGeneratedContentToFrontmatter(): Promise<void> {
-    if (!this.currentParams || !this.notePath) {
-      return;
-    }
-
-    const file = this.plugin.app.vault.getAbstractFileByPath(this.notePath);
-    if (!file || !(file instanceof TFile)) {
-      return;
-    }
-
-    try {
-      // 检查是否有需要保存的生成内容
-      const hasGeneratedTags = this.currentParams.tags &&
-                               this.currentParams.tags.length > 0 &&
-                               JSON.stringify(this.currentParams.tags) !== JSON.stringify(this.matterData.tags);
-
-      const hasGeneratedExcerpt = this.currentParams.excerpt &&
-                                  this.currentParams.excerpt !== this.matterData.excerpt;
-
-      if (!hasGeneratedTags && !hasGeneratedExcerpt) {
-        return; // 没有需要保存的内容
-      }
-
-      // 使用 processFrontMatter 更新 frontmatter
-      await this.plugin.app.fileManager.processFrontMatter(file, (fm) => {
-        if (hasGeneratedTags) {
-          // 根据用户设置格式化标签
-          fm.tags = TagFormatter.formatTags(
-            this.currentParams!.tags,
-            this.plugin.settings.tagFormat
-          );
-          log.info('Saved generated tags to frontmatter:', this.currentParams!.tags);
-        }
-        if (hasGeneratedExcerpt) {
-          fm.excerpt = this.currentParams!.excerpt;
-          log.info('Saved generated excerpt to frontmatter');
-        }
-      });
-    } catch (error) {
-      log.error('Failed to save generated content to frontmatter:', error);
     }
   }
 
@@ -1331,26 +1290,7 @@ export class WpPublishModalV2 extends AbstractModal implements PublishModalConte
             throw new Error('User cancelled');
           });
       } else {
-        return new Promise<void>((resolve, reject) => {
-          try {
-            this.onSubmit(params, fm => {
-              // Save excerpt and tags to frontmatter via callback
-              if (params.excerpt) {
-                fm.excerpt = params.excerpt;
-              }
-              if (params.tags && params.tags.length > 0) {
-                // 根据用户设置格式化标签
-                fm.tags = TagFormatter.formatTags(
-                  params.tags,
-                  this.plugin.settings.tagFormat
-                );
-              }
-            }, this.featuredImage || undefined);
-            resolve();
-          } catch (e) {
-            reject(e);
-          }
-        });
+        return this.onSubmit(params, () => {}, this.featuredImage || undefined);
       }
     };
 
@@ -1364,6 +1304,8 @@ export class WpPublishModalV2 extends AbstractModal implements PublishModalConte
         this.showSuccessNotice();
       })
       .catch(err => {
+        this.isPublishing = false;
+        this.modalEl.style.display = '';
         log.error('Publish error:', err);
         progressOverlay.remove();
         if (err instanceof Error && err.message !== 'User cancelled') {

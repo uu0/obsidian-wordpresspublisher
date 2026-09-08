@@ -1,3 +1,4 @@
+import MarkdownIt from 'markdown-it';
 import { Notice, TFile } from 'obsidian';
 import WordpressPlugin from './main';
 import {
@@ -12,8 +13,8 @@ import {
 import { WpPublishModalV2 } from './wp-publish-modal-v2';
 import { compressImage } from './featured-image-modal';
 import { PostType, PostTypeConst, Term } from './wp-api';
-import { ERROR_NOTICE_TIMEOUT, WP_DEFAULT_PROFILE_NAME, FEATURED_IMAGE_UPLOAD_MAX_RETRIES, FEATURED_IMAGE_UPLOAD_RETRY_DELAY_MS, AUTH_CACHE_DURATION_MS } from './consts';
-import { isPromiseFulfilledResult, isValidUrl, openWithBrowser, processFile, SafeAny, showError, sleep } from './utils';
+import { WP_DEFAULT_PROFILE_NAME, AUTH_CACHE_DURATION_MS } from './consts';
+import { isValidUrl, openWithBrowser, processFile, SafeAny, showError } from './utils';
 import { WpProfile } from './wp-profile';
 import { AppState } from './app-state';
 import { ConfirmCode, openConfirmModal } from './confirm-modal';
@@ -25,6 +26,10 @@ import { isFunction } from 'lodash-es';
 import { FrontmatterManager, RemotePostData } from './frontmatter-manager';
 import { openConflictModal } from './frontmatter-conflict-modal';
 import { TagFormatter } from './tag-formatter';
+import { HttpError } from './rest-client';
+import { resolveUncertainUpload } from './publish-recovery-modal';
+import { sanitizeHtml } from './html-sanitizer';
+import { applyPublishedNote, PublishCancelledError, PublishCheckpoint, publishKey } from './publish-safety';
 import { createModuleLogger } from './utils/logger';
 
 // 将散落的 console.* 统一收口到插件 logger（支持多参数）
@@ -38,6 +43,10 @@ interface AuthCacheEntry {
 }
 
 // Static cache for authentication across all client instances
+const activePublications = new Set<string>();
+
+const mediaUploads = new Map<string, Promise<WordPressClientResult<WordPressMediaUploadResult>>>();
+
 const globalAuthCache = new Map<string, AuthCacheEntry>();
 
 export abstract class AbstractWordPressClient implements WordPressClient {
@@ -103,7 +112,8 @@ export abstract class AbstractWordPressClient implements WordPressClient {
 
   abstract getPost(
     postId: string | number,
-    certificate: WordPressAuthParams
+    certificate: WordPressAuthParams,
+    postType?: PostType
   ): Promise<SafeAny | null>;
 
   abstract getMediaUrl(
@@ -123,10 +133,11 @@ export abstract class AbstractWordPressClient implements WordPressClient {
    */
   protected async fetchRemotePostData(
     postId: string | number,
-    auth: WordPressAuthParams
+    auth: WordPressAuthParams,
+    postType?: PostType
   ): Promise<RemotePostData | null> {
     try {
-      const post = await this.getPost(postId, auth);
+      const post = await this.getPost(postId, auth, postType);
       if (!post) return null;
 
       // Fetch categories list if we have categories to extract
@@ -156,8 +167,7 @@ export abstract class AbstractWordPressClient implements WordPressClient {
         featurePicture: post._embedded?.['wp:featuredmedia']?.[0]?.source_url || undefined
       };
     } catch (error) {
-      wpLog.error('[fetchRemotePostData] Error fetching remote post:', error);
-      return null;
+      throw error;
     }
   }
 
@@ -185,7 +195,7 @@ export abstract class AbstractWordPressClient implements WordPressClient {
    * Get the cache key for the current profile
    */
   private getAuthCacheKey(): string {
-    return `${this.profile.name}_${this.profile.endpoint}`;
+    return `${this.profile.name}_${this.profile.endpoint}_${this.profile.username ?? ""}_${this.profile.savePassword}`;
   }
 
   /**
@@ -266,6 +276,8 @@ export abstract class AbstractWordPressClient implements WordPressClient {
           }
           // Cache the successful auth (P1 feature)
           this.cacheAuth(auth);
+        } else {
+          throw new Error(this.plugin.i18n.t('error_invalidUser'));
         }
       }
     } catch (error) {
@@ -299,182 +311,186 @@ export abstract class AbstractWordPressClient implements WordPressClient {
           profileName: this.profile.name
         })
       }, this.plugin);
-      if (confirm.code !== ConfirmCode.Cancel) {
+      if (confirm.code === ConfirmCode.Cancel) throw new PublishCancelledError();
+      {
         delete matterData.postId;
         matterData.categories = this.profile.lastSelectedCategories ?? [ 1 ];
       }
     }
   }
 
+  async resolveUncertainPublish(): Promise<void> {
+    const file = this.plugin.app.workspace.getActiveFile();
+    if (!file) throw new Error('Open the source note first.');
+    const key = publishKey(this.profile.endpoint, file.path);
+    if (activePublications.has(key)) throw new Error('Wait for the active publish to finish.');
+    activePublications.add(key);
+    try {
+      const auth = await this.getAuth();
+      const data = await this.plugin.loadData();
+      const checkpoint = data?.publishCheckpoints?.[key] as PublishCheckpoint | undefined;
+      if (checkpoint?.stage === 'published') { await this.recoverPublication(file); return; }
+      if (checkpoint) {
+        await resolveUncertainUpload(this.plugin.app, `${this.profile.endpoint}: ${file.path}`, async id => {
+          if (id) {
+            const post = await this.getPost(id, auth, String(checkpoint.metadata.postType || 'post'));
+            if (!post) throw new Error('That post was not found on this site.');
+            await this.saveCheckpoint(file, { ...checkpoint, stage: 'published', postId: id, metadata: { ...checkpoint.metadata, postId: id } });
+            await this.recoverPublication(file);
+          } else await this.saveCheckpoint(file);
+        });
+      }
+      const receipts = data?.mediaReceipts ?? {};
+      for (const [receiptKey, value] of Object.entries(receipts)) {
+        const receipt = value as { endpoint: string; fileName: string; pending?: boolean };
+        if (!receipt.pending || receipt.endpoint !== this.profile.endpoint) continue;
+        await resolveUncertainUpload(this.plugin.app, `${receipt.endpoint}: ${receipt.fileName}`, async id => {
+          const url = id ? await this.getMediaUrl(id, auth) : null;
+          if (id && !url) throw new Error('That media item was not found on this site.');
+          await this.plugin.updateStoredData(stored => {
+            const items = (stored.mediaReceipts ?? {}) as Record<string, unknown>;
+            if (id) items[receiptKey] = { ...receipt, pending: false, result: { id: Number(id), url } };
+            else delete items[receiptKey];
+            stored.mediaReceipts = items;
+          });
+        });
+      }
+      if (!checkpoint && !Object.values(receipts).some(value => (value as { pending?: boolean; endpoint?: string }).pending && (value as { endpoint?: string }).endpoint === this.profile.endpoint)) {
+        new Notice('No uncertain publish or upload for this site.');
+      }
+    } finally { activePublications.delete(key); }
+  }
+
+  private async uploadMediaSafely(media: Media, auth: WordPressAuthParams): Promise<WordPressClientResult<WordPressMediaUploadResult>> {
+    const hash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', media.content))).map(byte => byte.toString(16).padStart(2, '0')).join('');
+    const key = JSON.stringify([this.profile.endpoint, media.fileName, media.mimeType, media.altText ?? '', hash]);
+    const running = mediaUploads.get(key);
+    if (running) return running;
+    const operation = (async (): Promise<WordPressClientResult<WordPressMediaUploadResult>> => {
+      const existing = (await this.plugin.loadData())?.mediaReceipts?.[key];
+      if (existing?.pending) throw new Error(`Upload result unknown for ${media.fileName}. Check the media library and use “Resolve uncertain publish” before retrying.`);
+      if (existing?.result) return { code: WordPressClientReturnCode.OK, data: existing.result };
+      const save = async (result?: WordPressMediaUploadResult) => this.plugin.updateStoredData(data => {
+        const receipts = (data.mediaReceipts ?? {}) as Record<string, unknown>;
+        receipts[key] = { endpoint: this.profile.endpoint, fileName: media.fileName, pending: !result, result };
+        data.mediaReceipts = receipts;
+      });
+      await save();
+      const result = await this.uploadMedia(media, auth);
+      if (result.code === WordPressClientReturnCode.OK) await save(result.data);
+      if (result.code !== WordPressClientReturnCode.OK && result.response instanceof HttpError && result.response.status < 500) {
+        await this.plugin.updateStoredData(data => { delete (data.mediaReceipts as Record<string, unknown>)[key]; });
+      }
+      // A transport failure may have happened after the server accepted the bytes.
+      return result;
+    })();
+    mediaUploads.set(key, operation);
+    try { return await operation; } finally { mediaUploads.delete(key); }
+  }
+
+  private async saveCheckpoint(file: TFile, value?: PublishCheckpoint): Promise<void> {
+    await this.plugin.updateStoredData(data => {
+      const checkpoints = (data.publishCheckpoints ?? {}) as Record<string, PublishCheckpoint>;
+      const key = publishKey(this.profile.endpoint, file.path);
+      if (value) checkpoints[key] = value;
+      else delete checkpoints[key];
+      data.publishCheckpoints = checkpoints;
+    });
+  }
+
+  private async recoverPublication(file: TFile): Promise<WordPressClientResult<WordPressPublishResult> | null> {
+    const data = await this.plugin.loadData();
+    const checkpoint = data?.publishCheckpoints?.[publishKey(this.profile.endpoint, file.path)] as PublishCheckpoint | undefined;
+    if (!checkpoint) return null;
+    if (checkpoint.stage === 'sending') {
+      throw new Error('A previous publish has an unknown result. Check WordPress before retrying. Use the “Resolve uncertain publish” command to record its post ID or confirm it did not succeed.');
+    }
+    // Explicit retry recovers metadata only, preserving any edits made since the publish.
+    await this.plugin.app.fileManager.processFrontMatter(file, fm => Object.assign(fm, checkpoint.metadata));
+    await this.saveCheckpoint(file);
+    new Notice('Recovered the existing WordPress post ID. Your current note content was preserved.');
+    return { code: WordPressClientReturnCode.OK, data: { postId: checkpoint.postId!, categories: [] } };
+  }
+
   private async tryToPublish(params: {
     postParams: WordPressPostParams,
     auth: WordPressAuthParams,
+    file: TFile,
+    sourceSnapshot: string,
     updateMatterData?: (matter: MatterData) => void,
   }): Promise<WordPressClientResult<WordPressPublishResult>> {
-    const { postParams, auth, updateMatterData } = params;
-    // Save original tag names before converting to IDs
-    const tagNames = [...postParams.tags] as string[];
-    const tagTerms = await this.getTags(postParams.tags, auth);
-    postParams.tags = tagTerms.map(term => term.id);
-
-    // Create any local-only categories (negative IDs) on the remote before publishing
-    const resolvedCategories: number[] = [];
-    const failedCategories: string[] = [];
-    
-    for (const catId of postParams.categories) {
-      if (catId < 0) {
-        // This is a local-only category, create it on the remote now
-        const term = this.categoriesList.find(t => String(t.id) === String(catId));
-        if (term) {
-          try {
-            const newTerm = await this.createCategory(term.name, auth);
-            // Update the categories list with the real term
-            const idx = this.categoriesList.indexOf(term);
-            if (idx >= 0) this.categoriesList[idx] = newTerm;
-            resolvedCategories.push(Number(newTerm.id));
-            wpLog.info(`[tryToPublish] Created remote category: ${term.name} -> ID ${newTerm.id}`);
-          } catch (e) {
-            wpLog.error(`[tryToPublish] Failed to create category: ${term.name}`, e);
-            failedCategories.push(term.name);
-            // Continue to try other categories, but collect failed ones
-          }
-        }
-      } else {
-        resolvedCategories.push(catId);
-      }
+    const { auth, file, sourceSnapshot, updateMatterData } = params;
+    const recovered = await this.recoverPublication(file);
+    if (recovered) return recovered;
+    if (await this.plugin.app.vault.read(file) !== sourceSnapshot) {
+      throw new Error('The source note changed. Reopen the publisher to use its latest content.');
     }
-    
-    // If any categories failed to create, show an error and stop publishing
-    if (failedCategories.length > 0) {
-      throw new Error(this.plugin.i18n.t('error_categoriesCreationFailed', {
-        names: failedCategories.join(', ')
-      }));
-    }
-    
-    // If all categories are local-only and all failed, we should have at least one category
-    if (resolvedCategories.length === 0 && postParams.categories.length > 0) {
-      throw new Error(this.plugin.i18n.t('error_noCategoriesAvailable'));
-    }
-    
-    postParams.categories = resolvedCategories;
-
-    await this.updatePostImages({
-      auth,
-      postParams
-    });
-    const html = AppState.markdownParser.render(postParams.content);
-    const result = await this.publish(
-      postParams.title ?? 'A post from Obsidian!',
-      html,
-      postParams,
-      auth);
-    if (result.code === WordPressClientReturnCode.Error) {
-      throw new Error(this.plugin.i18n.t('error_publishFailed', {
-        code: result.error.code as string,
-        message: result.error.message
+    if (!['post', 'page'].includes(params.postParams.postType)) throw new Error('This version supports posts and pages only.');
+    // Never mutate the modal's draft into remote IDs/URLs; retries still start from local values.
+    const postParams = { ...params.postParams, tags: [...params.postParams.tags], categories: [...params.postParams.categories] };
+    const tagNames = [...postParams.tags];
+    if (postParams.postType === 'post') {
+      const terms = await this.getTags(tagNames, auth);
+      postParams.tags = terms.map(term => term.id);
+      postParams.categories = await Promise.all(postParams.categories.map(async id => {
+        if (id >= 0) return id;
+        const term = this.categoriesList.find(t => Number(t.id) === id);
+        if (!term) throw new Error('Selected category no longer exists. Reopen the publisher.');
+        const created = await this.createCategory(term.name, auth);
+        return Number(created.id);
       }));
     } else {
-      // post id will be returned if creating, true if editing
-      const postId = result.data.postId;
-      if (postId) {
-        // Sync featured image URL if featuredImageId exists but featurePicture is missing
-        if (postParams.featuredMedia && !updateMatterData) {
-          // Only sync if no custom updateMatterData callback (which handles new uploads)
-          try {
-            const mediaUrl = await this.getMediaUrl(postParams.featuredMedia, auth);
-            if (mediaUrl) {
-              wpLog.info(`[tryToPublish] Synced featurePicture from featuredImageId: ${postParams.featuredMedia} -> ${mediaUrl}`);
-            }
-          } catch (e) {
-            wpLog.warn('[tryToPublish] Failed to sync featurePicture:', e);
-          }
-        }
-
-        // const modified = matter.stringify(postParams.content, matterData, matterOptions);
-        // this.updateFrontMatter(modified);
-        const file = this.plugin.app.workspace.getActiveFile();
-        if (file) {
-          await this.plugin.app.fileManager.processFrontMatter(file, fm => {
-            const knownKeys = ['blogName', 'postId', 'postType', 'categories', 'slug', 'featurePicture', 'featuredImageId', 'tags'];
-            const existingKeys = Object.keys(fm);
-            // Preserve existing non-plugin fields
-            const existingOtherFields: Record<string, any> = {};
-            for (const key of existingKeys) {
-              if (!knownKeys.includes(key) && key !== 'excerpt' && key !== 'content') {
-                existingOtherFields[key] = fm[key];
-              }
-            }
-
-            // Write fields in fixed order
-            // We rebuild the frontmatter to ensure correct ordering
-            // Obsidian's processFrontMatter preserves insertion order
-
-            // 1. blogName
-            fm.blogName = this.profile.name;
-            // 2. postId
-            fm.postId = postId;
-            // 3. postType
-            fm.postType = postParams.postType;
-            // 4. categories (array format)
-            if (postParams.postType === PostTypeConst.Post) {
-              // Write category names instead of IDs
-              const categoryNames = postParams.categories.map(catId => {
-                const term = this.categoriesList.find(t => String(t.id) === String(catId));
-                return term ? term.name : String(catId);
-              });
-              // Use array format for categories
-              fm.categories = categoryNames.length > 0 ? categoryNames : [];
-            }
-            // 5. slug
-            fm.slug = postParams.slug || '';
-            // 6. featuredImageId (preserve existing value, will be updated by updateMatterData callback if new image uploaded)
-            // Only set empty string if not already present
-            if (!fm.featuredImageId) {
-              fm.featuredImageId = '';
-            }
-            // 7. tags (formatted according to user preference)
-            // Remove old 'tag' field if it exists (legacy cleanup)
-            delete fm.tag;
-            if (tagNames && tagNames.length > 0) {
-              // Format tags according to user preference (YAML array or inline)
-              fm.tags = TagFormatter.formatTags(
-                tagNames,
-                this.plugin.settings.tagFormat
-              );
-            } else if (!fm.tags) {
-              // Default empty value based on format preference
-              fm.tags = this.plugin.settings.tagFormat === 'inline' ? '' : [];
-            }
-
-            // Add excerpt below tag
-            if (postParams.excerpt) {
-              fm.excerpt = postParams.excerpt;
-            }
-
-            // Clean up content field from frontmatter (should not be stored there)
-            delete fm.content;
-
-            if (isFunction(updateMatterData)) {
-              updateMatterData(fm);
-            }
-          });
-        }
-
-        if (this.plugin.settings.rememberLastSelectedCategories) {
-          this.profile.lastSelectedCategories = (result.data as SafeAny).categories;
-          await this.plugin.saveSettings();
-        }
-
-        if (this.plugin.settings.showWordPressEditConfirm) {
-          openPostPublishedModal(this.plugin)
-            .then(() => {
-              openWithBrowser(`${this.profile.endpoint}/wp-admin/post.php`, {
-                action: 'edit',
-                post: postId
-              });
-            });
-        }
-      }
+      postParams.tags = [];
+      postParams.categories = [];
+    }
+    await this.updatePostImages({ auth, postParams, file });
+    const html = sanitizeHtml(AppState.markdownParser.render(postParams.content));
+    const rendered = new DOMParser().parseFromString(html, 'text/html');
+    for (const image of Array.from(rendered.querySelectorAll('img'))) {
+      const src = image.getAttribute('src') ?? '';
+      if (!/^https?:\/\//i.test(src)) throw new Error(`Unresolved image: ${src}. Use a local inline image or an HTTPS URL.`);
+    }
+    const metadata: Record<string, unknown> = {
+      blogName: this.profile.name,
+      postType: postParams.postType,
+      slug: postParams.slug ?? '',
+      excerpt: postParams.excerpt ?? '',
+      ...(postParams.featuredMedia !== undefined ? { featuredImageId: postParams.featuredMedia } : {}),
+    };
+    if (postParams.postType === 'post') {
+      metadata.categories = params.postParams.categories.map(id => this.categoriesList.find(t => Number(t.id) === id)?.name ?? String(id));
+      metadata.tags = TagFormatter.formatTags(tagNames, this.plugin.settings.tagFormat);
+    }
+    if (updateMatterData) updateMatterData(metadata);
+    // Persist intent before issuing a non-idempotent POST. Any ambiguous result blocks blind retry.
+    await this.saveCheckpoint(file, { stage: 'sending', sourcePath: file.path, metadata });
+    let result: WordPressClientResult<WordPressPublishResult>;
+    try {
+      result = await this.publish(postParams.title, html, postParams, auth);
+    } catch (error) {
+      // A definitive client rejection did not create a post; a transport failure is ambiguous.
+      if (error instanceof HttpError && error.status >= 400 && error.status < 500) await this.saveCheckpoint(file);
+      throw error;
+    }
+    if (result.code !== WordPressClientReturnCode.OK) {
+      throw new Error(result.error.message);
+    }
+    metadata.postId = result.data.postId;
+    await this.saveCheckpoint(file, { stage: 'published', sourcePath: file.path, postId: result.data.postId, metadata });
+    await this.plugin.app.vault.process(file, raw => applyPublishedNote(
+      raw, sourceSnapshot, metadata,
+      this.plugin.settings.replaceMediaLinks ? postParams.content : undefined
+    ));
+    await this.saveCheckpoint(file);
+    if (this.plugin.settings.rememberLastSelectedCategories) {
+      this.profile.lastSelectedCategories = postParams.categories;
+      // A secondary settings failure must not turn a completed post into a failed one.
+      try { await this.plugin.saveSettings(); } catch (error) { wpLog.warn('Could not save last categories', error); }
+    }
+    if (this.plugin.settings.showWordPressEditConfirm) {
+      void openPostPublishedModal(this.plugin).then(open => { if (open) openWithBrowser(`${this.profile.endpoint}/wp-admin/post.php`, {
+        action: 'edit', post: result.data.postId
+      }); }).catch(error => wpLog.warn('Could not open WordPress', error));
     }
     return result;
   }
@@ -482,74 +498,54 @@ export abstract class AbstractWordPressClient implements WordPressClient {
   private async updatePostImages(params: {
     postParams: WordPressPostParams,
     auth: WordPressAuthParams,
+    file: TFile,
   }): Promise<void> {
-    const { postParams, auth } = params;
-
-    const activeFile = this.plugin.app.workspace.getActiveFile();
-    if (activeFile === null) {
-      throw new Error(this.plugin.i18n.t('error_noActiveFile'));
-    }
-    const { activeEditor } = this.plugin.app.workspace;
-    if (activeEditor && activeEditor.editor) {
-      // process images
-      const images = getImages(postParams.content);
-      for (const img of images) {
-        if (!img.srcIsUrl) {
-          img.src = decodeURI(img.src);
-          const fileName = img.src.split("/").pop();
-          if (fileName === undefined) {
-            continue;
-          }
-          const imgFile = this.plugin.app.metadataCache.getFirstLinkpathDest(img.src, fileName);
-          if (imgFile instanceof TFile) {
-            const content = await this.plugin.app.vault.readBinary(imgFile);
-            const fileType = fileTypeChecker.detectFile(content);
-            const result = await this.uploadMedia({
-              mimeType: fileType?.mimeType ?? 'application/octet-stream',
-              fileName: imgFile.name,
-              content: content,
-              altText: img.altText
-            }, auth);
-            if (result.code === WordPressClientReturnCode.OK) {
-              if(img.width && img.height){
-                  postParams.content = postParams.content.replace(img.original, `![[${result.data.url}|${img.width}x${img.height}]]`);
-              }else if (img.width){
-                  postParams.content = postParams.content.replace(img.original, `![[${result.data.url}|${img.width}]]`);
-              }else{
-                  postParams.content = postParams.content.replace(img.original, `![[${result.data.url}]]`);
-              }
-            } else {
-              // Show detailed error message from upload result
-              const errorMsg = result.error?.message || this.plugin.i18n.t('error_mediaUploadFailed', {
-                name: imgFile.name,
-              });
-              wpLog.error(`[updatePostImages] Image upload failed: ${imgFile.name} - ${errorMsg}`);
-              new Notice(errorMsg, ERROR_NOTICE_TIMEOUT);
-            }
-          }
-        } else {
-          // src is a url, skip uploading
-        }
+    const { postParams, auth, file } = params;
+    const images = getImages(postParams.content);
+    for (const img of images.sort((a, b) => b.startIndex - a.startIndex)) {
+      if (img.srcIsUrl) continue;
+      const source = decodeURI(img.src);
+      const imgFile = this.plugin.app.metadataCache.getFirstLinkpathDest(source, file.path);
+      if (!(imgFile instanceof TFile)) throw new Error(`Image not found: ${source}`);
+      const content = await this.plugin.app.vault.readBinary(imgFile);
+      const fileType = fileTypeChecker.detectFile(content);
+      const result = await this.uploadMediaSafely({
+        mimeType: fileType?.mimeType ?? 'application/octet-stream', fileName: imgFile.name,
+        content, altText: img.altText
+      }, auth);
+      if (result.code !== WordPressClientReturnCode.OK) {
+        throw new Error(result.error.message);
       }
-      if (this.plugin.settings.replaceMediaLinks) {
-        activeEditor.editor.setValue(postParams.content);
-      }
+      const alt = (img.altText ?? '').replace(/[\[\]\\]/g, '\\$&');
+      const size = img.width ? `|${img.width}${img.height ? `x${img.height}` : ''}` : '';
+      const replacement = `![${alt}${size}](<${result.data.url}>)`;
+      postParams.content = postParams.content.slice(0, img.startIndex) + replacement + postParams.content.slice(img.endIndex);
     }
   }
 
   async publishPost(defaultPostParams?: WordPressPostParams): Promise<WordPressClientResult<WordPressPublishResult>> {
+    const file = this.plugin.app.workspace.getActiveFile();
+    if (!file) return showError('Open a note first.');
+    const key = publishKey(this.profile.endpoint, file.path);
+    if (activePublications.has(key)) return showError('This note is already being published.');
+    activePublications.add(key);
+    try { return await this.publishPostInner(defaultPostParams, file); }
+    finally { activePublications.delete(key); }
+  }
+
+  private async publishPostInner(defaultPostParams: WordPressPostParams | undefined, sourceFile: TFile): Promise<WordPressClientResult<WordPressPublishResult>> {
     try {
       if (!this.profile.endpoint || this.profile.endpoint.length === 0) {
         throw new Error(this.plugin.i18n.t('error_noEndpoint'));
       }
       // const { activeEditor } = this.plugin.app.workspace;
-      const file = this.plugin.app.workspace.getActiveFile()
+      const file = sourceFile;
       if (file === null) {
         throw new Error(this.plugin.i18n.t('error_noActiveFile'));
       }
 
-      // Step 1: Initialize/normalize frontmatter fields
-      await this.frontmatterManager.initializeFrontmatter(file);
+      const recovered = await this.recoverPublication(file);
+      if (recovered) return recovered;
 
       // get auth info
       const auth = await this.getAuth();
@@ -558,16 +554,18 @@ export abstract class AbstractWordPressClient implements WordPressClient {
       const title = file.basename;
       const { content, matter: matterData } = await processFile(file, this.plugin.app);
 
+      await this.checkExistingProfile(matterData);
+
       // Step 2: Check for conflicts with remote data (if postId exists)
       if (matterData.postId) {
-        const remoteData = await this.fetchRemotePostData(matterData.postId, auth);
+        const remoteData = await this.fetchRemotePostData(matterData.postId, auth, matterData.postType);
         if (remoteData) {
           // Update feature picture cache with remote data
           if (remoteData.featurePicture && remoteData.featuredImageId) {
             await this.plugin.featurePictureCacheManager.set(
               remoteData.postId,
               remoteData.featurePicture,
-              remoteData.featuredImageId
+              remoteData.featuredImageId, this.profile.endpoint
             );
             wpLog.info('[publishPost] Updated feature picture cache from remote');
           }
@@ -603,17 +601,20 @@ export abstract class AbstractWordPressClient implements WordPressClient {
 
       // check if profile selected is matched to the one in note property,
       // if not, ask whether to update or not
-      await this.checkExistingProfile(matterData);
+      const latestSource = await processFile(file, this.plugin.app);
+      if (latestSource.content !== content) throw new Error('The note changed while preparing the publisher. Reopen it.');
+      const sourceSnapshot = latestSource.raw;
 
       // now we're preparing the publishing data
       let postParams: WordPressPostParams;
       let result: WordPressClientResult<WordPressPublishResult> | undefined;
       if (defaultPostParams) {
+        if (!matterData.postType || matterData.postType === 'post') this.categoriesList = await this.getCategories(auth);
         postParams = this.readFromFrontMatter(title, matterData, defaultPostParams);
         postParams.content = content;
         result = await this.tryToPublish({
           auth,
-          postParams
+          postParams, file, sourceSnapshot
         });
       } else {
         let categories = await this.getCategories(auth);
@@ -697,7 +698,7 @@ export abstract class AbstractWordPressClient implements WordPressClient {
         if (postTypes.length === 0) {
           postTypes.push(PostTypeConst.Post);
         }
-        const selectedPostType = matterData.postType ?? PostTypeConst.Post;
+        const selectedPostType = matterData.postType || PostTypeConst.Post;
         result = await new Promise(resolve => {
           wpLog.info('[WpPublishModalV2] Creating modal instance...');
           const publishModal = new WpPublishModalV2(
@@ -705,13 +706,20 @@ export abstract class AbstractWordPressClient implements WordPressClient {
             { items: categories, selected: selectedCategories },
             { items: postTypes, selected: selectedPostType },
             async (postParams: WordPressPostParams, updateMatterData: (matter: MatterData) => void, featuredImage) => {
+              const recovered = await this.recoverPublication(file);
+              if (recovered) { resolve(recovered); publishModal.close(); return; }
+              if (await this.plugin.app.vault.read(file) !== sourceSnapshot) throw new Error('The note changed. Reopen the publisher.');
               // Save user-selected values from modal before readFromFrontMatter overwrites them
+              const userSelectedTitle = postParams.title;
+              const userSelectedType = postParams.postType;
               const userSelectedCategories = postParams.categories;
               const userSelectedTags = postParams.tags;
               const editedContent = postParams.content;
               const publishAsNew = postParams.publishAsNew; // Save publishAsNew flag
               
               postParams = this.readFromFrontMatter(title, matterData, postParams);
+              postParams.title = userSelectedTitle;
+              postParams.postType = userSelectedType;
               
               // Handle "publish as new" option - remove postId to create new post instead of updating
               if (publishAsNew) {
@@ -720,14 +728,14 @@ export abstract class AbstractWordPressClient implements WordPressClient {
               }
               
               // Restore user-selected values from modal (they take priority over frontmatter)
-              if (userSelectedCategories && userSelectedCategories.length > 0) {
+              if (userSelectedCategories !== undefined) {
                 postParams.categories = userSelectedCategories;
               }
-              if (userSelectedTags && userSelectedTags.length > 0) {
+              if (userSelectedTags !== undefined) {
                 postParams.tags = userSelectedTags;
               }
               // Use edited content from modal if available, otherwise use original file content
-              postParams.content = editedContent || content;
+              postParams.content = editedContent;
 
               // Store featured image info for frontmatter update
               let featuredImageUrl: string | undefined;
@@ -773,7 +781,7 @@ export abstract class AbstractWordPressClient implements WordPressClient {
                   // Upload with retry logic for transient errors (P0 feature)
                   const uploadResult = await this.uploadMediaWithRetry({
                     mimeType: imageMimeType,
-                    fileName: featuredImage.fileName,
+                    fileName: imageMimeType === 'image/jpeg' ? featuredImage.fileName.replace(/\.[^.]+$/, '.jpg') : featuredImage.fileName,
                     content: imageContent
                   }, auth, featuredImage.fileName);
 
@@ -789,12 +797,12 @@ export abstract class AbstractWordPressClient implements WordPressClient {
                       name: featuredImage.fileName,
                     });
                     wpLog.error('[WpPublishModalV2] Featured image upload failed:', errorMsg);
-                    new Notice(errorMsg, ERROR_NOTICE_TIMEOUT);
+                    throw new Error(errorMsg);
                   }
                 } else {
                   // 没有上传新图片，检查是否有缓存的 featuredImageId
                   const cachedImageId = publishModal.getCachedFeaturedImageId();
-                  if (cachedImageId) {
+                  if (cachedImageId && postParams.featuredMedia !== 0) {
                     postParams.featuredMedia = cachedImageId;
                     featuredImageId = cachedImageId;
                     wpLog.info('[WpPublishModalV2] Using cached featured image ID:', cachedImageId);
@@ -813,36 +821,33 @@ export abstract class AbstractWordPressClient implements WordPressClient {
 
                 const r = await this.tryToPublish({
                   auth,
-                  postParams,
+                  postParams, file, sourceSnapshot,
                   updateMatterData: wrappedUpdateMatterData
                 });
                 if (r.code === WordPressClientReturnCode.OK) {
                   // 发布成功，更新特色图片缓存
-                  if (featuredImageUrl && featuredImageId && postParams.postId) {
+                  if (featuredImageUrl && featuredImageId) {
                     await this.plugin.featurePictureCacheManager.set(
-                      postParams.postId,
+                      r.data.postId,
                       featuredImageUrl,
-                      featuredImageId
-                    );
+                      featuredImageId, this.profile.endpoint
+                    ).catch(error => wpLog.warn("Could not cache featured image", error));
                     wpLog.info('[WpPublishModalV2] Updated feature picture cache');
                   }
                   // 清理图片缓存
-                  await publishModal.clearImageCache();
-                  publishModal.close();
                   resolve(r);
+                  await publishModal.clearImageCache().catch(error => wpLog.warn("Could not clear image cache", error));
+                  publishModal.close();
                 }
               } catch (error) {
-                if (error instanceof Error) {
-                  return showError(error);
-                } else {
-                  throw error;
-                }
+                throw error;
               }
             },
-            matterData,
+            { ...matterData, blogName: this.profile.name },
             content,
             title,
-            file.path);  // 传递笔记路径用于缓存关联
+            file.path,
+            () => resolve({ code: WordPressClientReturnCode.Error, error: { code: 'cancelled', message: 'User cancelled' } }));  // 传递笔记路径用于缓存关联
           wpLog.info('[WpPublishModalV2] Calling publishModal.open()...');
           publishModal.open();
           wpLog.info('[WpPublishModalV2] publishModal.open() called');
@@ -854,6 +859,9 @@ export abstract class AbstractWordPressClient implements WordPressClient {
         throw new Error(this.plugin.i18n.t("message_publishFailed"));
       }
     } catch (error) {
+      if (error instanceof PublishCancelledError) {
+        return { code: WordPressClientReturnCode.Error, error: { code: 'cancelled', message: error.message } };
+      }
       if (error instanceof Error) {
         return showError(error);
       } else {
@@ -863,147 +871,12 @@ export abstract class AbstractWordPressClient implements WordPressClient {
   }
 
   private async getTags(tags: string[], certificate: WordPressAuthParams): Promise<Term[]> {
-    const results = await Promise.allSettled(tags.map(name => this.getTag(name, certificate)));
-    const terms: Term[] = [];
-    results
-      .forEach(result => {
-        if (isPromiseFulfilledResult<Term>(result)) {
-          terms.push(result.value);
-        }
-      });
-    return terms;
+    return Promise.all(tags.map(name => this.getTag(name, certificate)));
   }
 
-  /**
-   * Check if an error is a transient error that should trigger a retry
-   * Transient errors include: 502, 503, 504, timeout, network issues
-   * @param error - The error to check
-   * @returns True if the error is transient and should be retried
-   */
-  private isTransientError(error: SafeAny): boolean {
-    if (!error) return false;
-
-    const errorMessage = error.message || error.toString() || '';
-    const errorCode = error.code || error.status || '';
-
-    // Check for HTTP status codes that indicate transient server errors
-    const transientStatusCodes = ['502', '503', '504', '500'];
-    const hasTransientStatus = transientStatusCodes.some(code =>
-      errorMessage.includes(code) || String(errorCode).includes(code)
-    );
-
-    // Check for network/timeout related errors
-    const transientErrorPatterns = [
-      'timeout',
-      'network',
-      'econnreset',
-      'econnrefused',
-      'ENOTFOUND',
-      'ETIMEDOUT',
-      'socket hang up',
-      'temporary',
-      'unavailable',
-      'rate limit',
-      'too many requests'
-    ];
-    const hasTransientPattern = transientErrorPatterns.some(pattern =>
-      errorMessage.toLowerCase().includes(pattern.toLowerCase())
-    );
-
-    return hasTransientStatus || hasTransientPattern;
-  }
-
-  /**
-   * Upload media with automatic retry for transient errors (P0 feature)
-   * Implements smart error handling with up to 2 retries for transient server errors
-   * @param media - Media to upload
-   * @param certificate - Authentication credentials
-   * @param fileName - Original file name for error messages
-   * @returns Upload result with retry information
-   */
-  private async uploadMediaWithRetry(
-    media: Media,
-    certificate: WordPressAuthParams,
-    fileName: string
-  ): Promise<WordPressClientResult<WordPressMediaUploadResult>> {
-    let lastError: SafeAny;
-    let attempt = 0;
-
-    while (attempt <= FEATURED_IMAGE_UPLOAD_MAX_RETRIES) {
-      try {
-        wpLog.info(`[uploadMediaWithRetry] Attempt ${attempt + 1}/${FEATURED_IMAGE_UPLOAD_MAX_RETRIES + 1} for ${fileName}`);
-
-        const result = await this.uploadMedia(media, certificate);
-
-        if (result.code === WordPressClientReturnCode.OK) {
-          if (attempt > 0) {
-            wpLog.info(`[uploadMediaWithRetry] Upload succeeded after ${attempt + 1} attempts`);
-            new Notice(this.plugin.i18n.t('notice_featuredImageUploadRetrySuccess', {
-              fileName,
-              attempts: String(attempt + 1)
-            }), 5000);
-          }
-          return result;
-        }
-
-        // Check if this is a transient error that should be retried
-        if (result.error && this.isTransientError(result.error)) {
-          lastError = result.error;
-          attempt++;
-
-          if (attempt <= FEATURED_IMAGE_UPLOAD_MAX_RETRIES) {
-            wpLog.info(`[uploadMediaWithRetry] Transient error detected, retrying in ${FEATURED_IMAGE_UPLOAD_RETRY_DELAY_MS}ms...`, result.error);
-            new Notice(this.plugin.i18n.t('notice_featuredImageUploadRetrying', {
-              fileName,
-              attempt: String(attempt),
-              maxRetries: String(FEATURED_IMAGE_UPLOAD_MAX_RETRIES)
-            }), 3000);
-            await sleep(FEATURED_IMAGE_UPLOAD_RETRY_DELAY_MS);
-            continue;
-          }
-        } else {
-          // Non-transient error, return immediately
-          return result;
-        }
-      } catch (error) {
-        lastError = error;
-
-        // Check if this is a transient error that should be retried
-        if (this.isTransientError(error)) {
-          attempt++;
-
-          if (attempt <= FEATURED_IMAGE_UPLOAD_MAX_RETRIES) {
-            wpLog.info(`[uploadMediaWithRetry] Transient exception detected, retrying in ${FEATURED_IMAGE_UPLOAD_RETRY_DELAY_MS}ms...`, error);
-            new Notice(this.plugin.i18n.t('notice_featuredImageUploadRetrying', {
-              fileName,
-              attempt: String(attempt),
-              maxRetries: String(FEATURED_IMAGE_UPLOAD_MAX_RETRIES)
-            }), 3000);
-            await sleep(FEATURED_IMAGE_UPLOAD_RETRY_DELAY_MS);
-            continue;
-          }
-        } else {
-          // Non-transient error, throw immediately
-          throw error;
-        }
-      }
-    }
-
-    // All retries exhausted
-    wpLog.error(`[uploadMediaWithRetry] Upload failed after ${attempt} attempts`, lastError);
-
-    // Return error result with retry exhausted information
-    return {
-      code: WordPressClientReturnCode.Error,
-      error: {
-        code: WordPressClientReturnCode.ServerInternalError,
-        message: this.plugin.i18n.t('error_featuredImageUploadFailedAfterRetries', {
-          fileName,
-          attempts: String(attempt),
-          error: lastError?.message || lastError?.toString() || 'Unknown error'
-        })
-      }
-    };
+  private async uploadMediaWithRetry(media: Media, certificate: WordPressAuthParams, _fileName: string): Promise<WordPressClientResult<WordPressMediaUploadResult>> {
+    // Upload POSTs are not idempotent. Never automatically repeat an ambiguous result.
+    return this.uploadMediaSafely(media, certificate);
   }
 
   private readFromFrontMatter(
@@ -1078,23 +951,23 @@ export abstract class AbstractWordPressClient implements WordPressClient {
         }
       }
       if (matterData.tags) {
-        postParams.tags = matterData.tags as string[];
+        postParams.tags = TagFormatter.parseToArray(matterData.tags);
       } else if (params.tags && params.tags.length > 0) {
         // Preserve tags generated in modal if not in frontmatter
         postParams.tags = params.tags;
       }
     }
     // Read excerpt from frontmatter if not already set
-    if (!postParams.excerpt && matterData.excerpt) {
+    if (postParams.excerpt === undefined && matterData.excerpt !== undefined) {
       postParams.excerpt = matterData.excerpt;
     }
     // Read slug from frontmatter if not already set
-    if (!postParams.slug && matterData.slug) {
+    if (postParams.slug === undefined && matterData.slug !== undefined) {
       postParams.slug = matterData.slug;
     }
     // Read featured image ID from frontmatter if not already set
     // Also validate consistency between featuredImageId and featurePicture
-    if (!postParams.featuredMedia && matterData.featuredImageId) {
+    if (postParams.featuredMedia === undefined && matterData.featuredImageId) {
       postParams.featuredMedia = matterData.featuredImageId;
 
       // Validate and sync featurePicture if inconsistent
@@ -1122,20 +995,29 @@ interface Image {
 
 function getImages(content: string): Image[] {
   const paths: Image[] = [];
+  // Mask block/inline code without changing offsets, so examples are never uploaded or replaced.
+  const lines = content.split('\n');
+  const blocks = new MarkdownIt().parse(content, {});
+  for (const token of blocks) {
+    if ((token.type === 'fence' || token.type === 'code_block') && token.map) {
+      for (let line = token.map[0]; line < token.map[1]; line++) lines[line] = ' '.repeat(lines[line].length);
+    }
+  }
+  content = lines.join('\n').replace(/(`+)[\s\S]*?\1/g, match => ' '.repeat(match.length));
 
   // for ![Alt Text](image-url)
   let regex = /(!\[(.*?)(?:\|(\d+)(?:x(\d+))?)?]\((.*?)\))/g;
   let match;
   while ((match = regex.exec(content)) !== null) {
     paths.push({
-      src: match[5],
+      src: match[5].replace(/^<|>$/g, ''),
       altText: match[2],
       width: match[3],
       height: match[4],
       original: match[1],
       startIndex: match.index,
       endIndex: match.index + match.length,
-      srcIsUrl: isValidUrl(match[5]),
+      srcIsUrl: isValidUrl(match[5].replace(/^<|>$/g, '')),
     });
   }
 

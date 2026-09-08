@@ -128,6 +128,8 @@ export interface WordPressMediaItem {
 
 export interface WordPressClient {
 
+  resolveUncertainPublish(): Promise<void>;
+
   /**
    * Publish a post to WordPress.
    *

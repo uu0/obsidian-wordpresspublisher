@@ -13,9 +13,14 @@ import { openProfileChooserModal } from './wp-profile-chooser-modal';
 import { AppState } from './app-state';
 import { DEFAULT_SETTINGS, SettingsVersion, upgradeSettings, WordpressPluginSettings } from './plugin-settings';
 import { PassCrypto } from './pass-crypto';
-import { doClientPublish, setupMarkdownParser, showError } from './utils';
+import { setupMarkdownParser, showError } from './utils';
+import { doClientPublish } from './publisher-launcher';
 import { cloneDeep } from 'lodash-es';
 import { ImageCacheManager } from './image-cache-manager';
+import { getWordPressClient } from './wp-clients';
+import { processFile } from './utils';
+import { settingsForStorage } from './credential-settings';
+import { SerializedStore } from './serialized-store';
 import { FeaturePictureCacheManager } from './feature-picture-cache-manager';
 
 /**
@@ -23,6 +28,12 @@ import { FeaturePictureCacheManager } from './feature-picture-cache-manager';
  * Handles publishing Obsidian notes to WordPress sites
  */
 export default class WordpressPlugin extends Plugin {
+
+  private readonly storedData = new SerializedStore(() => this.loadData(), data => this.saveData(data));
+
+  updateStoredData(change: (data: Record<string, unknown>) => void | Promise<void>): Promise<void> {
+    return this.storedData.update(change);
+  }
 
   /** Plugin settings storage */
   private _settings: WordpressPluginSettings | undefined;
@@ -86,6 +97,23 @@ export default class WordpressPlugin extends Plugin {
 
     // Add ribbon icon if enabled in settings
     this.updateRibbonIcon();
+
+    this.addCommand({
+      id: 'resolve-uncertain-publish',
+      name: 'Resolve uncertain publish / 核对发布结果',
+      callback: async () => {
+        try {
+          const file = this.app.workspace.getActiveFile();
+          if (!file) throw new Error('Open the source note first.');
+          const { matter } = await processFile(file, this.app);
+          const name = matter.blogName ?? matter.profileName;
+          const profile = this.settings.profiles.find(item => name ? item.name === name : item.isDefault);
+          if (!profile) throw new Error('Choose the source site using blogName in frontmatter.');
+          const client = getWordPressClient(this, profile);
+          if (client) await client.resolveUncertainPublish();
+        } catch (error) { showError(error); }
+      }
+    });
 
     // Register command: Publish with default profile
     this.addCommand({
@@ -189,13 +217,22 @@ export default class WordpressPlugin extends Plugin {
     for (let i = 0; i < profileCount; i++) {
       const profile = this._settings?.profiles[i];
       const encryptedPassword = profile.encryptedPassword;
-      if (encryptedPassword) {
+      if (encryptedPassword && profile.savePassword) {
         profile.password = await crypto.decrypt(
           encryptedPassword.encrypted,
           encryptedPassword.key,
           encryptedPassword.vector,
           encryptedPassword.salt
-        );
+        ).catch(() => { log.warn('Could not decrypt saved password; sign in again.'); return undefined; });
+      }
+      if (!profile.savePassword) { delete profile.password; delete profile.encryptedPassword; }
+      if (profile.encryptedWpComOAuth2Token) {
+        const payload = profile.encryptedWpComOAuth2Token;
+        try {
+          const value = JSON.parse(await crypto.decrypt(payload.encrypted, payload.key, payload.vector, payload.salt));
+          if (typeof value.accessToken !== 'string' || !value.blogId) throw new Error('Invalid OAuth token');
+          profile.wpComOAuth2Token = value;
+        } catch { delete profile.wpComOAuth2Token; log.warn('Could not decrypt OAuth token; reconnect this site.'); }
       }
     }
 
@@ -208,7 +245,7 @@ export default class WordpressPlugin extends Plugin {
           aiConfig.textAI.encryptedApiKey.key,
           aiConfig.textAI.encryptedApiKey.vector,
           aiConfig.textAI.encryptedApiKey.salt
-        );
+        ).catch(() => undefined);
       }
       if (aiConfig.imageAI?.encryptedApiKey) {
         aiConfig.imageAI.apiKey = await crypto.decrypt(
@@ -216,7 +253,7 @@ export default class WordpressPlugin extends Plugin {
           aiConfig.imageAI.encryptedApiKey.key,
           aiConfig.imageAI.encryptedApiKey.vector,
           aiConfig.imageAI.encryptedApiKey.salt
-        );
+        ).catch(() => undefined);
       }
     }
 
@@ -228,8 +265,11 @@ export default class WordpressPlugin extends Plugin {
         encryptedUnsplash.key,
         encryptedUnsplash.vector,
         encryptedUnsplash.salt
-      );
+      ).catch(() => "");
     }
+
+    // Migrate legacy plaintext token fields and apply remember-password removal on disk.
+    await this.saveSettings();
 
     // Update markdown parser settings
     AppState.markdownParser.set({
@@ -240,40 +280,22 @@ export default class WordpressPlugin extends Plugin {
   /**
    * Save plugin settings to disk with encrypted passwords
    */
-  async saveSettings(): Promise<void> {
-    // Clone settings to avoid modifying the original
-    const settings = cloneDeep(this.settings);
+  private settingsSaveQueue: Promise<void> = Promise.resolve();
 
-    // Encrypt passwords before saving
-    const crypto = new PassCrypto();
-    for (let i = 0; i < settings.profiles.length; i++) {
-      const profile = settings.profiles[i];
-      const password = profile.password;
-      if (password) {
-        profile.encryptedPassword = await crypto.encrypt(password);
-        delete profile.password;
-      }
-    }
+  saveSettings(): Promise<void> {
+    const snapshot = cloneDeep(this.settings);
+    const task = this.settingsSaveQueue.then(() => this.persistSettings(snapshot));
+    this.settingsSaveQueue = task.catch(() => {});
+    return task;
+  }
 
-    // Encrypt AI API keys before saving
-    if (settings.aiConfig) {
-      if (settings.aiConfig.textAI?.apiKey) {
-        settings.aiConfig.textAI.encryptedApiKey = await crypto.encrypt(settings.aiConfig.textAI.apiKey);
-        settings.aiConfig.textAI.apiKey = undefined;
-      }
-      if (settings.aiConfig.imageAI?.apiKey) {
-        settings.aiConfig.imageAI.encryptedApiKey = await crypto.encrypt(settings.aiConfig.imageAI.apiKey);
-        settings.aiConfig.imageAI.apiKey = undefined;
-      }
-    }
-
-    // Encrypt Unsplash API key before saving
-    if (settings.unsplashAccessKey) {
-      settings.encryptedUnsplashAccessKey = await crypto.encrypt(settings.unsplashAccessKey);
-      settings.unsplashAccessKey = undefined;
-    }
-
-    await this.saveData(settings);
+  private async persistSettings(settings: WordpressPluginSettings): Promise<void> {
+    const clean = await settingsForStorage(settings);
+    await this.updateStoredData(data => {
+      delete data.unsplashAccessKey;
+      if (!('encryptedUnsplashAccessKey' in clean)) delete data.encryptedUnsplashAccessKey;
+      Object.assign(data, clean);
+    });
   }
 
   /**

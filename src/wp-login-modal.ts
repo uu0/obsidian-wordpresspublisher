@@ -1,3 +1,4 @@
+import { PublishCancelledError } from './publish-safety';
 import { Modal, Setting } from 'obsidian';
 import WordpressPlugin from './main';
 import { WpProfile } from './wp-profile';
@@ -10,7 +11,7 @@ export function openLoginModal(
   profile: WpProfile,
   validateUser: (auth: WordPressAuthParams) => Promise<boolean>,
 ): Promise<{ auth: WordPressAuthParams, loginModal: Modal }> {
-  return new Promise((resolve, _reject) => {
+  return new Promise((resolve, reject) => {
     const modal = new WpLoginModal(plugin, profile, async (auth, loginModal) => {
       const validate = await validateUser(auth);
       if (validate) {
@@ -23,6 +24,8 @@ export function openLoginModal(
         showError(plugin.i18n.t('error_invalidUser'));
       }
     });
+    const close = modal.onClose.bind(modal);
+    modal.onClose = () => { close(); reject(new PublishCancelledError()); };
     modal.open();
   });
 }
@@ -71,6 +74,7 @@ export class WpLoginModal extends AbstractModal {
       .setDesc(this.t('loginModal_passwordDesc', { url: this.profile.endpoint }))
       .addText(text => {
         text
+          .then(text => { text.inputEl.type = 'password'; })
           .setValue(this.profile.password ?? '')
           .onChange(async (value) => {
             password = value;

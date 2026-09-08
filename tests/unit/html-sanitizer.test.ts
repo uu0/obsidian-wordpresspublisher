@@ -48,3 +48,10 @@ describe('sanitizeHtml', () => {
     expect(clean).not.toContain('<object');
   });
 });
+
+it('fails closed when DOMPurify fails', () => {
+  const purify = require('dompurify');
+  const spy = jest.spyOn(purify, 'sanitize').mockImplementation(() => { throw new Error('broken'); });
+  expect(() => sanitizeHtml('<script>bad()</script>')).toThrow('Publishing has been stopped');
+  spy.mockRestore();
+});

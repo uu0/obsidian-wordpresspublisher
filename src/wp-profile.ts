@@ -48,6 +48,7 @@ export interface WpProfile {
    * OAuth2 token for wordpress.com
    */
   wpComOAuth2Token?: WordPressOAuth2Token;
+  encryptedWpComOAuth2Token?: import('./pass-crypto').EncryptedPayload;
 
   /**
    * Save username to local data.

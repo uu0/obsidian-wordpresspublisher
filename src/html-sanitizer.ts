@@ -23,13 +23,10 @@ export function sanitizeHtml(html: string): string {
     return DOMPurify.sanitize(html, {
       USE_PROFILES: { html: true, svg: true, svgFilters: true, mathMl: true },
       FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'link', 'meta', 'base', 'form', 'input', 'button'],
-      // Keep `style` (MathJax/SVG rely on it); DOMPurify already strips
-      // `expression(...)` and `javascript:` inside style values.
+      // Keep style for MathJax. Server-side sanitization remains required.
     });
   } catch (error) {
-    // Never let sanitization block a publish; fall back to the raw HTML
-    // and log so the failure is visible.
-    log.warn('HTML sanitization failed; publishing raw HTML', error);
-    return html;
+    log.warn('HTML sanitization failed; publish blocked', error);
+    throw new Error('HTML sanitization failed. Publishing has been stopped.');
   }
 }
