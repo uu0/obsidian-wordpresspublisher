@@ -1,3 +1,12 @@
+## 2.1.3
+
+- Make publishing recoverable: bind writes to the source note, preserve concurrent edits and reconcile confirmed or uncertain remote results without duplicate posts.
+- Harden credentials, REST requests, HTML sanitization, media uploads and page routing.
+- Reorganize the publishing dialog around the source note and destination, with four-stage progress, persistent errors and safer retry behavior.
+- Improve mobile layout, touch targets, collapsible settings and reduced-motion behavior.
+- Restore ribbon launch feedback and REST authentication for Unicode usernames and pasted WordPress Application Passwords.
+- Add focused unit coverage and GitHub CI. Validation: 23 suites, 236 tests, strict typecheck and production build passed.
+
 ## 2.1.3-beta.4
 
 - Acknowledge ribbon and command launches while WordPress authentication and metadata are loading.

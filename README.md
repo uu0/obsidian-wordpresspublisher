@@ -176,6 +176,20 @@ Thanks to all open-source community contributors!
 
 ## Changelog
 
+### 2.1.3 (2026-09-09)
+
+**Reliable publishing and clearer long-task feedback**
+
+- Publishing is bound to the source note and preserves concurrent local edits.
+- Confirmed remote results can be recovered without sending a duplicate post; uncertain requests require explicit reconciliation.
+- The publishing dialog now identifies the note and destination and reports preparation, media upload, WordPress submission and local writeback as separate stages.
+- Mobile layout, touch controls, collapsible settings and reduced-motion behavior have been refined.
+- REST authentication supports Unicode usernames and pasted Application Passwords with display spaces, while preserving actionable WordPress errors.
+- HTML output, credential storage, media handling and posts/pages routing have been hardened.
+- Automated validation covers 23 test suites and 236 tests.
+
+---
+
 ### 2.1.2 (2026-04-08)
 
 **Internationalization & UI Icon Updates**
