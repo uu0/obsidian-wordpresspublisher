@@ -52,12 +52,31 @@ export class SettingsSidebar {
   private renderSettingsCard(container: HTMLElement, params: WordPressPostParams): void {
     const ctx = this.ctx;
     const card = container.createDiv('wp-v3-settings-card');
-    card.createDiv({
+    const titleRow = card.createDiv({
       cls: 'wp-v3-settings-card-title',
       text: ctx.plugin.t('publishModal_basicSettings') || 'Settings'
     });
+    titleRow.addClass('wp-v3-card-title-clickable');
+    const chevron = titleRow.createSpan({ cls: 'wp-v3-collapse-chevron', text: '▼' });
 
     const body = card.createDiv('wp-v3-settings-body');
+    const setExpanded = (expanded: boolean) => {
+      card.toggleClass('is-collapsed', !expanded);
+      body.style.display = expanded ? '' : 'none';
+      chevron.textContent = expanded ? '▼' : '▶';
+      titleRow.setAttribute('aria-expanded', String(expanded));
+    };
+    titleRow.setAttribute('role', 'button');
+    titleRow.setAttribute('tabindex', '0');
+    titleRow.addEventListener('click', () => setExpanded(card.hasClass('is-collapsed')));
+    titleRow.addEventListener('keydown', event => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        setExpanded(card.hasClass('is-collapsed'));
+      }
+    });
+    const isSmallScreen = window.matchMedia?.('(max-width: 680px)').matches ?? false;
+    setExpanded(!isSmallScreen);
 
     // 标题
     renderV3Field(ctx, body, ctx.plugin.t('publishModal_titleName'), 'publishModal_titleInfo', (fieldEl) => {

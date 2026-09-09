@@ -31,6 +31,7 @@ import { resolveUncertainUpload } from './publish-recovery-modal';
 import { sanitizeHtml } from './html-sanitizer';
 import { applyPublishedNote, PublishCancelledError, PublishCheckpoint, publishKey } from './publish-safety';
 import { createModuleLogger } from './utils/logger';
+import type { PublishProgressReporter } from './publish-progress';
 
 // 将散落的 console.* 统一收口到插件 logger（支持多参数）
 const wpLog = createModuleLogger('AbstractWpClient');
@@ -418,8 +419,10 @@ export abstract class AbstractWordPressClient implements WordPressClient {
     file: TFile,
     sourceSnapshot: string,
     updateMatterData?: (matter: MatterData) => void,
+    onProgress?: PublishProgressReporter,
   }): Promise<WordPressClientResult<WordPressPublishResult>> {
-    const { auth, file, sourceSnapshot, updateMatterData } = params;
+    const { auth, file, sourceSnapshot, updateMatterData, onProgress } = params;
+    onProgress?.({ stage: 'prepare' });
     const recovered = await this.recoverPublication(file);
     if (recovered) return recovered;
     if (await this.plugin.app.vault.read(file) !== sourceSnapshot) {
@@ -443,7 +446,7 @@ export abstract class AbstractWordPressClient implements WordPressClient {
       postParams.tags = [];
       postParams.categories = [];
     }
-    await this.updatePostImages({ auth, postParams, file });
+    await this.updatePostImages({ auth, postParams, file, onProgress });
     const html = sanitizeHtml(AppState.markdownParser.render(postParams.content));
     const rendered = new DOMParser().parseFromString(html, 'text/html');
     for (const image of Array.from(rendered.querySelectorAll('img'))) {
@@ -462,6 +465,7 @@ export abstract class AbstractWordPressClient implements WordPressClient {
       metadata.tags = TagFormatter.formatTags(tagNames, this.plugin.settings.tagFormat);
     }
     if (updateMatterData) updateMatterData(metadata);
+    onProgress?.({ stage: 'wordpress' });
     // Persist intent before issuing a non-idempotent POST. Any ambiguous result blocks blind retry.
     await this.saveCheckpoint(file, { stage: 'sending', sourcePath: file.path, metadata });
     let result: WordPressClientResult<WordPressPublishResult>;
@@ -477,6 +481,7 @@ export abstract class AbstractWordPressClient implements WordPressClient {
     }
     metadata.postId = result.data.postId;
     await this.saveCheckpoint(file, { stage: 'published', sourcePath: file.path, postId: result.data.postId, metadata });
+    onProgress?.({ stage: 'writeback' });
     await this.plugin.app.vault.process(file, raw => applyPublishedNote(
       raw, sourceSnapshot, metadata,
       this.plugin.settings.replaceMediaLinks ? postParams.content : undefined
@@ -499,11 +504,19 @@ export abstract class AbstractWordPressClient implements WordPressClient {
     postParams: WordPressPostParams,
     auth: WordPressAuthParams,
     file: TFile,
+    onProgress?: PublishProgressReporter,
   }): Promise<void> {
-    const { postParams, auth, file } = params;
+    const { postParams, auth, file, onProgress } = params;
     const images = getImages(postParams.content);
-    for (const img of images.sort((a, b) => b.startIndex - a.startIndex)) {
-      if (img.srcIsUrl) continue;
+    const localImages = images.filter(image => !image.srcIsUrl).sort((a, b) => b.startIndex - a.startIndex);
+    if (localImages.length === 0) onProgress?.({ stage: 'media', current: 0, total: 0 });
+    for (const [index, img] of localImages.entries()) {
+      onProgress?.({
+        stage: 'media',
+        current: index,
+        total: localImages.length,
+        detail: img.src
+      });
       const source = decodeURI(img.src);
       const imgFile = this.plugin.app.metadataCache.getFirstLinkpathDest(source, file.path);
       if (!(imgFile instanceof TFile)) throw new Error(`Image not found: ${source}`);
@@ -520,6 +533,7 @@ export abstract class AbstractWordPressClient implements WordPressClient {
       const size = img.width ? `|${img.width}${img.height ? `x${img.height}` : ''}` : '';
       const replacement = `![${alt}${size}](<${result.data.url}>)`;
       postParams.content = postParams.content.slice(0, img.startIndex) + replacement + postParams.content.slice(img.endIndex);
+      onProgress?.({ stage: 'media', current: index + 1, total: localImages.length, detail: imgFile.name });
     }
   }
 
@@ -705,7 +719,8 @@ export abstract class AbstractWordPressClient implements WordPressClient {
             this.plugin,
             { items: categories, selected: selectedCategories },
             { items: postTypes, selected: selectedPostType },
-            async (postParams: WordPressPostParams, updateMatterData: (matter: MatterData) => void, featuredImage) => {
+            async (postParams: WordPressPostParams, updateMatterData: (matter: MatterData) => void, featuredImage, onProgress) => {
+              onProgress?.({ stage: 'prepare' });
               const recovered = await this.recoverPublication(file);
               if (recovered) { resolve(recovered); publishModal.close(); return; }
               if (await this.plugin.app.vault.read(file) !== sourceSnapshot) throw new Error('The note changed. Reopen the publisher.');
@@ -744,6 +759,7 @@ export abstract class AbstractWordPressClient implements WordPressClient {
               try {
                 // Handle featured image
                 if (featuredImage) {
+                  onProgress?.({ stage: 'media', current: 0, total: 1, detail: featuredImage.fileName });
                   wpLog.info('[WpPublishModalV2] Processing featured image:', featuredImage.fileName);
 
                   // Apply image compression if enabled
@@ -786,6 +802,7 @@ export abstract class AbstractWordPressClient implements WordPressClient {
                   }, auth, featuredImage.fileName);
 
                   if (uploadResult.code === WordPressClientReturnCode.OK) {
+                    onProgress?.({ stage: 'media', current: 1, total: 1, detail: featuredImage.fileName });
                     // Get the media ID to use as featured image
                     postParams.featuredMedia = uploadResult.data.id;
                     featuredImageUrl = uploadResult.data.url;
@@ -822,7 +839,8 @@ export abstract class AbstractWordPressClient implements WordPressClient {
                 const r = await this.tryToPublish({
                   auth,
                   postParams, file, sourceSnapshot,
-                  updateMatterData: wrappedUpdateMatterData
+                  updateMatterData: wrappedUpdateMatterData,
+                  onProgress
                 });
                 if (r.code === WordPressClientReturnCode.OK) {
                   // 发布成功，更新特色图片缓存

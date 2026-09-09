@@ -432,5 +432,18 @@
   "publishModal_addTag": "🏷️ 添加标签",
   "publishModal_aiGenerateTags": "🤖 生成标签",
   "apiInfo_title": "API 信息",
-  "apiInfo_close": "关闭"
+  "apiInfo_close": "关闭",
+  "publishModal_unknownSite": "未知站点",
+  "publishModal_contentTypePost": "文章",
+  "publishModal_contentTypePage": "页面",
+  "publishModal_publishTo": "发布到",
+  "publishModal_progressTitle": "正在发布",
+  "publishModal_stagePrepare": "准备内容",
+  "publishModal_stageMedia": "上传图片",
+  "publishModal_stageWordPress": "提交到 WordPress",
+  "publishModal_stageWriteback": "保存发布记录",
+  "publishModal_progressCount": "已完成 <%= current %> / <%= total %>",
+  "publishModal_unknownResultTitle": "请核对 WordPress 结果",
+  "publishModal_unknownResultGuidance": "请求可能已经到达 WordPress。请先检查站点，再在 Obsidian 中运行“核对发布结果”。",
+  "publishModal_failureGuidance": "请查看下面的错误信息。源笔记内容未被替换。"
 }

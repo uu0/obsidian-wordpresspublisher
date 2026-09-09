@@ -432,5 +432,18 @@
   "publishModal_addTag": "🏷️ Add Tag",
   "publishModal_aiGenerateTags": "🤖 AI Generate",
   "apiInfo_title": "API Information",
-  "apiInfo_close": "Close"
+  "apiInfo_close": "Close",
+  "publishModal_unknownSite": "Unknown site",
+  "publishModal_contentTypePost": "Post",
+  "publishModal_contentTypePage": "Page",
+  "publishModal_publishTo": "Publish to",
+  "publishModal_progressTitle": "Publishing",
+  "publishModal_stagePrepare": "Prepare content",
+  "publishModal_stageMedia": "Upload media",
+  "publishModal_stageWordPress": "Send to WordPress",
+  "publishModal_stageWriteback": "Save publishing record",
+  "publishModal_progressCount": "<%= current %> of <%= total %>",
+  "publishModal_unknownResultTitle": "Check the WordPress result",
+  "publishModal_unknownResultGuidance": "The request may have reached WordPress. Check the site before trying again, then run “Resolve uncertain publish” in Obsidian.",
+  "publishModal_failureGuidance": "Review the message below. Your source note has not been replaced."
 }

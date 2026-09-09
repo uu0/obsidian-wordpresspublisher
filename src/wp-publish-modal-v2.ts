@@ -23,6 +23,7 @@ import type { PublishModalContext } from './sections/publish-modal-context';
 import { FeaturedImageSection, revokeAllFeaturedImageUrls } from './sections/featured-image-section';
 import { ContentPreviewSection } from './sections/content-preview-section';
 import { SettingsSidebar } from './sections/settings-sidebar';
+import type { PublishProgressReporter, PublishStage } from './publish-progress';
 
 const log = createModuleLogger('WpPublishModalV2');
 
@@ -80,7 +81,8 @@ export class WpPublishModalV2 extends AbstractModal implements PublishModalConte
     private readonly onSubmit: (
       params: WordPressPostParams,
       updateMatterData: (matter: MatterData) => void,
-      featuredImage?: FeaturedImageResult
+      featuredImage?: FeaturedImageResult,
+      onProgress?: PublishProgressReporter
     ) => Promise<unknown>,
     readonly matterData: MatterData,
     private readonly articleContent: string = '',
@@ -597,15 +599,28 @@ export class WpPublishModalV2 extends AbstractModal implements PublishModalConte
     contentEl.empty();
     contentEl.addClass('wp-publish-modal-v2');
 
-    // 插件名标题栏（仅显示名称，无关闭按钮）
+    // Show the destination and content kind before the user commits.
     const titleBar = contentEl.createDiv('wp-v3-title-bar');
-    titleBar.createSpan({ cls: 'wp-v3-title-bar-name', text: 'WordPress Publisher' });
+    const identity = titleBar.createDiv('wp-v3-title-identity');
+    identity.createSpan({ cls: 'wp-v3-title-bar-name', text: 'WordPress Publisher' });
+    identity.createSpan({ cls: 'wp-v3-title-note', text: params.title || this.noteTitle });
 
     // 自适应窗口宽度
     this.updateModalWidth();
 
     // 显示API能力警告（仅限XML-RPC）
     const profile = this.plugin.settings.profiles.find(p => p.name === params.profileName);
+    const destination = titleBar.createDiv('wp-v3-destination');
+    destination.createSpan({
+      cls: 'wp-v3-destination-chip',
+      text: `🌐 ${profile?.name ?? this.matterData.blogName ?? this.t('publishModal_unknownSite')}`
+    });
+    destination.createSpan({
+      cls: 'wp-v3-content-chip',
+      text: params.postType === PostTypeConst.Page
+        ? this.t('publishModal_contentTypePage')
+        : this.t('publishModal_contentTypePost')
+    });
     if (profile && profile.apiType === 'xml-rpc') {
       this.renderApiWarning(contentEl, profile.apiType);
     }
@@ -617,15 +632,8 @@ export class WpPublishModalV2 extends AbstractModal implements PublishModalConte
     const previewArea = layoutContainer.createDiv('wp-v3-preview');
     this.renderV3PreviewArea(previewArea, params);
 
-    // 右侧：设置区（flex: 1），默认不可滚动，点击激活后可滚动
+    // Settings are secondary to the preview and independently scroll on desktop.
     const sidebarArea = layoutContainer.createDiv('wp-v3-sidebar');
-    sidebarArea.style.overflowY = 'hidden';
-    sidebarArea.addEventListener('click', () => {
-      sidebarArea.style.overflowY = 'auto';
-    });
-    previewArea.addEventListener('click', () => {
-      sidebarArea.style.overflowY = 'hidden';
-    });
     this.renderV3SidebarArea(sidebarArea, params);
 
     // 底部操作栏
@@ -705,8 +713,17 @@ export class WpPublishModalV2 extends AbstractModal implements PublishModalConte
   private renderV3Footer(container: HTMLElement, params: WordPressPostParams): void {
     const footer = container.createDiv('wp-v3-footer');
 
+    const context = footer.createDiv('wp-v3-footer-context');
+    context.createSpan({ cls: 'wp-v3-footer-target', text: this.t('publishModal_publishTo') });
+    context.createSpan({
+      cls: 'wp-v3-footer-target-name',
+      text: String(this.matterData.blogName ?? params.profileName ?? this.t('publishModal_unknownSite'))
+    });
+    const secondaryActions = footer.createDiv('wp-v3-footer-secondary');
+    const primaryActions = footer.createDiv('wp-v3-footer-primary');
+
     // ✏️ 编辑按钮（靠左，进入文章内容编辑模式）
-    const editBtn = footer.createEl('button', {
+    const editBtn = secondaryActions.createEl('button', {
       text: this.t('publishModal_editButton') || '✏️ 编辑',
       cls: 'wp-v3-edit-footer-btn'
     });
@@ -716,19 +733,19 @@ export class WpPublishModalV2 extends AbstractModal implements PublishModalConte
     };
 
     // 💾 保存按钮（将参数保存到 frontmatter，不发布）
-    const saveBtn = footer.createEl('button', {
+    const saveBtn = secondaryActions.createEl('button', {
       text: this.t('publishModal_save') || '💾 Save',
       cls: 'wp-v3-save-footer-btn'
     }) as HTMLButtonElement;
     saveBtn.onclick = () => this.saveParamsToFrontmatter(params);
 
-    const cancelBtn = footer.createEl('button', {
+    const cancelBtn = secondaryActions.createEl('button', {
       text: this.t('publishModal_cancel') || '❌ Close',
       cls: 'wp-v3-cancel-footer-btn'
     });
     cancelBtn.onclick = () => this.close();
 
-    const publishBtn = footer.createEl('button', {
+    const publishBtn = primaryActions.createEl('button', {
       text: this.t('publishModal_publishButton') || '🚀 发布',
       cls: 'wp-v3-publish-footer-btn'
     }) as HTMLButtonElement;
@@ -1268,9 +1285,8 @@ export class WpPublishModalV2 extends AbstractModal implements PublishModalConte
     // 保存参数以便重试
     this.lastPublishParams = params;
 
-    // 隐藏模态窗口，显示全屏进度条
-    this.modalEl.style.display = 'none';
-    const progressOverlay = this.showPublishProgress();
+    const progress = this.showPublishProgress();
+    progress.update({ stage: 'prepare' });
 
     const doSubmit = () => {
       if (this.matterData.postType
@@ -1285,19 +1301,19 @@ export class WpPublishModalV2 extends AbstractModal implements PublishModalConte
               return this.onSubmit(params, fm => {
                 delete fm.categories;
                 delete fm.tags;
-              }, this.featuredImage || undefined);
+              }, this.featuredImage || undefined, progress.update);
             }
             throw new Error('User cancelled');
           });
       } else {
-        return this.onSubmit(params, () => {}, this.featuredImage || undefined);
+        return this.onSubmit(params, () => {}, this.featuredImage || undefined, progress.update);
       }
     };
 
     doSubmit()
       .then(() => {
         // 发布成功 - 移除进度条
-        progressOverlay.remove();
+        progress.remove();
         // 显示纸屑烟花特效
         this.showConfetti();
         // 显示成功提示
@@ -1307,7 +1323,7 @@ export class WpPublishModalV2 extends AbstractModal implements PublishModalConte
         this.isPublishing = false;
         this.modalEl.style.display = '';
         log.error('Publish error:', err);
-        progressOverlay.remove();
+        progress.remove();
         if (err instanceof Error && err.message !== 'User cancelled') {
           // 显示失败提示卡片
           this.showErrorCard(err.message);
@@ -1321,24 +1337,57 @@ export class WpPublishModalV2 extends AbstractModal implements PublishModalConte
   /**
    * 显示全屏发布进度条
    */
-  private showPublishProgress(): HTMLElement {
+  private showPublishProgress(): { update: PublishProgressReporter; remove: () => void } {
     const overlay = document.body.createDiv('wp-publish-overlay');
+    overlay.setAttribute('role', 'status');
+    overlay.setAttribute('aria-live', 'polite');
 
     const container = overlay.createDiv('wp-publish-progress-container');
-
-    // 进度动画
-    const spinner = container.createDiv('wp-publish-spinner');
-    spinner.createSpan({ cls: 'wp-spinner-cat' });
-
-    // Progress text
-    const text = container.createDiv('wp-publish-progress-text');
-    text.textContent = this.plugin.t('publishModal_publishingProgress');
-
-    // 进度条背景动画
+    const header = container.createDiv('wp-publish-progress-header');
+    header.createSpan({ cls: 'wp-publish-spinner', text: '↻' });
+    const heading = header.createDiv();
+    heading.createDiv({ cls: 'wp-publish-progress-title', text: this.t('publishModal_progressTitle') });
+    const text = heading.createDiv('wp-publish-progress-text');
     const progressBar = container.createDiv('wp-publish-progress-bar');
-    progressBar.createDiv('wp-publish-progress-fill');
+    progressBar.setAttribute('role', 'progressbar');
+    const fill = progressBar.createDiv('wp-publish-progress-fill');
+    const steps = container.createDiv('wp-publish-progress-steps');
+    const stages: PublishStage[] = ['prepare', 'media', 'wordpress', 'writeback'];
+    const labels: Record<PublishStage, string> = {
+      prepare: this.t('publishModal_stagePrepare'),
+      media: this.t('publishModal_stageMedia'),
+      wordpress: this.t('publishModal_stageWordPress'),
+      writeback: this.t('publishModal_stageWriteback')
+    };
+    const stepElements = new Map<PublishStage, HTMLElement>();
+    stages.forEach((stage, index) => {
+      const row = steps.createDiv('wp-publish-progress-step');
+      row.createSpan({ cls: 'wp-publish-step-marker', text: String(index + 1) });
+      row.createSpan({ text: labels[stage] });
+      stepElements.set(stage, row);
+    });
+    const detail = container.createDiv('wp-publish-progress-detail');
+    const update: PublishProgressReporter = state => {
+      const activeIndex = stages.indexOf(state.stage);
+      stepElements.forEach((element, stage) => {
+        const index = stages.indexOf(stage);
+        element.toggleClass('is-active', index === activeIndex);
+        element.toggleClass('is-complete', index < activeIndex);
+      });
+      const fraction = state.total && state.current !== undefined
+        ? Math.max(0, Math.min(1, state.current / state.total))
+        : 0;
+      const percent = Math.round(((activeIndex + fraction) / stages.length) * 100);
+      fill.style.width = `${percent}%`;
+      progressBar.setAttribute('aria-valuenow', String(percent));
+      text.textContent = labels[state.stage];
+      detail.textContent = state.detail
+        ?? (state.total
+          ? this.t('publishModal_progressCount', { current: String(state.current ?? 0), total: String(state.total) })
+          : '');
+    };
 
-    return overlay;
+    return { update, remove: () => overlay.remove() };
   }
 
   /**
@@ -1356,19 +1405,20 @@ export class WpPublishModalV2 extends AbstractModal implements PublishModalConte
    * 显示纸屑烟花特效
    */
   private showConfetti(): void {
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
     const container = document.body.createDiv('wp-confetti-container');
 
     // 创建多个彩色纸屑
     const colors = ['#ff6b6b', '#ffd93d', '#6bcb77', '#4d96ff', '#9c88ff', '#ff9ff3', '#54a0ff', '#5f27cd'];
-    const confettiCount = 150;
+    const confettiCount = 24;
 
     for (let i = 0; i < confettiCount; i++) {
       const confetti = container.createDiv('wp-confetti');
       const color = colors[Math.floor(Math.random() * colors.length)];
       const size = Math.random() * 10 + 5;
       const left = Math.random() * 100;
-      const animDuration = Math.random() * 2 + 2;
-      const animDelay = Math.random() * 0.5;
+      const animDuration = Math.random() * 0.4 + 0.8;
+      const animDelay = Math.random() * 0.15;
 
       confetti.style.cssText = `
         position: fixed;
@@ -1389,7 +1439,7 @@ export class WpPublishModalV2 extends AbstractModal implements PublishModalConte
     // 动画结束后移除
     setTimeout(() => {
       container.remove();
-    }, 4000);
+    }, 1600);
   }
 
   /**
@@ -1398,14 +1448,20 @@ export class WpPublishModalV2 extends AbstractModal implements PublishModalConte
   private showErrorCard(errorMessage: string): void {
     const overlay = document.body.createDiv('wp-publish-overlay');
     const container = overlay.createDiv('wp-error-card');
+    const uncertain = /unknown result|result unknown|may have accepted|结果未知/i.test(errorMessage);
 
     // 错误图标
     const icon = container.createDiv('wp-error-icon');
-    icon.setText('😢');
+    icon.setText(uncertain ? '!' : '×');
 
     // 错误标题
     const title = container.createDiv('wp-error-title');
-    title.setText(this.t('publishModal_publishFailedTitle'));
+    title.setText(uncertain ? this.t('publishModal_unknownResultTitle') : this.t('publishModal_publishFailedTitle'));
+
+    container.createDiv({
+      cls: 'wp-error-guidance',
+      text: uncertain ? this.t('publishModal_unknownResultGuidance') : this.t('publishModal_failureGuidance')
+    });
 
     // 错误详情
     const detail = container.createDiv('wp-error-detail');
@@ -1417,6 +1473,7 @@ export class WpPublishModalV2 extends AbstractModal implements PublishModalConte
     // 重试按钮
     const retryBtn = buttons.createEl('button', { cls: 'wp-error-retry-btn' });
     retryBtn.setText(this.t('publishModal_retryButton'));
+    retryBtn.toggleAttribute('hidden', uncertain);
     retryBtn.onclick = () => {
       overlay.remove();
       // 恢复模态窗口显示
@@ -1435,13 +1492,7 @@ export class WpPublishModalV2 extends AbstractModal implements PublishModalConte
       this.close();
     };
 
-    // 5秒后自动关闭
-    setTimeout(() => {
-      if (overlay.isConnected) {
-        overlay.remove();
-        this.close();
-      }
-    }, 8000);
+    // Keep the failure visible until the user chooses an action.
   }
 
   /**

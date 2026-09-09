@@ -93,6 +93,56 @@
   letter-spacing: 0.02em;
 }
 
+.wp-v3-title-bar {
+  justify-content: space-between;
+  gap: 16px;
+  padding-block: 10px;
+}
+
+.wp-v3-title-identity {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 2px;
+}
+
+.wp-v3-title-note {
+  overflow: hidden;
+  color: var(--text-normal);
+  font-size: 15px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wp-v3-destination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
+}
+
+.wp-v3-destination-chip,
+.wp-v3-content-chip {
+  max-width: 180px;
+  overflow: hidden;
+  padding: 4px 8px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 999px;
+  background: var(--background-secondary);
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wp-v3-content-chip {
+  max-width: none;
+  color: var(--interactive-accent);
+}
+
 /* WordPress Publish Modal V2 Styles */
 .wp-publish-modal-v2 {
   padding: 12px 20px;
@@ -196,7 +246,7 @@
   min-width: 240px;
   max-width: 320px;
   border-left: 1px solid var(--background-modifier-border);
-  overflow-y: hidden; /* JS 控制 */
+  overflow-y: auto;
   overflow-x: hidden;
   padding: 16px;
   display: flex;
@@ -1190,6 +1240,36 @@
   flex-shrink: 0;
 }
 
+.wp-v3-footer-context {
+  display: flex;
+  flex-direction: column;
+  min-width: 120px;
+  margin-right: auto;
+}
+
+.wp-v3-footer-target {
+  color: var(--text-faint);
+  font-size: 10px;
+  line-height: 1.2;
+}
+
+.wp-v3-footer-target-name {
+  max-width: 220px;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wp-v3-footer-secondary,
+.wp-v3-footer-primary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 /* 编辑按钮（✏️编辑内容） */
 .wp-v3-edit-footer-btn {
   padding: 8px 16px;
@@ -1201,7 +1281,7 @@
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s ease;
-  margin-right: auto; /* 靠左 */
+  margin-right: 0;
 }
 
 .wp-v3-edit-footer-btn:hover {
@@ -3135,6 +3215,255 @@
   .feature-btn:hover,
   .publish-btn:hover {
     transform: none !important;
+  }
+}
+
+/* Publishing state: compact, readable and stable during long uploads. */
+.wp-publish-progress-container {
+  width: min(420px, calc(100vw - 32px));
+  padding: 24px;
+  text-align: left;
+}
+
+.wp-publish-progress-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.wp-publish-spinner {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--background-secondary);
+  color: var(--interactive-accent);
+  font-size: 20px;
+  animation: spin 1.1s linear infinite;
+}
+
+.wp-publish-progress-title {
+  color: var(--text-normal);
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.wp-publish-progress-text {
+  margin: 2px 0 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.wp-publish-progress-bar {
+  width: 100%;
+  height: 5px;
+  margin: 0 0 18px;
+}
+
+.wp-publish-progress-fill {
+  width: 0;
+  animation: none;
+  transition: width 180ms ease-out;
+}
+
+.wp-publish-progress-steps {
+  display: grid;
+  gap: 9px;
+}
+
+.wp-publish-progress-step {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+.wp-publish-step-marker {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 50%;
+  font-size: 10px;
+}
+
+.wp-publish-progress-step.is-active {
+  color: var(--text-normal);
+  font-weight: 600;
+}
+
+.wp-publish-progress-step.is-active .wp-publish-step-marker {
+  border-color: var(--interactive-accent);
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.wp-publish-progress-step.is-complete {
+  color: var(--text-success, var(--color-green));
+}
+
+.wp-publish-progress-step.is-complete .wp-publish-step-marker {
+  border-color: currentColor;
+}
+
+.wp-publish-progress-detail {
+  min-height: 18px;
+  margin-top: 14px;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wp-error-card {
+  width: min(440px, calc(100vw - 32px));
+  padding: 28px;
+  text-align: left;
+  animation: progressPopIn 0.18s ease-out;
+}
+
+.wp-error-icon {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  margin-bottom: 12px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--background-modifier-error);
+  color: var(--text-on-accent);
+  font-size: 24px;
+  font-weight: 700;
+  animation: none;
+}
+
+.wp-error-title {
+  font-size: 19px;
+}
+
+.wp-error-guidance {
+  margin-bottom: 10px;
+  color: var(--text-normal);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.wp-error-buttons {
+  justify-content: flex-end;
+}
+
+@media (max-width: 680px) {
+  .wp-v3-title-bar {
+    align-items: flex-start;
+    padding: 10px 12px;
+  }
+
+  .wp-v3-title-note {
+    max-width: 52vw;
+    font-size: 14px;
+  }
+
+  .wp-v3-destination {
+    flex-wrap: wrap;
+  }
+
+  .wp-v3-destination-chip {
+    max-width: 28vw;
+  }
+
+  .wp-v3-sidebar {
+    padding: 12px !important;
+    background: var(--background-secondary-alt, var(--background-secondary));
+  }
+
+  .wp-v3-footer {
+    display: grid !important;
+    grid-template-columns: 1fr auto !important;
+    flex-wrap: nowrap !important;
+  }
+
+  .wp-v3-footer-context {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .wp-v3-footer-target-name {
+    max-width: 60vw;
+  }
+
+  .wp-v3-footer-secondary {
+    min-width: 0;
+  }
+
+  .wp-v3-footer-secondary button {
+    overflow: hidden;
+    padding: 7px 10px !important;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .wp-v3-footer-primary,
+  .wp-v3-publish-footer-btn {
+    width: 100%;
+  }
+
+  .wp-v3-publish-footer-btn {
+    min-height: 44px;
+  }
+
+  .wp-publish-overlay {
+    align-items: flex-end;
+    padding: 12px;
+    box-sizing: border-box;
+  }
+
+  .wp-publish-progress-container,
+  .wp-error-card {
+    width: 100%;
+    max-height: min(82vh, 620px);
+    padding: 20px;
+    overflow-y: auto;
+    border-radius: 14px;
+    box-sizing: border-box;
+  }
+
+  .wp-error-buttons {
+    position: sticky;
+    bottom: 0;
+    background: var(--background-primary);
+  }
+}
+
+@media (max-width: 360px) {
+  .wp-v3-footer {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+  }
+
+  .wp-v3-footer-secondary,
+  .wp-v3-footer-primary {
+    width: 100%;
+  }
+
+  .wp-v3-footer-secondary button {
+    flex: 1;
+    width: auto !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wp-publish-spinner,
+  .wp-publish-progress-fill,
+  .wp-error-card {
+    animation: none !important;
+    transition: none !important;
   }
 }
 

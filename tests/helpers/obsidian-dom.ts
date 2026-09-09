@@ -80,6 +80,10 @@ export function installObsidianDomPolyfill(): void {
     return this.classList.contains(cls);
   };
 
+  proto.toggleClass = function (cls: string, force?: boolean) {
+    this.classList.toggle(cls, force);
+  };
+
   proto.setAttr = function (attrs: Record<string, string>) {
     for (const k of Object.keys(attrs)) this.setAttribute(k, attrs[k]);
   };

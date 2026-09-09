@@ -110090,13 +110090,33 @@ var init_settings_sidebar = __esm({
         }
       }
       renderSettingsCard(container, params) {
+        var _a5, _b;
         const ctx = this.ctx;
         const card = container.createDiv("wp-v3-settings-card");
-        card.createDiv({
+        const titleRow = card.createDiv({
           cls: "wp-v3-settings-card-title",
           text: ctx.plugin.t("publishModal_basicSettings") || "Settings"
         });
+        titleRow.addClass("wp-v3-card-title-clickable");
+        const chevron = titleRow.createSpan({ cls: "wp-v3-collapse-chevron", text: "\u25BC" });
         const body = card.createDiv("wp-v3-settings-body");
+        const setExpanded = (expanded) => {
+          card.toggleClass("is-collapsed", !expanded);
+          body.style.display = expanded ? "" : "none";
+          chevron.textContent = expanded ? "\u25BC" : "\u25B6";
+          titleRow.setAttribute("aria-expanded", String(expanded));
+        };
+        titleRow.setAttribute("role", "button");
+        titleRow.setAttribute("tabindex", "0");
+        titleRow.addEventListener("click", () => setExpanded(card.hasClass("is-collapsed")));
+        titleRow.addEventListener("keydown", (event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            setExpanded(card.hasClass("is-collapsed"));
+          }
+        });
+        const isSmallScreen = (_b = (_a5 = window.matchMedia) == null ? void 0 : _a5.call(window, "(max-width: 680px)").matches) != null ? _b : false;
+        setExpanded(!isSmallScreen);
         renderV3Field(ctx, body, ctx.plugin.t("publishModal_titleName"), "publishModal_titleInfo", (fieldEl) => {
           const input = fieldEl.createEl("input", { cls: "wp-v3-input", type: "text" });
           input.value = params.title || "";
@@ -110751,15 +110771,27 @@ var init_wp_publish_modal_v2 = __esm({
         }
       }
       display(params) {
+        var _a5, _b;
         const { contentEl } = this;
         revokeAllFeaturedImageUrls();
         this.currentParams = params;
         contentEl.empty();
         contentEl.addClass("wp-publish-modal-v2");
         const titleBar = contentEl.createDiv("wp-v3-title-bar");
-        titleBar.createSpan({ cls: "wp-v3-title-bar-name", text: "WordPress Publisher" });
+        const identity2 = titleBar.createDiv("wp-v3-title-identity");
+        identity2.createSpan({ cls: "wp-v3-title-bar-name", text: "WordPress Publisher" });
+        identity2.createSpan({ cls: "wp-v3-title-note", text: params.title || this.noteTitle });
         this.updateModalWidth();
         const profile = this.plugin.settings.profiles.find((p) => p.name === params.profileName);
+        const destination = titleBar.createDiv("wp-v3-destination");
+        destination.createSpan({
+          cls: "wp-v3-destination-chip",
+          text: `\u{1F310} ${(_b = (_a5 = profile == null ? void 0 : profile.name) != null ? _a5 : this.matterData.blogName) != null ? _b : this.t("publishModal_unknownSite")}`
+        });
+        destination.createSpan({
+          cls: "wp-v3-content-chip",
+          text: params.postType === "page" /* Page */ ? this.t("publishModal_contentTypePage") : this.t("publishModal_contentTypePost")
+        });
         if (profile && profile.apiType === "xml-rpc") {
           this.renderApiWarning(contentEl, profile.apiType);
         }
@@ -110767,13 +110799,6 @@ var init_wp_publish_modal_v2 = __esm({
         const previewArea = layoutContainer.createDiv("wp-v3-preview");
         this.renderV3PreviewArea(previewArea, params);
         const sidebarArea = layoutContainer.createDiv("wp-v3-sidebar");
-        sidebarArea.style.overflowY = "hidden";
-        sidebarArea.addEventListener("click", () => {
-          sidebarArea.style.overflowY = "auto";
-        });
-        previewArea.addEventListener("click", () => {
-          sidebarArea.style.overflowY = "hidden";
-        });
         this.renderV3SidebarArea(sidebarArea, params);
         this.renderV3Footer(contentEl, params);
       }
@@ -110836,26 +110861,35 @@ var init_wp_publish_modal_v2 = __esm({
       }
       // ==================== V3.1 底部操作栏 ====================
       renderV3Footer(container, params) {
+        var _a5, _b;
         const footer = container.createDiv("wp-v3-footer");
-        const editBtn = footer.createEl("button", {
+        const context = footer.createDiv("wp-v3-footer-context");
+        context.createSpan({ cls: "wp-v3-footer-target", text: this.t("publishModal_publishTo") });
+        context.createSpan({
+          cls: "wp-v3-footer-target-name",
+          text: String((_b = (_a5 = this.matterData.blogName) != null ? _a5 : params.profileName) != null ? _b : this.t("publishModal_unknownSite"))
+        });
+        const secondaryActions = footer.createDiv("wp-v3-footer-secondary");
+        const primaryActions = footer.createDiv("wp-v3-footer-primary");
+        const editBtn = secondaryActions.createEl("button", {
           text: this.t("publishModal_editButton") || "\u270F\uFE0F \u7F16\u8F91",
           cls: "wp-v3-edit-footer-btn"
         });
         editBtn.onclick = () => {
-          var _a5;
-          (_a5 = this.contentPreviewSection) == null ? void 0 : _a5.enterEditMode();
+          var _a6;
+          (_a6 = this.contentPreviewSection) == null ? void 0 : _a6.enterEditMode();
         };
-        const saveBtn = footer.createEl("button", {
+        const saveBtn = secondaryActions.createEl("button", {
           text: this.t("publishModal_save") || "\u{1F4BE} Save",
           cls: "wp-v3-save-footer-btn"
         });
         saveBtn.onclick = () => this.saveParamsToFrontmatter(params);
-        const cancelBtn = footer.createEl("button", {
+        const cancelBtn = secondaryActions.createEl("button", {
           text: this.t("publishModal_cancel") || "\u274C Close",
           cls: "wp-v3-cancel-footer-btn"
         });
         cancelBtn.onclick = () => this.close();
-        const publishBtn = footer.createEl("button", {
+        const publishBtn = primaryActions.createEl("button", {
           text: this.t("publishModal_publishButton") || "\u{1F680} \u53D1\u5E03",
           cls: "wp-v3-publish-footer-btn"
         });
@@ -111266,8 +111300,8 @@ var init_wp_publish_modal_v2 = __esm({
         }
         this.isPublishing = true;
         this.lastPublishParams = params;
-        this.modalEl.style.display = "none";
-        const progressOverlay = this.showPublishProgress();
+        const progress = this.showPublishProgress();
+        progress.update({ stage: "prepare" });
         const doSubmit = () => {
           if (this.matterData.postType && this.matterData.postType !== "post" /* Post */ && (this.matterData.tags || this.matterData.categories)) {
             return openConfirmModal({
@@ -111277,24 +111311,24 @@ var init_wp_publish_modal_v2 = __esm({
                 return this.onSubmit(params, (fm) => {
                   delete fm.categories;
                   delete fm.tags;
-                }, this.featuredImage || void 0);
+                }, this.featuredImage || void 0, progress.update);
               }
               throw new Error("User cancelled");
             });
           } else {
             return this.onSubmit(params, () => {
-            }, this.featuredImage || void 0);
+            }, this.featuredImage || void 0, progress.update);
           }
         };
         doSubmit().then(() => {
-          progressOverlay.remove();
+          progress.remove();
           this.showConfetti();
           this.showSuccessNotice();
         }).catch((err) => {
           this.isPublishing = false;
           this.modalEl.style.display = "";
           log5.error("Publish error:", err);
-          progressOverlay.remove();
+          progress.remove();
           if (err instanceof Error && err.message !== "User cancelled") {
             this.showErrorCard(err.message);
           } else {
@@ -111308,14 +111342,49 @@ var init_wp_publish_modal_v2 = __esm({
        */
       showPublishProgress() {
         const overlay = document.body.createDiv("wp-publish-overlay");
+        overlay.setAttribute("role", "status");
+        overlay.setAttribute("aria-live", "polite");
         const container = overlay.createDiv("wp-publish-progress-container");
-        const spinner = container.createDiv("wp-publish-spinner");
-        spinner.createSpan({ cls: "wp-spinner-cat" });
-        const text5 = container.createDiv("wp-publish-progress-text");
-        text5.textContent = this.plugin.t("publishModal_publishingProgress");
+        const header = container.createDiv("wp-publish-progress-header");
+        header.createSpan({ cls: "wp-publish-spinner", text: "\u21BB" });
+        const heading2 = header.createDiv();
+        heading2.createDiv({ cls: "wp-publish-progress-title", text: this.t("publishModal_progressTitle") });
+        const text5 = heading2.createDiv("wp-publish-progress-text");
         const progressBar = container.createDiv("wp-publish-progress-bar");
-        progressBar.createDiv("wp-publish-progress-fill");
-        return overlay;
+        progressBar.setAttribute("role", "progressbar");
+        const fill = progressBar.createDiv("wp-publish-progress-fill");
+        const steps = container.createDiv("wp-publish-progress-steps");
+        const stages = ["prepare", "media", "wordpress", "writeback"];
+        const labels = {
+          prepare: this.t("publishModal_stagePrepare"),
+          media: this.t("publishModal_stageMedia"),
+          wordpress: this.t("publishModal_stageWordPress"),
+          writeback: this.t("publishModal_stageWriteback")
+        };
+        const stepElements = /* @__PURE__ */ new Map();
+        stages.forEach((stage, index2) => {
+          const row = steps.createDiv("wp-publish-progress-step");
+          row.createSpan({ cls: "wp-publish-step-marker", text: String(index2 + 1) });
+          row.createSpan({ text: labels[stage] });
+          stepElements.set(stage, row);
+        });
+        const detail = container.createDiv("wp-publish-progress-detail");
+        const update2 = (state) => {
+          var _a5, _b;
+          const activeIndex = stages.indexOf(state.stage);
+          stepElements.forEach((element, stage) => {
+            const index2 = stages.indexOf(stage);
+            element.toggleClass("is-active", index2 === activeIndex);
+            element.toggleClass("is-complete", index2 < activeIndex);
+          });
+          const fraction = state.total && state.current !== void 0 ? Math.max(0, Math.min(1, state.current / state.total)) : 0;
+          const percent = Math.round((activeIndex + fraction) / stages.length * 100);
+          fill.style.width = `${percent}%`;
+          progressBar.setAttribute("aria-valuenow", String(percent));
+          text5.textContent = labels[state.stage];
+          detail.textContent = (_b = state.detail) != null ? _b : state.total ? this.t("publishModal_progressCount", { current: String((_a5 = state.current) != null ? _a5 : 0), total: String(state.total) }) : "";
+        };
+        return { update: update2, remove: () => overlay.remove() };
       }
       /**
        * 显示发布成功提示
@@ -111330,16 +111399,18 @@ var init_wp_publish_modal_v2 = __esm({
        * 显示纸屑烟花特效
        */
       showConfetti() {
+        var _a5;
+        if ((_a5 = window.matchMedia) == null ? void 0 : _a5.call(window, "(prefers-reduced-motion: reduce)").matches) return;
         const container = document.body.createDiv("wp-confetti-container");
         const colors = ["#ff6b6b", "#ffd93d", "#6bcb77", "#4d96ff", "#9c88ff", "#ff9ff3", "#54a0ff", "#5f27cd"];
-        const confettiCount = 150;
+        const confettiCount = 24;
         for (let i = 0; i < confettiCount; i++) {
           const confetti = container.createDiv("wp-confetti");
           const color = colors[Math.floor(Math.random() * colors.length)];
           const size = Math.random() * 10 + 5;
           const left = Math.random() * 100;
-          const animDuration = Math.random() * 2 + 2;
-          const animDelay = Math.random() * 0.5;
+          const animDuration = Math.random() * 0.4 + 0.8;
+          const animDelay = Math.random() * 0.15;
           confetti.style.cssText = `
         position: fixed;
         width: ${size}px;
@@ -111357,7 +111428,7 @@ var init_wp_publish_modal_v2 = __esm({
         }
         setTimeout(() => {
           container.remove();
-        }, 4e3);
+        }, 1600);
       }
       /**
        * 显示发布失败提示卡片
@@ -111365,15 +111436,21 @@ var init_wp_publish_modal_v2 = __esm({
       showErrorCard(errorMessage) {
         const overlay = document.body.createDiv("wp-publish-overlay");
         const container = overlay.createDiv("wp-error-card");
+        const uncertain = /unknown result|result unknown|may have accepted|结果未知/i.test(errorMessage);
         const icon = container.createDiv("wp-error-icon");
-        icon.setText("\u{1F622}");
+        icon.setText(uncertain ? "!" : "\xD7");
         const title = container.createDiv("wp-error-title");
-        title.setText(this.t("publishModal_publishFailedTitle"));
+        title.setText(uncertain ? this.t("publishModal_unknownResultTitle") : this.t("publishModal_publishFailedTitle"));
+        container.createDiv({
+          cls: "wp-error-guidance",
+          text: uncertain ? this.t("publishModal_unknownResultGuidance") : this.t("publishModal_failureGuidance")
+        });
         const detail = container.createDiv("wp-error-detail");
         detail.setText(errorMessage);
         const buttons = container.createDiv("wp-error-buttons");
         const retryBtn = buttons.createEl("button", { cls: "wp-error-retry-btn" });
         retryBtn.setText(this.t("publishModal_retryButton"));
+        retryBtn.toggleAttribute("hidden", uncertain);
         retryBtn.onclick = () => {
           overlay.remove();
           this.modalEl.style.display = "";
@@ -111387,12 +111464,6 @@ var init_wp_publish_modal_v2 = __esm({
           overlay.remove();
           this.close();
         };
-        setTimeout(() => {
-          if (overlay.isConnected) {
-            overlay.remove();
-            this.close();
-          }
-        }, 8e3);
       }
       /**
        * 添加涟漪效果到按钮
@@ -114315,7 +114386,8 @@ var init_abstract_wp_client = __esm({
       }
       async tryToPublish(params) {
         var _a5, _b, _c;
-        const { auth, file, sourceSnapshot, updateMatterData } = params;
+        const { auth, file, sourceSnapshot, updateMatterData, onProgress } = params;
+        onProgress == null ? void 0 : onProgress({ stage: "prepare" });
         const recovered = await this.recoverPublication(file);
         if (recovered) return recovered;
         if (await this.plugin.app.vault.read(file) !== sourceSnapshot) {
@@ -114338,7 +114410,7 @@ var init_abstract_wp_client = __esm({
           postParams.tags = [];
           postParams.categories = [];
         }
-        await this.updatePostImages({ auth, postParams, file });
+        await this.updatePostImages({ auth, postParams, file, onProgress });
         const html4 = sanitizeHtml(AppState.markdownParser.render(postParams.content));
         const rendered = new DOMParser().parseFromString(html4, "text/html");
         for (const image2 of Array.from(rendered.querySelectorAll("img"))) {
@@ -114360,6 +114432,7 @@ var init_abstract_wp_client = __esm({
           metadata.tags = TagFormatter.formatTags(tagNames, this.plugin.settings.tagFormat);
         }
         if (updateMatterData) updateMatterData(metadata);
+        onProgress == null ? void 0 : onProgress({ stage: "wordpress" });
         await this.saveCheckpoint(file, { stage: "sending", sourcePath: file.path, metadata });
         let result;
         try {
@@ -114373,6 +114446,7 @@ var init_abstract_wp_client = __esm({
         }
         metadata.postId = result.data.postId;
         await this.saveCheckpoint(file, { stage: "published", sourcePath: file.path, postId: result.data.postId, metadata });
+        onProgress == null ? void 0 : onProgress({ stage: "writeback" });
         await this.plugin.app.vault.process(file, (raw) => applyPublishedNote(
           raw,
           sourceSnapshot,
@@ -114400,10 +114474,17 @@ var init_abstract_wp_client = __esm({
       }
       async updatePostImages(params) {
         var _a5, _b;
-        const { postParams, auth, file } = params;
+        const { postParams, auth, file, onProgress } = params;
         const images = getImages(postParams.content);
-        for (const img of images.sort((a, b) => b.startIndex - a.startIndex)) {
-          if (img.srcIsUrl) continue;
+        const localImages = images.filter((image2) => !image2.srcIsUrl).sort((a, b) => b.startIndex - a.startIndex);
+        if (localImages.length === 0) onProgress == null ? void 0 : onProgress({ stage: "media", current: 0, total: 0 });
+        for (const [index2, img] of localImages.entries()) {
+          onProgress == null ? void 0 : onProgress({
+            stage: "media",
+            current: index2,
+            total: localImages.length,
+            detail: img.src
+          });
           const source = decodeURI(img.src);
           const imgFile = this.plugin.app.metadataCache.getFirstLinkpathDest(source, file.path);
           if (!(imgFile instanceof import_obsidian25.TFile)) throw new Error(`Image not found: ${source}`);
@@ -114422,6 +114503,7 @@ var init_abstract_wp_client = __esm({
           const size = img.width ? `|${img.width}${img.height ? `x${img.height}` : ""}` : "";
           const replacement = `![${alt}${size}](<${result.data.url}>)`;
           postParams.content = postParams.content.slice(0, img.startIndex) + replacement + postParams.content.slice(img.endIndex);
+          onProgress == null ? void 0 : onProgress({ stage: "media", current: index2 + 1, total: localImages.length, detail: imgFile.name });
         }
       }
       async publishPost(defaultPostParams) {
@@ -114570,8 +114652,9 @@ var init_abstract_wp_client = __esm({
                 this.plugin,
                 { items: categories, selected: selectedCategories },
                 { items: postTypes, selected: selectedPostType },
-                async (postParams2, updateMatterData, featuredImage) => {
+                async (postParams2, updateMatterData, featuredImage, onProgress) => {
                   var _a5;
+                  onProgress == null ? void 0 : onProgress({ stage: "prepare" });
                   const recovered2 = await this.recoverPublication(file);
                   if (recovered2) {
                     resolve(recovered2);
@@ -114603,6 +114686,7 @@ var init_abstract_wp_client = __esm({
                   let featuredImageId;
                   try {
                     if (featuredImage) {
+                      onProgress == null ? void 0 : onProgress({ stage: "media", current: 0, total: 1, detail: featuredImage.fileName });
                       wpLog.info("[WpPublishModalV2] Processing featured image:", featuredImage.fileName);
                       let imageContent = featuredImage.content;
                       let imageMimeType = featuredImage.mimeType;
@@ -114636,6 +114720,7 @@ var init_abstract_wp_client = __esm({
                         content: imageContent
                       }, auth, featuredImage.fileName);
                       if (uploadResult.code === 0 /* OK */) {
+                        onProgress == null ? void 0 : onProgress({ stage: "media", current: 1, total: 1, detail: featuredImage.fileName });
                         postParams2.featuredMedia = uploadResult.data.id;
                         featuredImageUrl = uploadResult.data.url;
                         featuredImageId = uploadResult.data.id;
@@ -114668,7 +114753,8 @@ var init_abstract_wp_client = __esm({
                       postParams: postParams2,
                       file,
                       sourceSnapshot,
-                      updateMatterData: wrappedUpdateMatterData
+                      updateMatterData: wrappedUpdateMatterData,
+                      onProgress
                     });
                     if (r.code === 0 /* OK */) {
                       if (featuredImageUrl && featuredImageId) {
@@ -116680,6 +116766,8 @@ __export(en_exports, {
   publishModal_commentStatusOpen: () => publishModal_commentStatusOpen,
   publishModal_confirmButton: () => publishModal_confirmButton,
   publishModal_contentSaved: () => publishModal_contentSaved,
+  publishModal_contentTypePage: () => publishModal_contentTypePage,
+  publishModal_contentTypePost: () => publishModal_contentTypePost,
   publishModal_content_tab: () => publishModal_content_tab,
   publishModal_customPromptNotice: () => publishModal_customPromptNotice,
   publishModal_downloadFailed: () => publishModal_downloadFailed,
@@ -116689,6 +116777,7 @@ __export(en_exports, {
   publishModal_emptyContentForTags: () => publishModal_emptyContentForTags,
   publishModal_excerptLabel: () => publishModal_excerptLabel,
   publishModal_excerptPlaceholder: () => publishModal_excerptPlaceholder,
+  publishModal_failureGuidance: () => publishModal_failureGuidance,
   publishModal_featuredImage: () => publishModal_featuredImage,
   publishModal_featuredImageUploaded: () => publishModal_featuredImageUploaded,
   publishModal_featuredImage_tab: () => publishModal_featuredImage_tab,
@@ -116745,12 +116834,15 @@ __export(en_exports, {
   publishModal_previewTab: () => publishModal_previewTab,
   publishModal_previewTags: () => publishModal_previewTags,
   publishModal_previewTitle: () => publishModal_previewTitle,
+  publishModal_progressCount: () => publishModal_progressCount,
+  publishModal_progressTitle: () => publishModal_progressTitle,
   publishModal_publishAsNewDesc: () => publishModal_publishAsNewDesc,
   publishModal_publishAsNewName: () => publishModal_publishAsNewName,
   publishModal_publishButton: () => publishModal_publishButton,
   publishModal_publishButtonText: () => publishModal_publishButtonText,
   publishModal_publishFailedTitle: () => publishModal_publishFailedTitle,
   publishModal_publishSuccess: () => publishModal_publishSuccess,
+  publishModal_publishTo: () => publishModal_publishTo,
   publishModal_publishingProgress: () => publishModal_publishingProgress,
   publishModal_regenerateButton: () => publishModal_regenerateButton,
   publishModal_regenerating: () => publishModal_regenerating,
@@ -116786,6 +116878,10 @@ __export(en_exports, {
   publishModal_slugNeedTitle: () => publishModal_slugNeedTitle,
   publishModal_slugPlaceholder: () => publishModal_slugPlaceholder,
   publishModal_slugTranslateFailed: () => publishModal_slugTranslateFailed,
+  publishModal_stageMedia: () => publishModal_stageMedia,
+  publishModal_stagePrepare: () => publishModal_stagePrepare,
+  publishModal_stageWordPress: () => publishModal_stageWordPress,
+  publishModal_stageWriteback: () => publishModal_stageWriteback,
   publishModal_statusDesc: () => publishModal_statusDesc,
   publishModal_statusDraft: () => publishModal_statusDraft,
   publishModal_statusFuture: () => publishModal_statusFuture,
@@ -116810,6 +116906,9 @@ __export(en_exports, {
   publishModal_titlePlaceholder: () => publishModal_titlePlaceholder,
   publishModal_title_tab: () => publishModal_title_tab,
   publishModal_uncategorized: () => publishModal_uncategorized,
+  publishModal_unknownResultGuidance: () => publishModal_unknownResultGuidance,
+  publishModal_unknownResultTitle: () => publishModal_unknownResultTitle,
+  publishModal_unknownSite: () => publishModal_unknownSite,
   publishModal_unsplashButton: () => publishModal_unsplashButton,
   publishModal_unsplashKeyRequired: () => publishModal_unsplashKeyRequired,
   publishModal_unsplashKeyRequiredSimple: () => publishModal_unsplashKeyRequiredSimple,
@@ -117381,6 +117480,19 @@ var publishModal_addTag = "\u{1F3F7}\uFE0F Add Tag";
 var publishModal_aiGenerateTags = "\u{1F916} AI Generate";
 var apiInfo_title = "API Information";
 var apiInfo_close = "Close";
+var publishModal_unknownSite = "Unknown site";
+var publishModal_contentTypePost = "Post";
+var publishModal_contentTypePage = "Page";
+var publishModal_publishTo = "Publish to";
+var publishModal_progressTitle = "Publishing";
+var publishModal_stagePrepare = "Prepare content";
+var publishModal_stageMedia = "Upload media";
+var publishModal_stageWordPress = "Send to WordPress";
+var publishModal_stageWriteback = "Save publishing record";
+var publishModal_progressCount = "<%= current %> of <%= total %>";
+var publishModal_unknownResultTitle = "Check the WordPress result";
+var publishModal_unknownResultGuidance = "The request may have reached WordPress. Check the site before trying again, then run \u201CResolve uncertain publish\u201D in Obsidian.";
+var publishModal_failureGuidance = "Review the message below. Your source note has not been replaced.";
 var en_default = {
   error_noEndpoint,
   error_notWpCom,
@@ -117815,7 +117927,20 @@ var en_default = {
   publishModal_addTag,
   publishModal_aiGenerateTags,
   apiInfo_title,
-  apiInfo_close
+  apiInfo_close,
+  publishModal_unknownSite,
+  publishModal_contentTypePost,
+  publishModal_contentTypePage,
+  publishModal_publishTo,
+  publishModal_progressTitle,
+  publishModal_stagePrepare,
+  publishModal_stageMedia,
+  publishModal_stageWordPress,
+  publishModal_stageWriteback,
+  publishModal_progressCount,
+  publishModal_unknownResultTitle,
+  publishModal_unknownResultGuidance,
+  publishModal_failureGuidance
 };
 
 // src/i18n/zh-cn.json
@@ -117990,6 +118115,8 @@ __export(zh_cn_exports, {
   publishModal_commentStatusOpen: () => publishModal_commentStatusOpen2,
   publishModal_confirmButton: () => publishModal_confirmButton2,
   publishModal_contentSaved: () => publishModal_contentSaved2,
+  publishModal_contentTypePage: () => publishModal_contentTypePage2,
+  publishModal_contentTypePost: () => publishModal_contentTypePost2,
   publishModal_content_tab: () => publishModal_content_tab2,
   publishModal_customPromptNotice: () => publishModal_customPromptNotice2,
   publishModal_downloadFailed: () => publishModal_downloadFailed2,
@@ -117999,6 +118126,7 @@ __export(zh_cn_exports, {
   publishModal_emptyContentForTags: () => publishModal_emptyContentForTags2,
   publishModal_excerptLabel: () => publishModal_excerptLabel2,
   publishModal_excerptPlaceholder: () => publishModal_excerptPlaceholder2,
+  publishModal_failureGuidance: () => publishModal_failureGuidance2,
   publishModal_featuredImage: () => publishModal_featuredImage2,
   publishModal_featuredImageUploaded: () => publishModal_featuredImageUploaded2,
   publishModal_featuredImage_tab: () => publishModal_featuredImage_tab2,
@@ -118055,12 +118183,15 @@ __export(zh_cn_exports, {
   publishModal_previewTab: () => publishModal_previewTab2,
   publishModal_previewTags: () => publishModal_previewTags2,
   publishModal_previewTitle: () => publishModal_previewTitle2,
+  publishModal_progressCount: () => publishModal_progressCount2,
+  publishModal_progressTitle: () => publishModal_progressTitle2,
   publishModal_publishAsNewDesc: () => publishModal_publishAsNewDesc2,
   publishModal_publishAsNewName: () => publishModal_publishAsNewName2,
   publishModal_publishButton: () => publishModal_publishButton2,
   publishModal_publishButtonText: () => publishModal_publishButtonText2,
   publishModal_publishFailedTitle: () => publishModal_publishFailedTitle2,
   publishModal_publishSuccess: () => publishModal_publishSuccess2,
+  publishModal_publishTo: () => publishModal_publishTo2,
   publishModal_publishingProgress: () => publishModal_publishingProgress2,
   publishModal_regenerateButton: () => publishModal_regenerateButton2,
   publishModal_regenerating: () => publishModal_regenerating2,
@@ -118096,6 +118227,10 @@ __export(zh_cn_exports, {
   publishModal_slugNeedTitle: () => publishModal_slugNeedTitle2,
   publishModal_slugPlaceholder: () => publishModal_slugPlaceholder2,
   publishModal_slugTranslateFailed: () => publishModal_slugTranslateFailed2,
+  publishModal_stageMedia: () => publishModal_stageMedia2,
+  publishModal_stagePrepare: () => publishModal_stagePrepare2,
+  publishModal_stageWordPress: () => publishModal_stageWordPress2,
+  publishModal_stageWriteback: () => publishModal_stageWriteback2,
   publishModal_statusDesc: () => publishModal_statusDesc2,
   publishModal_statusDraft: () => publishModal_statusDraft2,
   publishModal_statusFuture: () => publishModal_statusFuture2,
@@ -118120,6 +118255,9 @@ __export(zh_cn_exports, {
   publishModal_titlePlaceholder: () => publishModal_titlePlaceholder2,
   publishModal_title_tab: () => publishModal_title_tab2,
   publishModal_uncategorized: () => publishModal_uncategorized2,
+  publishModal_unknownResultGuidance: () => publishModal_unknownResultGuidance2,
+  publishModal_unknownResultTitle: () => publishModal_unknownResultTitle2,
+  publishModal_unknownSite: () => publishModal_unknownSite2,
   publishModal_unsplashButton: () => publishModal_unsplashButton2,
   publishModal_unsplashKeyRequired: () => publishModal_unsplashKeyRequired2,
   publishModal_unsplashKeyRequiredSimple: () => publishModal_unsplashKeyRequiredSimple2,
@@ -118691,6 +118829,19 @@ var publishModal_addTag2 = "\u{1F3F7}\uFE0F \u6DFB\u52A0\u6807\u7B7E";
 var publishModal_aiGenerateTags2 = "\u{1F916} \u751F\u6210\u6807\u7B7E";
 var apiInfo_title2 = "API \u4FE1\u606F";
 var apiInfo_close2 = "\u5173\u95ED";
+var publishModal_unknownSite2 = "\u672A\u77E5\u7AD9\u70B9";
+var publishModal_contentTypePost2 = "\u6587\u7AE0";
+var publishModal_contentTypePage2 = "\u9875\u9762";
+var publishModal_publishTo2 = "\u53D1\u5E03\u5230";
+var publishModal_progressTitle2 = "\u6B63\u5728\u53D1\u5E03";
+var publishModal_stagePrepare2 = "\u51C6\u5907\u5185\u5BB9";
+var publishModal_stageMedia2 = "\u4E0A\u4F20\u56FE\u7247";
+var publishModal_stageWordPress2 = "\u63D0\u4EA4\u5230 WordPress";
+var publishModal_stageWriteback2 = "\u4FDD\u5B58\u53D1\u5E03\u8BB0\u5F55";
+var publishModal_progressCount2 = "\u5DF2\u5B8C\u6210 <%= current %> / <%= total %>";
+var publishModal_unknownResultTitle2 = "\u8BF7\u6838\u5BF9 WordPress \u7ED3\u679C";
+var publishModal_unknownResultGuidance2 = "\u8BF7\u6C42\u53EF\u80FD\u5DF2\u7ECF\u5230\u8FBE WordPress\u3002\u8BF7\u5148\u68C0\u67E5\u7AD9\u70B9\uFF0C\u518D\u5728 Obsidian \u4E2D\u8FD0\u884C\u201C\u6838\u5BF9\u53D1\u5E03\u7ED3\u679C\u201D\u3002";
+var publishModal_failureGuidance2 = "\u8BF7\u67E5\u770B\u4E0B\u9762\u7684\u9519\u8BEF\u4FE1\u606F\u3002\u6E90\u7B14\u8BB0\u5185\u5BB9\u672A\u88AB\u66FF\u6362\u3002";
 var zh_cn_default = {
   error_noEndpoint: error_noEndpoint2,
   error_notWpCom: error_notWpCom2,
@@ -119125,7 +119276,20 @@ var zh_cn_default = {
   publishModal_addTag: publishModal_addTag2,
   publishModal_aiGenerateTags: publishModal_aiGenerateTags2,
   apiInfo_title: apiInfo_title2,
-  apiInfo_close: apiInfo_close2
+  apiInfo_close: apiInfo_close2,
+  publishModal_unknownSite: publishModal_unknownSite2,
+  publishModal_contentTypePost: publishModal_contentTypePost2,
+  publishModal_contentTypePage: publishModal_contentTypePage2,
+  publishModal_publishTo: publishModal_publishTo2,
+  publishModal_progressTitle: publishModal_progressTitle2,
+  publishModal_stagePrepare: publishModal_stagePrepare2,
+  publishModal_stageMedia: publishModal_stageMedia2,
+  publishModal_stageWordPress: publishModal_stageWordPress2,
+  publishModal_stageWriteback: publishModal_stageWriteback2,
+  publishModal_progressCount: publishModal_progressCount2,
+  publishModal_unknownResultTitle: publishModal_unknownResultTitle2,
+  publishModal_unknownResultGuidance: publishModal_unknownResultGuidance2,
+  publishModal_failureGuidance: publishModal_failureGuidance2
 };
 
 // src/i18n/langs.ts

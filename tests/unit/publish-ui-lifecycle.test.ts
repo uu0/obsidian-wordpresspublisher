@@ -4,10 +4,11 @@ jest.mock('../../src/markdown-it-mathjax3-plugin', () => ({ MarkdownItMathJax3Pl
 import { WpPublishModalV2 } from '../../src/wp-publish-modal-v2';
 import type { WordPressPostParams } from '../../src/wp-types';
 
-function ui(onSubmit: () => Promise<unknown>) {
+function ui(onSubmit: (...args: unknown[]) => Promise<unknown>) {
+  const progressUpdate = jest.fn();
   return {
     isPublishing: false, lastPublishParams: null, modalEl: document.createElement('div'), matterData: {}, featuredImage: null,
-    showPublishProgress: () => ({ remove: jest.fn() }), onSubmit,
+    progressUpdate, showPublishProgress: () => ({ update: progressUpdate, remove: jest.fn() }), onSubmit,
     showConfetti: jest.fn(), showSuccessNotice: jest.fn(), showErrorCard: jest.fn(), close: jest.fn(),
   };
 }
@@ -19,6 +20,15 @@ it('does not announce success while the publish is pending', async () => {
   expect(host.showSuccessNotice).not.toHaveBeenCalled();
   complete(); await Promise.resolve(); await Promise.resolve();
   expect(host.showSuccessNotice).toHaveBeenCalledTimes(1);
+});
+
+it('starts at preparation and passes the progress reporter into the publishing client', async () => {
+  const onSubmit = jest.fn(async () => undefined);
+  const host = ui(onSubmit);
+  WpPublishModalV2.prototype.doPublish.call(host as unknown as WpPublishModalV2, {} as WordPressPostParams);
+  await Promise.resolve(); await Promise.resolve();
+  expect(host.progressUpdate).toHaveBeenCalledWith({ stage: 'prepare' });
+  expect((onSubmit.mock.calls[0] as unknown[])[3]).toBe(host.progressUpdate);
 });
 it('shows asynchronous failures without success/confetti and restores the dialog', async () => {
   const host = ui(async () => { throw new Error('upload failed'); });

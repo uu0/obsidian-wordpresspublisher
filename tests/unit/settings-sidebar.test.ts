@@ -32,6 +32,19 @@ function baseParams(overrides: Partial<WordPressPostParams> = {}): WordPressPost
 }
 
 describe('SettingsSidebar', () => {
+  beforeEach(() => {
+    (window.matchMedia as jest.Mock).mockImplementation((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: jest.fn(),
+      removeListener: jest.fn(),
+      addEventListener: jest.fn(),
+      removeEventListener: jest.fn(),
+      dispatchEvent: jest.fn(),
+    }));
+  });
+
   it('renders the settings card and a collapsed history card', () => {
     const ctx = createMockContext();
     const container = document.createElement('div');
@@ -51,13 +64,41 @@ describe('SettingsSidebar', () => {
     const container = document.createElement('div');
     new SettingsSidebar(ctx).render(container, baseParams());
 
-    const titleRow = container.querySelector('.wp-v3-card-title-clickable') as HTMLElement;
+    const titleRow = container.querySelector('.wp-v3-collapsible-card .wp-v3-card-title-clickable') as HTMLElement;
     titleRow.dispatchEvent(new Event('click'));
 
     const card = container.querySelector('.wp-v3-collapsible-card')!;
     expect(card.classList.contains('is-collapsed')).toBe(false);
     const body = card.querySelector('.wp-v3-collapsible-body') as HTMLElement;
     expect(body.style.display).toBe('');
+  });
+
+  it('collapses basic settings on small screens and expands them from the keyboard', () => {
+    (window.matchMedia as jest.Mock).mockImplementation((query: string) => ({
+      matches: query === '(max-width: 680px)',
+      media: query,
+      onchange: null,
+      addListener: jest.fn(),
+      removeListener: jest.fn(),
+      addEventListener: jest.fn(),
+      removeEventListener: jest.fn(),
+      dispatchEvent: jest.fn(),
+    }));
+    const ctx = createMockContext();
+    const container = document.createElement('div');
+    new SettingsSidebar(ctx).render(container, baseParams());
+
+    const card = container.querySelector('.wp-v3-settings-card:not(.wp-v3-collapsible-card)') as HTMLElement;
+    const title = card.querySelector('.wp-v3-settings-card-title') as HTMLElement;
+    const body = card.querySelector('.wp-v3-settings-body') as HTMLElement;
+    expect(card.classList.contains('is-collapsed')).toBe(true);
+    expect(body.style.display).toBe('none');
+    expect(title.getAttribute('aria-expanded')).toBe('false');
+
+    title.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    expect(card.classList.contains('is-collapsed')).toBe(false);
+    expect(body.style.display).toBe('');
+    expect(title.getAttribute('aria-expanded')).toBe('true');
   });
 
   it('binds the title input and triggers slug generation on blur when enabled', () => {
