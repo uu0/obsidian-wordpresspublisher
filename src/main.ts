@@ -308,7 +308,7 @@ export default class WordpressPlugin extends Plugin {
       // Add ribbon icon if not already present
       if (!this.ribbonWpIcon) {
         this.ribbonWpIcon = this.addRibbonIcon('wp-logo', ribbonIconTitle, () => {
-          this.openProfileChooser();
+          void this.openProfileChooser().catch(error => showError(error));
         });
       }
     } else {

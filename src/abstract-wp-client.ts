@@ -273,7 +273,7 @@ export abstract class AbstractWordPressClient implements WordPressClient {
           };
           const authResult = await this.validateUser(auth);
           if (authResult.code !== WordPressClientReturnCode.OK) {
-            throw new Error(this.plugin.i18n.t('error_invalidUser'));
+            throw new Error(authResult.error?.message ?? this.plugin.i18n.t('error_invalidUser'));
           }
           // Cache the successful auth (P1 feature)
           this.cacheAuth(auth);
@@ -291,7 +291,7 @@ export abstract class AbstractWordPressClient implements WordPressClient {
           // Cache the successful auth from login modal (P1 feature)
           this.cacheAuth(auth);
         }
-        return authResult.code === WordPressClientReturnCode.OK;
+        return authResult;
       });
       auth = result.auth;
     }

@@ -17,6 +17,13 @@ import { WpProfile } from './wp-profile';
 import { FormItemNameMapper, FormItems, Media } from './types';
 import { formatISO } from 'date-fns';
 
+function encodeBasicCredentials(username: string, password: string): string {
+  const bytes = new TextEncoder().encode(`${username}:${password}`);
+  let binary = '';
+  bytes.forEach(byte => { binary += String.fromCharCode(byte); });
+  return btoa(binary);
+}
+
 
 interface WpRestEndpoint {
   base: string | UrlGetter;
@@ -153,11 +160,14 @@ export class WpRestClient extends AbstractWordPressClient {
         response: data
       };
     } catch(error) {
+      const message = error instanceof Error
+        ? error.message
+        : this.plugin.i18n.t('error_invalidUser');
       return {
         code: WordPressClientReturnCode.Error,
         error: {
           code: WordPressClientReturnCode.Error,
-          message: this.plugin.i18n.t('error_invalidUser'),
+          message,
         },
         response: error
       };
@@ -411,8 +421,10 @@ class WpRestClientCommonContext implements WpRestClientContext {
   name = 'WpRestClientCommonContext';
 
   getHeaders(wp: WordPressAuthParams): Record<string, string> {
+    const username = wp.username ?? '';
+    const password = wp.password ?? '';
     return {
-      'authorization': `Basic ${btoa(`${wp.username}:${wp.password}`)}`
+      'authorization': `Basic ${encodeBasicCredentials(username, password)}`
     };
   }
 
@@ -469,6 +481,14 @@ export class WpRestClientAppPasswordContext extends WpRestClientCommonContext {
   constructor() {
     super();
     logger.debug('WpRestClientAppPasswordContext', 'loaded');
+  }
+
+  getHeaders(wp: WordPressAuthParams): Record<string, string> {
+    return super.getHeaders({
+      ...wp,
+      // WordPress displays application passwords in groups separated by spaces.
+      password: wp.password?.replace(/\s+/g, '') ?? null
+    });
   }
 }
 

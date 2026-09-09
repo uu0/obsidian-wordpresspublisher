@@ -4,6 +4,7 @@ import type { WordPressPostParams } from './wp-types';
 import { isString } from 'lodash-es';
 import { getWordPressClient } from './wp-clients';
 import { showError } from './utils';
+import { Notice } from 'obsidian';
 
 /**
  * Publish content using WordPress client
@@ -44,12 +45,20 @@ export function doClientPublish(
     throw new Error(noSuchProfileMessage);
   }
 
-  // Get client and publish
-  const client = getWordPressClient(plugin, profile);
-  if (client) {
-    client.publishPost(defaultPostParams).catch(error => {
-      showError(error);
-    });
+  if (!plugin.app.workspace.getActiveFile()) {
+    showError(plugin.i18n.t('error_noActiveFile'));
+    return;
+  }
+
+  // Authentication and site metadata are loaded before the editor dialog can
+  // open, so acknowledge the ribbon/command action immediately.
+  new Notice(plugin.i18n.t('notice_preparingPublisher'), 5000);
+  try {
+    const client = getWordPressClient(plugin, profile);
+    if (client) {
+      void client.publishPost(defaultPostParams).catch(error => showError(error));
+    }
+  } catch (error) {
+    showError(error);
   }
 }
-

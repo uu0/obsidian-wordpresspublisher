@@ -2,30 +2,37 @@ import { PublishCancelledError } from './publish-safety';
 import { Modal, Setting } from 'obsidian';
 import WordpressPlugin from './main';
 import { WpProfile } from './wp-profile';
-import { WordPressAuthParams } from './wp-types';
+import { WordPressAuthParams, WordPressClientResult, WordPressClientReturnCode } from './wp-types';
 import { showError } from './utils';
 import { AbstractModal } from './abstract-modal';
+import { ApiType } from './plugin-settings';
 
 export function openLoginModal(
   plugin: WordpressPlugin,
   profile: WpProfile,
-  validateUser: (auth: WordPressAuthParams) => Promise<boolean>,
+  validateUser: (auth: WordPressAuthParams) => Promise<WordPressClientResult<boolean>>,
 ): Promise<{ auth: WordPressAuthParams, loginModal: Modal }> {
   return new Promise((resolve, reject) => {
+    let settled = false;
     const modal = new WpLoginModal(plugin, profile, async (auth, loginModal) => {
-      const validate = await validateUser(auth);
-      if (validate) {
-        resolve({
-          auth,
-          loginModal
-        });
-        modal.close();
-      } else {
-        showError(plugin.i18n.t('error_invalidUser'));
+      try {
+        const result = await validateUser(auth);
+        if (result.code === WordPressClientReturnCode.OK) {
+          settled = true;
+          resolve({ auth, loginModal });
+          modal.close();
+        } else {
+          showError(result.error?.message ?? plugin.i18n.t('error_invalidUser'));
+        }
+      } catch (error) {
+        showError(error);
       }
     });
     const close = modal.onClose.bind(modal);
-    modal.onClose = () => { close(); reject(new PublishCancelledError()); };
+    modal.onClose = () => {
+      close();
+      if (!settled) reject(new PublishCancelledError());
+    };
     modal.open();
   });
 }
@@ -35,10 +42,12 @@ export function openLoginModal(
  */
 export class WpLoginModal extends AbstractModal {
 
+  private isValidating = false;
+
   constructor(
     readonly plugin: WordpressPlugin,
     private readonly profile: WpProfile,
-    private readonly onSubmit: (auth: WordPressAuthParams, modal: Modal) => void
+    private readonly onSubmit: (auth: WordPressAuthParams, modal: Modal) => Promise<void>
   ) {
     super(plugin);
   }
@@ -70,8 +79,12 @@ export class WpLoginModal extends AbstractModal {
         }
       });
     new Setting(contentEl)
-      .setName(this.t('loginModal_password'))
-      .setDesc(this.t('loginModal_passwordDesc', { url: this.profile.endpoint }))
+      .setName(this.profile.apiType === ApiType.RestApi_ApplicationPasswords
+        ? this.t('loginModal_appPassword')
+        : this.t('loginModal_password'))
+      .setDesc(this.profile.apiType === ApiType.RestApi_ApplicationPasswords
+        ? this.t('loginModal_appPasswordDesc', { url: this.profile.endpoint })
+        : this.t('loginModal_passwordDesc', { url: this.profile.endpoint }))
       .addText(text => {
         text
           .then(text => { text.inputEl.type = 'password'; })
@@ -125,14 +138,22 @@ export class WpLoginModal extends AbstractModal {
       .addButton(button => button
         .setButtonText(this.t('loginModal_loginButtonText'))
         .setCta()
-        .onClick(() => {
+        .onClick(async () => {
+          if (this.isValidating) return;
           if (!username) {
             showError(this.t('error_noUsername'));
           } else if (!password) {
             showError(this.t('error_noPassword'));
           }
           if (username && password) {
-            this.onSubmit({ username, password }, this);
+            this.isValidating = true;
+            button.setDisabled(true).setButtonText(this.t('loginModal_loggingIn'));
+            try {
+              await this.onSubmit({ username: username.trim(), password }, this);
+            } finally {
+              this.isValidating = false;
+              button.setDisabled(false).setButtonText(this.t('loginModal_loginButtonText'));
+            }
           }
         })
       );

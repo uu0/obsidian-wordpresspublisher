@@ -113550,22 +113550,26 @@ var init_publish_safety = __esm({
 // src/wp-login-modal.ts
 function openLoginModal(plugin4, profile, validateUser) {
   return new Promise((resolve, reject) => {
+    let settled = false;
     const modal = new WpLoginModal(plugin4, profile, async (auth, loginModal) => {
-      const validate = await validateUser(auth);
-      if (validate) {
-        resolve({
-          auth,
-          loginModal
-        });
-        modal.close();
-      } else {
-        showError(plugin4.i18n.t("error_invalidUser"));
+      var _a5, _b;
+      try {
+        const result = await validateUser(auth);
+        if (result.code === 0 /* OK */) {
+          settled = true;
+          resolve({ auth, loginModal });
+          modal.close();
+        } else {
+          showError((_b = (_a5 = result.error) == null ? void 0 : _a5.message) != null ? _b : plugin4.i18n.t("error_invalidUser"));
+        }
+      } catch (error2) {
+        showError(error2);
       }
     });
     const close = modal.onClose.bind(modal);
     modal.onClose = () => {
       close();
-      reject(new PublishCancelledError());
+      if (!settled) reject(new PublishCancelledError());
     };
     modal.open();
   });
@@ -113576,14 +113580,17 @@ var init_wp_login_modal = __esm({
     "use strict";
     init_publish_safety();
     import_obsidian22 = require("obsidian");
+    init_wp_types();
     init_utils3();
     init_abstract_modal();
+    init_plugin_settings();
     WpLoginModal = class extends AbstractModal {
       constructor(plugin4, profile, onSubmit) {
         super(plugin4);
         this.plugin = plugin4;
         this.profile = profile;
         this.onSubmit = onSubmit;
+        this.isValidating = false;
       }
       onOpen() {
         const { contentEl } = this;
@@ -113605,7 +113612,7 @@ var init_wp_login_modal = __esm({
             });
           }
         });
-        new import_obsidian22.Setting(contentEl).setName(this.t("loginModal_password")).setDesc(this.t("loginModal_passwordDesc", { url: this.profile.endpoint })).addText((text5) => {
+        new import_obsidian22.Setting(contentEl).setName(this.profile.apiType === "application-passwords" /* RestApi_ApplicationPasswords */ ? this.t("loginModal_appPassword") : this.t("loginModal_password")).setDesc(this.profile.apiType === "application-passwords" /* RestApi_ApplicationPasswords */ ? this.t("loginModal_appPasswordDesc", { url: this.profile.endpoint }) : this.t("loginModal_passwordDesc", { url: this.profile.endpoint })).addText((text5) => {
           var _a5;
           text5.then((text6) => {
             text6.inputEl.type = "password";
@@ -113623,14 +113630,22 @@ var init_wp_login_modal = __esm({
           }
         });
         new import_obsidian22.Setting(contentEl).addButton(
-          (button) => button.setButtonText(this.t("loginModal_loginButtonText")).setCta().onClick(() => {
+          (button) => button.setButtonText(this.t("loginModal_loginButtonText")).setCta().onClick(async () => {
+            if (this.isValidating) return;
             if (!username) {
               showError(this.t("error_noUsername"));
             } else if (!password) {
               showError(this.t("error_noPassword"));
             }
             if (username && password) {
-              this.onSubmit({ username, password }, this);
+              this.isValidating = true;
+              button.setDisabled(true).setButtonText(this.t("loginModal_loggingIn"));
+              try {
+                await this.onSubmit({ username: username.trim(), password }, this);
+              } finally {
+                this.isValidating = false;
+                button.setDisabled(false).setButtonText(this.t("loginModal_loginButtonText"));
+              }
             }
           })
         );
@@ -114220,6 +114235,7 @@ var init_abstract_wp_client = __esm({
         globalAuthCache.delete(cacheKey);
       }
       async getAuth() {
+        var _a5, _b;
         let auth = {
           username: null,
           password: null
@@ -114237,7 +114253,7 @@ var init_abstract_wp_client = __esm({
               };
               const authResult = await this.validateUser(auth);
               if (authResult.code !== 0 /* OK */) {
-                throw new Error(this.plugin.i18n.t("error_invalidUser"));
+                throw new Error((_b = (_a5 = authResult.error) == null ? void 0 : _a5.message) != null ? _b : this.plugin.i18n.t("error_invalidUser"));
               }
               this.cacheAuth(auth);
             } else {
@@ -114252,7 +114268,7 @@ var init_abstract_wp_client = __esm({
             if (authResult.code === 0 /* OK */) {
               this.cacheAuth(auth2);
             }
-            return authResult.code === 0 /* OK */;
+            return authResult;
           });
           auth = result.auth;
         }
@@ -115225,6 +115241,14 @@ var init_wp_xml_rpc_client = __esm({
 });
 
 // src/wp-rest-client.ts
+function encodeBasicCredentials(username, password) {
+  const bytes = new TextEncoder().encode(`${username}:${password}`);
+  let binary = "";
+  bytes.forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+  return btoa(binary);
+}
 function getUrl(url, defaultValue, params) {
   let resultUrl;
   if (isString_default(url)) {
@@ -115367,11 +115391,12 @@ var init_wp_rest_client = __esm({
             response: data2
           };
         } catch (error2) {
+          const message2 = error2 instanceof Error ? error2.message : this.plugin.i18n.t("error_invalidUser");
           return {
             code: 1 /* Error */,
             error: {
               code: 1 /* Error */,
-              message: this.plugin.i18n.t("error_invalidUser")
+              message: message2
             },
             response: error2
           };
@@ -115599,8 +115624,11 @@ var init_wp_rest_client = __esm({
         };
       }
       getHeaders(wp) {
+        var _a5, _b;
+        const username = (_a5 = wp.username) != null ? _a5 : "";
+        const password = (_b = wp.password) != null ? _b : "";
         return {
-          "authorization": `Basic ${btoa(`${wp.username}:${wp.password}`)}`
+          "authorization": `Basic ${encodeBasicCredentials(username, password)}`
         };
       }
     };
@@ -115616,6 +115644,14 @@ var init_wp_rest_client = __esm({
         super();
         this.name = "WpRestClientAppPasswordContext";
         logger.debug("WpRestClientAppPasswordContext", "loaded");
+      }
+      getHeaders(wp) {
+        var _a5, _b;
+        return super.getHeaders({
+          ...wp,
+          // WordPress displays application passwords in groups separated by spaces.
+          password: (_b = (_a5 = wp.password) == null ? void 0 : _a5.replace(/\s+/g, "")) != null ? _b : null
+        });
       }
     };
     WpRestClientWpComOAuth2Context = class {
@@ -115749,7 +115785,7 @@ __export(main_exports, {
   default: () => WordpressPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian26 = require("obsidian");
+var import_obsidian27 = require("obsidian");
 
 // src/settings.ts
 var import_obsidian9 = require("obsidian");
@@ -116676,6 +116712,9 @@ __export(en_exports, {
   featuredImageModal_title: () => featuredImageModal_title,
   featuredImageModal_unsplashTooltip: () => featuredImageModal_unsplashTooltip,
   frontmatter_defaultCategory: () => frontmatter_defaultCategory,
+  loginModal_appPassword: () => loginModal_appPassword,
+  loginModal_appPasswordDesc: () => loginModal_appPasswordDesc,
+  loginModal_loggingIn: () => loginModal_loggingIn,
   loginModal_loginButtonText: () => loginModal_loginButtonText,
   loginModal_password: () => loginModal_password,
   loginModal_passwordDesc: () => loginModal_passwordDesc,
@@ -116705,6 +116744,7 @@ __export(en_exports, {
   notice_imageLoadFailed: () => notice_imageLoadFailed,
   notice_imageTooLarge: () => notice_imageTooLarge,
   notice_invalidImageFormat: () => notice_invalidImageFormat,
+  notice_preparingPublisher: () => notice_preparingPublisher,
   notice_publishCancelled: () => notice_publishCancelled,
   notice_slugModeRequiresAI: () => notice_slugModeRequiresAI,
   notice_textAIApiKeyRequired: () => notice_textAIApiKeyRequired,
@@ -117132,7 +117172,11 @@ var loginModal_title = "WordPress Login";
 var loginModal_username = "Username";
 var loginModal_usernameDesc = "Username for <%= url %>";
 var loginModal_password = "Password";
+var loginModal_appPassword = "Application password";
+var loginModal_appPasswordDesc = "Use the Application Password created in the WordPress profile for <%= url %>, not the normal website sign-in password. Spaces are accepted.";
+var loginModal_loggingIn = "Connecting\u2026";
 var loginModal_passwordDesc = "Password for <%= url %>";
+var notice_preparingPublisher = "Connecting to WordPress and preparing publishing settings\u2026";
 var loginModal_rememberUsername = "Remember Username";
 var loginModal_rememberUsernameDesc = "If enabled, the WordPress username you typed will be saved in local data. This might be disclosure in synchronize services.";
 var loginModal_rememberPassword = "Remember Password";
@@ -117580,7 +117624,11 @@ var en_default = {
   loginModal_username,
   loginModal_usernameDesc,
   loginModal_password,
+  loginModal_appPassword,
+  loginModal_appPasswordDesc,
+  loginModal_loggingIn,
   loginModal_passwordDesc,
+  notice_preparingPublisher,
   loginModal_rememberUsername,
   loginModal_rememberUsernameDesc,
   loginModal_rememberPassword,
@@ -118025,6 +118073,9 @@ __export(zh_cn_exports, {
   featuredImageModal_title: () => featuredImageModal_title2,
   featuredImageModal_unsplashTooltip: () => featuredImageModal_unsplashTooltip2,
   frontmatter_defaultCategory: () => frontmatter_defaultCategory2,
+  loginModal_appPassword: () => loginModal_appPassword2,
+  loginModal_appPasswordDesc: () => loginModal_appPasswordDesc2,
+  loginModal_loggingIn: () => loginModal_loggingIn2,
   loginModal_loginButtonText: () => loginModal_loginButtonText2,
   loginModal_password: () => loginModal_password2,
   loginModal_passwordDesc: () => loginModal_passwordDesc2,
@@ -118054,6 +118105,7 @@ __export(zh_cn_exports, {
   notice_imageLoadFailed: () => notice_imageLoadFailed2,
   notice_imageTooLarge: () => notice_imageTooLarge2,
   notice_invalidImageFormat: () => notice_invalidImageFormat2,
+  notice_preparingPublisher: () => notice_preparingPublisher2,
   notice_publishCancelled: () => notice_publishCancelled2,
   notice_slugModeRequiresAI: () => notice_slugModeRequiresAI2,
   notice_textAIApiKeyRequired: () => notice_textAIApiKeyRequired2,
@@ -118481,7 +118533,11 @@ var loginModal_title2 = "WordPress \u767B\u5F55";
 var loginModal_username2 = "\u7528\u6237\u540D";
 var loginModal_usernameDesc2 = "<%= url %> \u7528\u6237\u540D";
 var loginModal_password2 = "\u5BC6\u7801";
+var loginModal_appPassword2 = "\u5E94\u7528\u7A0B\u5E8F\u5BC6\u7801";
+var loginModal_appPasswordDesc2 = "\u8BF7\u8F93\u5165\u5728 WordPress \u7528\u6237\u8D44\u6599\u4E2D\u4E3A <%= url %> \u521B\u5EFA\u7684\u5E94\u7528\u7A0B\u5E8F\u5BC6\u7801\uFF0C\u4E0D\u662F\u7F51\u7AD9\u767B\u5F55\u5BC6\u7801\uFF1B\u7C98\u8D34\u65F6\u53EF\u4EE5\u4FDD\u7559\u7A7A\u683C\u3002";
+var loginModal_loggingIn2 = "\u6B63\u5728\u8FDE\u63A5\u2026";
 var loginModal_passwordDesc2 = "<%= url %> \u5BC6\u7801";
+var notice_preparingPublisher2 = "\u6B63\u5728\u8FDE\u63A5 WordPress \u5E76\u51C6\u5907\u53D1\u5E03\u8BBE\u7F6E\u2026";
 var loginModal_rememberUsername2 = "\u8BB0\u4F4F\u7528\u6237\u540D";
 var loginModal_rememberUsernameDesc2 = "\u5982\u679C\u5F00\u542F\uFF0CWordPress \u7528\u6237\u540D\u4F1A\u88AB\u4FDD\u5B58\u5728\u672C\u5730\u6570\u636E\u3002\u5728\u67D0\u4E9B\u540C\u6B65\u670D\u52A1\u4E2D\u53EF\u80FD\u5BFC\u81F4\u6CC4\u9732\u3002";
 var loginModal_rememberPassword2 = "\u8BB0\u4F4F\u5BC6\u7801";
@@ -118929,7 +118985,11 @@ var zh_cn_default = {
   loginModal_username: loginModal_username2,
   loginModal_usernameDesc: loginModal_usernameDesc2,
   loginModal_password: loginModal_password2,
+  loginModal_appPassword: loginModal_appPassword2,
+  loginModal_appPasswordDesc: loginModal_appPasswordDesc2,
+  loginModal_loggingIn: loginModal_loggingIn2,
   loginModal_passwordDesc: loginModal_passwordDesc2,
+  notice_preparingPublisher: notice_preparingPublisher2,
   loginModal_rememberUsername: loginModal_rememberUsername2,
   loginModal_rememberUsernameDesc: loginModal_rememberUsernameDesc2,
   loginModal_rememberPassword: loginModal_rememberPassword2,
@@ -119386,6 +119446,7 @@ init_utils3();
 init_lodash();
 init_wp_clients();
 init_utils3();
+var import_obsidian26 = require("obsidian");
 function doClientPublish(plugin4, profileOrName, defaultPostParams) {
   let profile;
   if (isString_default(profileOrName)) {
@@ -119400,11 +119461,18 @@ function doClientPublish(plugin4, profileOrName, defaultPostParams) {
     showError(noSuchProfileMessage);
     throw new Error(noSuchProfileMessage);
   }
-  const client = getWordPressClient(plugin4, profile);
-  if (client) {
-    client.publishPost(defaultPostParams).catch((error2) => {
-      showError(error2);
-    });
+  if (!plugin4.app.workspace.getActiveFile()) {
+    showError(plugin4.i18n.t("error_noActiveFile"));
+    return;
+  }
+  new import_obsidian26.Notice(plugin4.i18n.t("notice_preparingPublisher"), 5e3);
+  try {
+    const client = getWordPressClient(plugin4, profile);
+    if (client) {
+      void client.publishPost(defaultPostParams).catch((error2) => showError(error2));
+    }
+  } catch (error2) {
+    showError(error2);
   }
 }
 
@@ -119609,7 +119677,7 @@ var FeaturePictureCacheManager = class {
 
 // src/main.ts
 var log7 = createModuleLogger("WordpressPlugin");
-var WordpressPlugin = class extends import_obsidian26.Plugin {
+var WordpressPlugin = class extends import_obsidian27.Plugin {
   constructor() {
     super(...arguments);
     this.storedData = new SerializedStore(() => this.loadData(), (data2) => this.saveData(data2));
@@ -119845,7 +119913,7 @@ var WordpressPlugin = class extends import_obsidian26.Plugin {
     if ((_c = this._settings) == null ? void 0 : _c.showRibbonIcon) {
       if (!this.ribbonWpIcon) {
         this.ribbonWpIcon = this.addRibbonIcon("wp-logo", ribbonIconTitle, () => {
-          this.openProfileChooser();
+          void this.openProfileChooser().catch((error2) => showError(error2));
         });
       }
     } else {

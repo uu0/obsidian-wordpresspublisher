@@ -1,3 +1,12 @@
+## 2.1.3-beta.4
+
+- Acknowledge ribbon and command launches while WordPress authentication and metadata are loading.
+- Report missing notes and client setup failures instead of leaving ribbon clicks without feedback.
+- Fix REST Basic authentication for Unicode usernames and pasted WordPress application passwords containing display spaces.
+- Preserve actionable WordPress authentication errors and add a guarded connecting state to the login dialog.
+- Clarify that core REST authentication requires an Application Password rather than the normal website password.
+- Validation: 23 suites, 236 tests, strict typecheck and production build passed locally.
+
 ## 2.1.3-beta.3
 
 - Reorganize the publishing dialog around the source note, destination site and primary publish action.
