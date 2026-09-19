@@ -47,6 +47,7 @@ export class ContentPreviewSection {
       const previewDiv = body.createDiv('wp-v3-content-preview');
       const html = AppState.markdownParser.render(params.content);
       previewDiv.innerHTML = sanitizeHtml(html);
+      resolveVaultImages(previewDiv, ctx);
     };
 
     // ── 文章内容编辑模式 ──
@@ -363,5 +364,22 @@ export class ContentPreviewSection {
         }
       });
     });
+  }
+}
+
+function resolveVaultImages(container: HTMLElement, ctx: PublishModalContext): void {
+  for (const image of Array.from(container.querySelectorAll('img'))) {
+    const src = image.getAttribute('src');
+    if (!src || /^(?:https?:|data:|blob:|app:)/i.test(src)) continue;
+
+    let linkPath = src;
+    try {
+      linkPath = decodeURI(src);
+    } catch {
+      // Keep the literal path when it contains an unmatched percent sign.
+    }
+
+    const file = ctx.plugin.app.metadataCache.getFirstLinkpathDest(linkPath, ctx.sourcePath);
+    if (file) image.setAttribute('src', ctx.plugin.app.vault.getResourcePath(file));
   }
 }

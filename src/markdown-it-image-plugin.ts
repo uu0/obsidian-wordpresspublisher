@@ -40,7 +40,10 @@ function plugin(md: MarkdownIt): void {
     }
     return renderImage(tokens, index, options, env, renderer);
   };
-  md.inline.ruler.after('image', tokenType, (state, silent) => {
+  // Obsidian embeds start with the same `![` prefix as CommonMark images.
+  // Claim the complete `![[...]]` construct before markdown-it's image rule
+  // gets a chance to interpret only part of it.
+  md.inline.ruler.before('image', tokenType, (state, silent) => {
     const regex = /^!\[\[([^|\]\n]+)(\|([^\]\n]+))?\]\]/;
     const match = state.src.slice(state.pos).match(regex);
     if (match) {

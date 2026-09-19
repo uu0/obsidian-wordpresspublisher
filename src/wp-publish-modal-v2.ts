@@ -68,6 +68,10 @@ export class WpPublishModalV2 extends AbstractModal implements PublishModalConte
   remoteImagePostId: string | number | null = null; // 需要加载远程图片的 postId
   remoteImageError: string | null = null; // 远程图片加载失败的错误信息
 
+  get sourcePath(): string {
+    return this.notePath;
+  }
+
   constructor(
     readonly plugin: WordpressPlugin,
     readonly categories: {

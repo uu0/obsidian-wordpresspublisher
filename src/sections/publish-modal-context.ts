@@ -12,6 +12,7 @@ import type { Term } from '../wp-api';
 
 export interface PublishModalContext {
   readonly plugin: WordpressPlugin;
+  readonly sourcePath: string;
 
   // ── Shared mutable state ──
   featuredImage: FeaturedImageResult | null;

@@ -41,6 +41,19 @@ describe('ContentPreviewSection', () => {
     expect(preview!.innerHTML).toContain('bold');
   });
 
+  it('resolves local image paths to Obsidian resource URLs in the preview', () => {
+    const ctx = createMockContext({ sourcePath: 'Notes/article.md' });
+    const imageFile = { path: 'Attachments/Pasted image.png' };
+    (ctx.plugin.app.metadataCache.getFirstLinkpathDest as jest.Mock).mockReturnValue(imageFile);
+    (ctx.plugin.app.vault.getResourcePath as jest.Mock).mockReturnValue('app://vault/Attachments/Pasted%20image.png');
+    const container = document.createElement('div');
+
+    new ContentPreviewSection(ctx).render(container, baseParams({ content: '<img src="Pasted image.png">' }));
+
+    expect(ctx.plugin.app.metadataCache.getFirstLinkpathDest).toHaveBeenCalledWith('Pasted image.png', 'Notes/article.md');
+    expect(container.querySelector('img')?.getAttribute('src')).toBe('app://vault/Attachments/Pasted%20image.png');
+  });
+
   it('shows excerpt placeholder buttons when no excerpt, and AI generate is wired', () => {
     const ctx = createMockContext();
     const params = baseParams({ excerpt: undefined });

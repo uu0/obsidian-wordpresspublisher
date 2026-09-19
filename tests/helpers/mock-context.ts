@@ -10,6 +10,7 @@ import type { AIService } from '../../src/ai-service';
 import type { Term } from '../../src/wp-api';
 
 export interface MockContextOptions {
+  sourcePath?: string;
   featuredImage?: FeaturedImageResult | null;
   autoFeaturedImage?: FeaturedImageResult | null;
   imageSource?: 'local' | 'unsplash' | 'ai' | 'vault' | 'cached' | 'auto';
@@ -29,10 +30,15 @@ export function createMockContext(opts: MockContextOptions = {}): PublishModalCo
     // Return '' so the components exercise their `|| fallback` i18n branches.
     t: (_key: string) => '',
     settings: opts.pluginSettings ?? { autoGenerateSlug: false, aiConfig: {} },
+    app: {
+      metadataCache: { getFirstLinkpathDest: jest.fn().mockReturnValue(null) },
+      vault: { getResourcePath: jest.fn() },
+    },
   };
 
   const ctx: any = {
     plugin,
+    sourcePath: opts.sourcePath ?? 'A.md',
     featuredImage: opts.featuredImage ?? null,
     autoFeaturedImage: opts.autoFeaturedImage ?? null,
     imageSource: opts.imageSource ?? 'auto',

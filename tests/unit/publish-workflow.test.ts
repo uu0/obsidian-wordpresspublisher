@@ -130,4 +130,36 @@ it('reuses uploaded bytes on retry and does not replace an image example inside 
   expect(f.publish.mock.calls[1][1]).toContain('![alt](a.png)');
   expect(f.publish.mock.calls[1][1]).toContain('src="https://site/a.png"');
   expect(f.publish.mock.calls[1][1]).toContain('alt="alt"');
+  expect(f.publish.mock.calls[1][1].match(/]\(a\.png\)/g)).toHaveLength(1);
+});
+
+it('publishes a complete Obsidian image embed without leaking its filename markup', async () => {
+  const f = imageFixture();
+  f.attempt.postParams.content = '![[Pasted image 20260918204445.png]]';
+  jest.spyOn(f.client, 'uploadMedia').mockResolvedValue({
+    code: WordPressClientReturnCode.OK,
+    data: { id: 7, url: 'https://site/pasted-image.png' },
+  });
+
+  await f.internal.tryToPublish(f.attempt);
+
+  expect(f.resolve).toHaveBeenCalledWith('Pasted image 20260918204445.png', 'A.md');
+  expect(f.publish.mock.calls[0][1]).toContain('src="https://site/pasted-image.png"');
+  expect(f.publish.mock.calls[0][1]).not.toContain(']]');
+});
+
+it('does not merge an Obsidian image with a following Markdown link', async () => {
+  const f = imageFixture();
+  f.attempt.postParams.content = '![[Pasted image 20260918204445.png]] [source](notes.md)';
+  jest.spyOn(f.client, 'uploadMedia').mockResolvedValue({
+    code: WordPressClientReturnCode.OK,
+    data: { id: 7, url: 'https://site/pasted-image.png' },
+  });
+
+  await f.internal.tryToPublish(f.attempt);
+
+  expect(f.resolve).toHaveBeenCalledTimes(1);
+  expect(f.resolve).toHaveBeenCalledWith('Pasted image 20260918204445.png', 'A.md');
+  expect(f.publish.mock.calls[0][1]).toContain('<a href="notes.md">source</a>');
+  expect(f.publish.mock.calls[0][1]).not.toContain('20260918204445.png]]');
 });

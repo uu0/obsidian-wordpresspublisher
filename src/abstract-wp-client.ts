@@ -1023,33 +1023,39 @@ function getImages(content: string): Image[] {
   }
   content = lines.join('\n').replace(/(`+)[\s\S]*?\1/g, match => ' '.repeat(match.length));
 
-  // for ![Alt Text](image-url)
-  let regex = /(!\[(.*?)(?:\|(\d+)(?:x(\d+))?)?]\((.*?)\))/g;
+  // Match Obsidian embeds first and mask their ranges before scanning standard
+  // Markdown. Otherwise `![[photo.png]] [caption](target)` can be mistaken for
+  // one large Markdown image, producing overlapping replacements and remnants.
+  const markdownOnly = content.split('');
+  let regex = /(!\[\[(.*?)(?:\|(\d+)(?:x(\d+))?)?]])/g;
   let match;
   while ((match = regex.exec(content)) !== null) {
     paths.push({
-      src: match[5].replace(/^<|>$/g, ''),
-      altText: match[2],
+      src: match[2],
       width: match[3],
       height: match[4],
       original: match[1],
       startIndex: match.index,
-      endIndex: match.index + match.length,
-      srcIsUrl: isValidUrl(match[5].replace(/^<|>$/g, '')),
+      endIndex: match.index + match[0].length,
+      srcIsUrl: isValidUrl(match[2]),
     });
+    markdownOnly.fill(' ', match.index, match.index + match[0].length);
   }
 
-  // for ![[image-name]]
-  regex = /(!\[\[(.*?)(?:\|(\d+)(?:x(\d+))?)?]])/g;
-  while ((match = regex.exec(content)) !== null) {
+  // Match ![Alt Text](image-url) only in the remaining Markdown.
+  const markdownContent = markdownOnly.join('');
+  regex = /(!\[(.*?)(?:\|(\d+)(?:x(\d+))?)?]\((.*?)\))/g;
+  while ((match = regex.exec(markdownContent)) !== null) {
+    const src = match[5].replace(/^<|>$/g, '');
     paths.push({
-      src: match[2],
+      src,
+      altText: match[2],
       original: match[1],
       width: match[3],
       height: match[4],
       startIndex: match.index,
-      endIndex: match.index + match.length,
-      srcIsUrl: isValidUrl(match[2]),
+      endIndex: match.index + match[0].length,
+      srcIsUrl: isValidUrl(src),
     });
   }
 

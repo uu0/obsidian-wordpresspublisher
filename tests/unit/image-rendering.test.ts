@@ -11,3 +11,11 @@ it('escapes injected wiki-image attributes', () => {
   const md = new MarkdownIt().use(MarkdownItImagePluginInstance.plugin);
   expect(md.render('![[https://example.com/a" onerror="bad]]')).not.toContain('" onerror="');
 });
+
+it('consumes a complete Obsidian image embed with spaces in its name', () => {
+  const md = new MarkdownIt().use(MarkdownItImagePluginInstance.plugin);
+  const html = md.render('![[Pasted image 20260918204445.png]]');
+
+  expect(html).toContain('src="Pasted image 20260918204445.png"');
+  expect(html).not.toContain('sted image 20260918204445.png]]');
+});
