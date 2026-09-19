@@ -1,3 +1,10 @@
+## 2.1.4
+
+- Fix incomplete replacement of local Markdown and Obsidian embedded images, which could leave filename fragments such as `sted image ...png]]` in published WordPress content.
+- Prevent Obsidian image embeds from overlapping with following Markdown links during media discovery.
+- Resolve Vault image paths to Obsidian resource URLs so local images display correctly in the publishing preview.
+- Add regression coverage for local images, embedded images, adjacent links and code-block examples. Validation: 23 suites, 240 tests, strict typecheck and production build passed.
+
 ## 2.1.3
 
 - Make publishing recoverable: bind writes to the source note, preserve concurrent edits and reconcile confirmed or uncertain remote results without duplicate posts.
